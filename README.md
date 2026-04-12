@@ -34,8 +34,11 @@ cd cybersandbox && docker compose up -d
 ./scripts/seed-wordlists.sh
 ```
 
-**Caido plugin:**
-Download [`prowlr-v0.2.1.zip`](https://github.com/ProwlrBot/CyberBox/releases/latest) → Caido Settings → Plugins → Install from file.
+**Caido plugins:**
+- [`prowlr-v0.2.1.zip`](https://github.com/ProwlrBot/CyberBox/releases/latest) (this repo) — scope, AI analysis, Obsidian export, guardrails
+- [ShadowShell](https://github.com/hahwul/ShadowShell) (hahwul, recommended companion) — multi-tab terminal with split panes, AI-CLI presets (Claude/Gemini/Codex), and `Cmd+J` drop-down overlay. Prowlr's terminal tab is intentionally minimal; ShadowShell covers the serious terminal workflow.
+
+Install both via **Caido → Settings → Plugins → Install from file**.
 
 **Host CLI:**
 ```bash
@@ -90,7 +93,7 @@ This project originated as a fork of [agent-infra/sandbox](https://github.com/ag
 Reference sources (patterns extracted, not cloned in bulk):
 - [projectdiscovery](https://github.com/projectdiscovery) — nuclei/subfinder/httpx/katana + pdtm manifest format
 - [danielmiessler](https://github.com/danielmiessler) — SecLists, Fabric prompt patterns
-- [hahwul](https://github.com/hahwul) — dalfox, Caido plugin patterns
+- [hahwul](https://github.com/hahwul) — dalfox, Caido plugin patterns, [ShadowShell](https://github.com/hahwul/ShadowShell) (recommended companion terminal plugin)
 - [tomnomnom](https://github.com/tomnomnom) — waybackurls, gau
 - [wshobson/agents](https://github.com/wshobson/agents) — Claude Code security subagents
 - [NVIDIA NemoClaw](https://github.com/NVIDIA) — AI guardrail patterns
