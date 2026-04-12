@@ -35,21 +35,21 @@ ensure_dirs() {
   fi
 }
 
-# ── YAML helpers (no yq dependency — pure bash for basics) ───
-# For complex YAML we fall back to python3 if available
+# ── YAML helpers (safe — values via env vars, not string interpolation) ───
 yaml_get() {
   local file="$1" key="$2"
   if command -v python3 &>/dev/null; then
-    python3 -c "
-import yaml, sys
-with open('$file') as f:
-    d = yaml.safe_load(f)
-keys = '$key'.split('.')
-for k in keys:
-    if d is None: break
-    d = d.get(k) if isinstance(d, dict) else None
-print(d if d is not None else '')
-" 2>/dev/null
+    CSBX_YAML_FILE="$file" CSBX_YAML_KEY="$key" python3 - <<'PYEOF'
+import yaml, os
+try:
+    with open(os.environ['CSBX_YAML_FILE']) as f:
+        d = yaml.safe_load(f)
+    for k in os.environ['CSBX_YAML_KEY'].split('.'):
+        if d is None: break
+        d = d.get(k) if isinstance(d, dict) else None
+    print(d if d is not None else '')
+except: print('')
+PYEOF
   else
     grep "^  *${key}:" "$file" 2>/dev/null | head -1 | sed 's/.*: *//' | tr -d '"'
   fi
@@ -57,40 +57,67 @@ print(d if d is not None else '')
 
 yaml_get_block() {
   local file="$1" key="$2"
-  python3 -c "
-import yaml
-with open('$file') as f:
-    d = yaml.safe_load(f)
-keys = '$key'.split('.')
-for k in keys:
-    if d is None: break
-    d = d.get(k) if isinstance(d, dict) else None
-if d: print(d)
-" 2>/dev/null || echo ""
+  CSBX_YAML_FILE="$file" CSBX_YAML_KEY="$key" python3 - <<'PYEOF' 2>/dev/null || echo ""
+import yaml, os
+try:
+    with open(os.environ['CSBX_YAML_FILE']) as f:
+        d = yaml.safe_load(f)
+    for k in os.environ['CSBX_YAML_KEY'].split('.'):
+        if d is None: break
+        d = d.get(k) if isinstance(d, dict) else None
+    if d: print(d)
+except: pass
+PYEOF
 }
 
 yaml_list() {
   local file="$1" key="$2"
-  python3 -c "
-import yaml
-with open('$file') as f:
-    d = yaml.safe_load(f)
-keys = '$key'.split('.')
-for k in keys:
-    if d is None: break
-    d = d.get(k) if isinstance(d, dict) else None
-if isinstance(d, list):
-    for item in d: print(item)
-" 2>/dev/null
+  CSBX_YAML_FILE="$file" CSBX_YAML_KEY="$key" python3 - <<'PYEOF' 2>/dev/null
+import yaml, os
+try:
+    with open(os.environ['CSBX_YAML_FILE']) as f:
+        d = yaml.safe_load(f)
+    for k in os.environ['CSBX_YAML_KEY'].split('.'):
+        if d is None: break
+        d = d.get(k) if isinstance(d, dict) else None
+    if isinstance(d, list):
+        for item in d: print(item)
+except: pass
+PYEOF
+}
+
+# ── Name validation ──────────────────────────────────────────
+validate_name() {
+  local name="$1"
+  if [[ "$name" =~ \.\.\/ ]] || [[ "$name" =~ [^a-zA-Z0-9._-] ]]; then
+    err "Invalid plugin name: '${name}' — only alphanumeric, dot, dash, underscore allowed"
+    return 1
+  fi
+}
+
+# ── Install hook confirmation ────────────────────────────────
+confirm_hook() {
+  local label="$1" script="$2"
+  if [[ "${CSBX_YES:-}" == "1" ]]; then
+    return 0
+  fi
+  echo -e "${YELLOW}── ${label} hook script ──${NC}"
+  echo "$script"
+  echo -e "${YELLOW}── end ──${NC}"
+  read -r -p "Run ${label} hook? [y/N] " answer
+  [[ "$answer" =~ ^[Yy]$ ]]
 }
 
 # ── Registry ─────────────────────────────────────────────────
 registry_sync() {
   info "Syncing registry..."
-  if curl -fsSL "$CSBX_REGISTRY_URL" -o "${CSBX_REGISTRY}.tmp" 2>/dev/null; then
-    mv "${CSBX_REGISTRY}.tmp" "$CSBX_REGISTRY"
+  local tmp_registry
+  tmp_registry=$(mktemp "${CSBX_HOME}/registry.XXXXXX")
+  if curl -fsSL "$CSBX_REGISTRY_URL" -o "$tmp_registry" 2>/dev/null; then
+    mv "$tmp_registry" "$CSBX_REGISTRY"
     ok "Registry synced"
   else
+    rm -f "$tmp_registry"
     warn "Failed to fetch registry — using cached copy"
     # Create a minimal registry if none exists
     if [[ ! -f "$CSBX_REGISTRY" ]]; then
@@ -168,19 +195,19 @@ cmd_search() {
   local query="${1:-}"
   [[ ! -f "$CSBX_REGISTRY" ]] && registry_sync
 
-  python3 -c "
-import yaml
-with open('$CSBX_REGISTRY') as f:
+  CSBX_REGISTRY="$CSBX_REGISTRY" CSBX_QUERY="$query" python3 - <<'PYEOF' 2>/dev/null
+import yaml, os
+with open(os.environ['CSBX_REGISTRY']) as f:
     reg = yaml.safe_load(f)
-query = '$query'.lower()
+query = os.environ.get('CSBX_QUERY', '').lower()
 for name, info in sorted(reg.get('plugins', {}).items()):
-    searchable = f\"{name} {info.get('description','')} {' '.join(info.get('tags',[]))}\".lower()
+    searchable = f"{name} {info.get('description','')} {' '.join(info.get('tags',[]))}".lower()
     if not query or query in searchable:
         typ = info.get('type','?')
         desc = info.get('description','')[:60]
         size = info.get('size','?')
         print(f'  \033[1m{name:25s}\033[0m {typ:20s} {size:>8s}  {desc}')
-" 2>/dev/null
+PYEOF
 }
 
 # ── Info ─────────────────────────────────────────────────────
@@ -188,33 +215,32 @@ cmd_info() {
   local name="$1"
   [[ ! -f "$CSBX_REGISTRY" ]] && registry_sync
 
-  python3 -c "
-import yaml
-with open('$CSBX_REGISTRY') as f:
+  CSBX_REGISTRY="$CSBX_REGISTRY" CSBX_INSTALLED="$CSBX_INSTALLED" CSBX_NAME="$name" python3 - <<'PYEOF' 2>/dev/null
+import yaml, os
+name = os.environ['CSBX_NAME']
+with open(os.environ['CSBX_REGISTRY']) as f:
     reg = yaml.safe_load(f)
-p = reg.get('plugins', {}).get('$name')
+p = reg.get('plugins', {}).get(name)
 if not p:
-    print('\033[31m[x]\033[0m Plugin \"$name\" not in registry')
+    print(f'\033[31m[x]\033[0m Plugin "{name}" not in registry')
 else:
-    print(f\"\033[1m{' $name '}\033[0m\")
-    print(f\"  Type:        {p.get('type','?')}\")
-    print(f\"  Description: {p.get('description','?')}\")
-    print(f\"  Repo:        {p.get('repo','?')}\")
-    print(f\"  Size:        {p.get('size','?')}\")
-    print(f\"  Tags:        {', '.join(p.get('tags',[]))}\")
+    print(f"\033[1m {name} \033[0m")
+    print(f"  Type:        {p.get('type','?')}")
+    print(f"  Description: {p.get('description','?')}")
+    print(f"  Repo:        {p.get('repo','?')}")
+    print(f"  Size:        {p.get('size','?')}")
+    print(f"  Tags:        {', '.join(p.get('tags',[]))}")
 
-    # Check if installed
-    import os
-    installed_file = '$CSBX_INSTALLED'
+    installed_file = os.environ['CSBX_INSTALLED']
     if os.path.exists(installed_file):
         with open(installed_file) as f2:
             inst = yaml.safe_load(f2)
-        if '$name' in inst.get('plugins', {}):
-            i = inst['plugins']['$name']
-            print(f\"  \033[32mInstalled:\033[0m {i.get('installed_at','?')} at {i.get('path','?')}\")
+        if name in inst.get('plugins', {}):
+            i = inst['plugins'][name]
+            print(f"  \033[32mInstalled:\033[0m {i.get('installed_at','?')} at {i.get('path','?')}")
         else:
-            print(f\"  \033[33mNot installed\033[0m\")
-" 2>/dev/null
+            print(f"  \033[33mNot installed\033[0m")
+PYEOF
 }
 
 # ── Install ──────────────────────────────────────────────────
@@ -226,9 +252,11 @@ cmd_install() {
   if [[ "$input" == http* || "$input" == git@* ]]; then
     repo_url="$input"
     name=$(basename "$repo_url" .git)
+    validate_name "$name" || return 1
     warn "Installing unregistered plugin — review csbx.yaml before trusting"
   else
     name="$input"
+    validate_name "$name" || return 1
     [[ ! -f "$CSBX_REGISTRY" ]] && registry_sync
     repo_url=$(yaml_get "$CSBX_REGISTRY" "plugins.${name}.repo")
     if [[ -z "$repo_url" ]]; then
@@ -241,12 +269,13 @@ cmd_install() {
   fi
 
   # Check if already installed
-  if [[ -f "$CSBX_INSTALLED" ]] && python3 -c "
-import yaml
-with open('$CSBX_INSTALLED') as f:
-    d = yaml.safe_load(f)
-exit(0 if '$name' in d.get('plugins',{}) else 1)
-" 2>/dev/null; then
+  if [[ -f "$CSBX_INSTALLED" ]] && CSBX_INSTALLED="$CSBX_INSTALLED" CSBX_NAME="$name" python3 - <<'PYEOF' 2>/dev/null
+import yaml, os, sys
+with open(os.environ['CSBX_INSTALLED']) as f:
+    d = yaml.safe_load(f) or {}
+sys.exit(0 if os.environ['CSBX_NAME'] in d.get('plugins', {}) else 1)
+PYEOF
+  then
     warn "${name} already installed. Use: csbx update ${name}"
     return 0
   fi
@@ -280,10 +309,14 @@ exit(0 if '$name' in d.get('plugins',{}) else 1)
     local install_script
     install_script=$(yaml_get_block "${target_dir}/csbx.yaml" "install")
     if [[ -n "$install_script" && "$install_script" != "None" ]]; then
-      info "Running install hook..."
-      export CSBX_PLUGIN_DIR="$target_dir"
-      export CSBX_WORDLISTS CSBX_TEMPLATES CSBX_BIN
-      (cd "$target_dir" && bash -c "$install_script") || warn "Install hook had errors"
+      if confirm_hook "install" "$install_script"; then
+        info "Running install hook..."
+        export CSBX_PLUGIN_DIR="$target_dir"
+        export CSBX_WORDLISTS CSBX_TEMPLATES CSBX_BIN
+        (cd "$target_dir" && bash -c "$install_script") || warn "Install hook had errors"
+      else
+        warn "Install hook skipped"
+      fi
     fi
 
     # Symlink binaries
@@ -297,25 +330,31 @@ exit(0 if '$name' in d.get('plugins',{}) else 1)
     local post_script
     post_script=$(yaml_get_block "${target_dir}/csbx.yaml" "post_install")
     if [[ -n "$post_script" && "$post_script" != "None" ]]; then
-      export CSBX_PLUGIN_DIR="$target_dir"
-      (cd "$target_dir" && bash -c "$post_script") || true
+      if confirm_hook "post_install" "$post_script"; then
+        export CSBX_PLUGIN_DIR="$target_dir"
+        (cd "$target_dir" && bash -c "$post_script") || true
+      else
+        warn "post_install hook skipped"
+      fi
     fi
   fi
 
   # Record installation
-  python3 -c "
-import yaml, datetime
-with open('$CSBX_INSTALLED') as f:
+  CSBX_INSTALLED="$CSBX_INSTALLED" CSBX_NAME="$name" CSBX_TYPE="$plugin_type" \
+    CSBX_REPO="$repo_url" CSBX_TARGET="$target_dir" python3 - <<'PYEOF' 2>/dev/null
+import yaml, datetime, os
+installed = os.environ['CSBX_INSTALLED']
+with open(installed) as f:
     d = yaml.safe_load(f) or {'plugins': {}}
-d.setdefault('plugins', {})['$name'] = {
-    'type': '$plugin_type',
-    'repo': '$repo_url',
+d.setdefault('plugins', {})[os.environ['CSBX_NAME']] = {
+    'type': os.environ['CSBX_TYPE'],
+    'repo': os.environ['CSBX_REPO'],
     'installed_at': datetime.datetime.now().isoformat(),
-    'path': '$target_dir'
+    'path': os.environ['CSBX_TARGET']
 }
-with open('$CSBX_INSTALLED', 'w') as f:
+with open(installed, 'w') as f:
     yaml.dump(d, f, default_flow_style=False)
-" 2>/dev/null
+PYEOF
 
   ok "${name} installed → ${target_dir}"
 }
@@ -323,16 +362,18 @@ with open('$CSBX_INSTALLED', 'w') as f:
 # ── Remove ───────────────────────────────────────────────────
 cmd_remove() {
   local name="$1"
+  validate_name "$name" || return 1
 
   # Find installed path
   local path
-  path=$(python3 -c "
-import yaml
-with open('$CSBX_INSTALLED') as f:
-    d = yaml.safe_load(f)
-p = d.get('plugins',{}).get('$name',{})
-print(p.get('path',''))
-" 2>/dev/null)
+  path=$(CSBX_INSTALLED="$CSBX_INSTALLED" CSBX_NAME="$name" python3 - <<'PYEOF' 2>/dev/null
+import yaml, os
+with open(os.environ['CSBX_INSTALLED']) as f:
+    d = yaml.safe_load(f) or {}
+p = d.get('plugins', {}).get(os.environ['CSBX_NAME'], {})
+print(p.get('path', ''))
+PYEOF
+)
 
   if [[ -z "$path" || ! -d "$path" ]]; then
     err "${name} is not installed"
@@ -344,10 +385,14 @@ print(p.get('path',''))
     local uninstall_script
     uninstall_script=$(yaml_get_block "${path}/csbx.yaml" "uninstall")
     if [[ -n "$uninstall_script" && "$uninstall_script" != "None" ]]; then
-      info "Running uninstall hook..."
-      export CSBX_PLUGIN_DIR="$path"
-      export CSBX_WORDLISTS CSBX_TEMPLATES CSBX_BIN
-      (cd "$path" && bash -c "$uninstall_script") || true
+      if confirm_hook "uninstall" "$uninstall_script"; then
+        info "Running uninstall hook..."
+        export CSBX_PLUGIN_DIR="$path"
+        export CSBX_WORDLISTS CSBX_TEMPLATES CSBX_BIN
+        (cd "$path" && bash -c "$uninstall_script") || true
+      else
+        warn "uninstall hook skipped"
+      fi
     fi
 
     # Remove binary symlinks
@@ -361,14 +406,15 @@ print(p.get('path',''))
   rm -rf "$path"
 
   # Remove from installed.yaml
-  python3 -c "
-import yaml
-with open('$CSBX_INSTALLED') as f:
+  CSBX_INSTALLED="$CSBX_INSTALLED" CSBX_NAME="$name" python3 - <<'PYEOF' 2>/dev/null
+import yaml, os
+installed = os.environ['CSBX_INSTALLED']
+with open(installed) as f:
     d = yaml.safe_load(f) or {'plugins': {}}
-d.get('plugins', {}).pop('$name', None)
-with open('$CSBX_INSTALLED', 'w') as f:
+d.get('plugins', {}).pop(os.environ['CSBX_NAME'], None)
+with open(installed, 'w') as f:
     yaml.dump(d, f, default_flow_style=False)
-" 2>/dev/null
+PYEOF
 
   ok "${name} removed"
 }
@@ -378,25 +424,32 @@ cmd_update() {
   local name="$1"
 
   if [[ "$name" == "--all" ]]; then
-    python3 -c "
-import yaml
-with open('$CSBX_INSTALLED') as f:
-    d = yaml.safe_load(f)
+    local plugins
+    plugins=$(CSBX_INSTALLED="$CSBX_INSTALLED" python3 - <<'PYEOF' 2>/dev/null
+import yaml, os
+with open(os.environ['CSBX_INSTALLED']) as f:
+    d = yaml.safe_load(f) or {}
 for name in d.get('plugins', {}):
     print(name)
-" 2>/dev/null | while IFS= read -r plugin; do
+PYEOF
+)
+    while IFS= read -r plugin; do
+      [[ -z "$plugin" ]] && continue
       cmd_update "$plugin"
-    done
+    done <<< "$plugins"
     return
   fi
 
+  validate_name "$name" || return 1
+
   local path
-  path=$(python3 -c "
-import yaml
-with open('$CSBX_INSTALLED') as f:
-    d = yaml.safe_load(f)
-print(d.get('plugins',{}).get('$name',{}).get('path',''))
-" 2>/dev/null)
+  path=$(CSBX_INSTALLED="$CSBX_INSTALLED" CSBX_NAME="$name" python3 - <<'PYEOF' 2>/dev/null
+import yaml, os
+with open(os.environ['CSBX_INSTALLED']) as f:
+    d = yaml.safe_load(f) or {}
+print(d.get('plugins', {}).get(os.environ['CSBX_NAME'], {}).get('path', ''))
+PYEOF
+)
 
   if [[ -z "$path" || ! -d "$path" ]]; then
     err "${name} is not installed"
@@ -410,8 +463,12 @@ print(d.get('plugins',{}).get('$name',{}).get('path',''))
       local install_script
       install_script=$(yaml_get_block "${path}/csbx.yaml" "install")
       if [[ -n "$install_script" && "$install_script" != "None" ]]; then
-        export CSBX_PLUGIN_DIR="$path"
-        (cd "$path" && bash -c "$install_script") || true
+        if confirm_hook "install" "$install_script"; then
+          export CSBX_PLUGIN_DIR="$path"
+          (cd "$path" && bash -c "$install_script") || true
+        else
+          warn "install hook skipped"
+        fi
       fi
     fi
     ok "${name} updated"
@@ -434,10 +491,10 @@ cmd_list() {
     return
   fi
 
-  python3 -c "
-import yaml
-with open('$CSBX_INSTALLED') as f:
-    d = yaml.safe_load(f)
+  CSBX_INSTALLED="$CSBX_INSTALLED" python3 - <<'PYEOF' 2>/dev/null
+import yaml, os
+with open(os.environ['CSBX_INSTALLED']) as f:
+    d = yaml.safe_load(f) or {}
 plugins = d.get('plugins', {})
 if not plugins:
     print('  (none — try: csbx install seclists)')
@@ -445,7 +502,7 @@ for name, info in sorted(plugins.items()):
     typ = info.get('type','?')
     path = info.get('path','?')
     print(f'  \033[1m{name:25s}\033[0m {typ:20s} {path}')
-" 2>/dev/null
+PYEOF
 }
 
 # ── Doctor ───────────────────────────────────────────────────
@@ -490,12 +547,13 @@ cmd_doctor() {
   # Show stats
   echo ""
   local count
-  count=$(python3 -c "
-import yaml
-with open('$CSBX_INSTALLED') as f:
-    d = yaml.safe_load(f)
-print(len(d.get('plugins',{})))
-" 2>/dev/null || echo "0")
+  count=$(CSBX_INSTALLED="$CSBX_INSTALLED" python3 - <<'PYEOF' 2>/dev/null || echo "0"
+import yaml, os
+with open(os.environ['CSBX_INSTALLED']) as f:
+    d = yaml.safe_load(f) or {}
+print(len(d.get('plugins', {})))
+PYEOF
+)
   info "${count} plugin(s) installed"
 
   local size

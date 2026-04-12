@@ -16,6 +16,17 @@ const Commands = {
   exportFindings: "prowlr.export-findings",
 } as const;
 
+// ── HTML Escape (prevent XSS) ──────────────────────────────
+
+function esc(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 // ── Page Builder ────────────────────────────────────────────
 
 function buildPage(sdk: ProwlrSDK): HTMLElement {
@@ -37,7 +48,7 @@ function buildPage(sdk: ProwlrSDK): HTMLElement {
 
     <div class="prowlr-panel" id="prowlr-scope">
       <div class="prowlr-scope-form">
-        <input type="text" id="prowlr-scope-pattern" placeholder="*.example.com" />
+        <input type="text" id="prowlr-scope-pattern" placeholder="*.example.com" maxlength="256" />
         <select id="prowlr-scope-type">
           <option value="include">Include</option>
           <option value="exclude">Exclude</option>
@@ -61,7 +72,7 @@ function buildPage(sdk: ProwlrSDK): HTMLElement {
         <div class="prowlr-quick-commands" id="prowlr-quick-cmds"></div>
         <div class="prowlr-terminal-input-row">
           <span class="prowlr-prompt">$</span>
-          <input type="text" id="prowlr-terminal-cmd" placeholder="Enter command..." />
+          <input type="text" id="prowlr-terminal-cmd" placeholder="Enter command..." maxlength="4096" />
           <button id="prowlr-terminal-run">Run</button>
           <button id="prowlr-terminal-kill" class="prowlr-btn-danger">Kill</button>
           <button id="prowlr-terminal-clear" class="prowlr-btn-secondary">Clear</button>
@@ -110,16 +121,45 @@ function buildPage(sdk: ProwlrSDK): HTMLElement {
         </div>
         <div class="prowlr-setting">
           <label>Model</label>
-          <select id="prowlr-setting-claude-model">
-            <option value="claude-sonnet-4-20250514">Sonnet 4 (fast, cheap)</option>
-            <option value="claude-opus-4-20250514">Opus 4 (best)</option>
-            <option value="claude-haiku-4-5-20251001">Haiku 4.5 (fastest)</option>
-          </select>
+          <input type="text" id="prowlr-setting-claude-model" value="claude-sonnet-4-20250514" placeholder="claude-sonnet-4-20250514" />
+          <small class="prowlr-hint">Any valid model ID — e.g. claude-sonnet-4-20250514, claude-opus-4-20250514</small>
         </div>
         <div class="prowlr-setting">
           <label>Endpoint</label>
           <input type="text" id="prowlr-setting-claude-endpoint" placeholder="https://api.anthropic.com/v1/messages" />
         </div>
+        <div class="prowlr-setting">
+          <label>Max Tokens</label>
+          <input type="number" id="prowlr-setting-claude-max-tokens" value="2048" min="1" max="32000" />
+        </div>
+        <div class="prowlr-setting">
+          <label>API Version</label>
+          <input type="text" id="prowlr-setting-claude-api-version" value="2023-06-01" placeholder="2023-06-01" />
+        </div>
+      </div>
+
+      <h3>Export</h3>
+      <div class="prowlr-setting">
+        <label>Export Path</label>
+        <input type="text" id="prowlr-setting-export-path" placeholder="/home/hunter/exports/findings" />
+        <small class="prowlr-hint">Where findings .md files are written</small>
+      </div>
+
+      <h3>Terminal</h3>
+      <div class="prowlr-setting">
+        <label>Timeout (seconds)</label>
+        <input type="number" id="prowlr-setting-terminal-timeout" value="300" min="10" max="3600" />
+      </div>
+      <div class="prowlr-setting">
+        <label>Working Directory</label>
+        <input type="text" id="prowlr-setting-terminal-cwd" placeholder="(uses $HOME)" />
+      </div>
+
+      <h3>AI Prompt</h3>
+      <div class="prowlr-setting">
+        <label>Analysis Prompt</label>
+        <textarea id="prowlr-setting-ai-prompt" rows="6" placeholder="Leave empty for default. Use {REQUEST} and {RESPONSE} placeholders."></textarea>
+        <small class="prowlr-hint">Custom prompt for AI analysis. Leave empty for built-in default.</small>
       </div>
 
       <div class="prowlr-settings-actions">
@@ -146,18 +186,26 @@ function buildPage(sdk: ProwlrSDK): HTMLElement {
     const pattern = (container.querySelector("#prowlr-scope-pattern") as HTMLInputElement).value.trim();
     const type = (container.querySelector("#prowlr-scope-type") as HTMLSelectElement).value as "include" | "exclude";
     if (!pattern) return;
-    await sdk.backend.addScopeRule(pattern, type);
-    (container.querySelector("#prowlr-scope-pattern") as HTMLInputElement).value = "";
-    await refreshScopeRules(sdk, container);
+    try {
+      await sdk.backend.addScopeRule(pattern, type);
+      (container.querySelector("#prowlr-scope-pattern") as HTMLInputElement).value = "";
+      await refreshScopeRules(sdk, container);
+    } catch (err) {
+      sdk.window.showToast(`Failed: ${err}`, { variant: "error" });
+    }
   });
 
   // Findings: export
   container.querySelector("#prowlr-export-btn")?.addEventListener("click", async () => {
-    const markdown = await sdk.backend.exportFindingsToObsidian();
+    const result = await sdk.backend.exportFindingsToObsidian();
     const output = container.querySelector("#prowlr-export-output") as HTMLPreElement;
-    output.textContent = markdown;
+    output.textContent = result;
     output.classList.remove("hidden");
-    sdk.window.showToast("Findings exported — copy markdown to your vault", { variant: "success" });
+    if (result.startsWith("Exported")) {
+      sdk.window.showToast(result.split("\n")[0], { variant: "success" });
+    } else {
+      sdk.window.showToast("Export issue — see output", { variant: "warning" });
+    }
   });
 
   // Findings: refresh
@@ -185,7 +233,7 @@ function buildPage(sdk: ProwlrSDK): HTMLElement {
     const select = container.querySelector("#prowlr-setting-ollama-model") as HTMLSelectElement;
     const current = select.value;
     select.innerHTML = models.length
-      ? models.map((m) => `<option value="${m}" ${m === current ? "selected" : ""}>${m}</option>`).join("")
+      ? models.map((m) => `<option value="${esc(m)}" ${m === current ? "selected" : ""}>${esc(m)}</option>`).join("")
       : '<option value="">No models found — run: ollama pull llama3.1</option>';
     sdk.window.showToast(`Found ${models.length} model(s)`, { variant: models.length ? "success" : "warning" });
   });
@@ -195,10 +243,7 @@ function buildPage(sdk: ProwlrSDK): HTMLElement {
     const statusEl = container.querySelector("#prowlr-connection-status") as HTMLElement;
     statusEl.textContent = "Testing...";
     statusEl.className = "prowlr-status-testing";
-
-    // Save current settings first
     await saveSettings(sdk, container);
-
     const result = await sdk.backend.testAIConnection();
     const ok = result.includes("OK");
     statusEl.textContent = result;
@@ -207,14 +252,19 @@ function buildPage(sdk: ProwlrSDK): HTMLElement {
 
   // Settings: save
   container.querySelector("#prowlr-settings-save")?.addEventListener("click", async () => {
-    await saveSettings(sdk, container);
-    sdk.window.showToast("Settings saved", { variant: "success" });
+    try {
+      await saveSettings(sdk, container);
+      sdk.window.showToast("Settings saved", { variant: "success" });
+    } catch (err) {
+      sdk.window.showToast(`Save failed: ${err}`, { variant: "error" });
+    }
   });
 
   // ── Terminal setup ──────────────────────────────────────────
   const termSessionId = `prowlr-${Date.now()}`;
   let term: Terminal | null = null;
   let fitAddon: FitAddon | null = null;
+  let resizeObserver: ResizeObserver | null = null;
 
   function initTerminal() {
     const xtermEl = container.querySelector("#prowlr-xterm") as HTMLElement;
@@ -255,8 +305,7 @@ function buildPage(sdk: ProwlrSDK): HTMLElement {
     term.writeln("\x1b[36m╚══════════════════════════════════════════╝\x1b[0m");
     term.writeln("");
 
-    // Resize observer
-    const resizeObserver = new ResizeObserver(() => {
+    resizeObserver = new ResizeObserver(() => {
       if (fitAddon) fitAddon.fit();
     });
     resizeObserver.observe(xtermEl);
@@ -312,13 +361,12 @@ function buildPage(sdk: ProwlrSDK): HTMLElement {
   });
 
   // Quick commands
-  (async () => {
-    const quickCmds = await sdk.backend.getQuickCommands();
+  sdk.backend.getQuickCommands().then((quickCmds) => {
     const cmdContainer = container.querySelector("#prowlr-quick-cmds");
     if (cmdContainer && quickCmds.length) {
       cmdContainer.innerHTML = quickCmds.map((qc) =>
-        `<button class="prowlr-quick-cmd" data-cmd="${qc.cmd}" title="${qc.cmd}">
-          <i class="${qc.icon}"></i> ${qc.label}
+        `<button class="prowlr-quick-cmd" data-cmd="${esc(qc.cmd)}" title="${esc(qc.cmd)}">
+          <i class="${esc(qc.icon)}"></i> ${esc(qc.label)}
         </button>`
       ).join("");
 
@@ -331,7 +379,7 @@ function buildPage(sdk: ProwlrSDK): HTMLElement {
         });
       });
     }
-  })();
+  }).catch(() => {});
 
   // Initial load
   refreshScopeRules(sdk, container);
@@ -352,32 +400,39 @@ async function refreshScopeRules(sdk: ProwlrSDK, container: HTMLElement) {
     return;
   }
 
-  list.innerHTML = rules
-    .map(
-      (rule) => `
-    <div class="prowlr-rule ${rule.type} ${rule.active ? "" : "inactive"}">
-      <span class="prowlr-rule-type">${rule.type.toUpperCase()}</span>
-      <span class="prowlr-rule-pattern">${rule.pattern}</span>
-      <button class="prowlr-rule-toggle" data-id="${rule.id}">${rule.active ? "Disable" : "Enable"}</button>
-      <button class="prowlr-rule-delete" data-id="${rule.id}">Delete</button>
-    </div>
-  `
-    )
-    .join("");
+  // Build DOM safely — no innerHTML with user data
+  list.innerHTML = "";
+  for (const rule of rules) {
+    const div = document.createElement("div");
+    div.className = `prowlr-rule ${rule.type} ${rule.active ? "" : "inactive"}`;
 
-  list.querySelectorAll(".prowlr-rule-toggle").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      await sdk.backend.toggleScopeRule(Number((btn as HTMLElement).dataset.id));
+    const typeSpan = document.createElement("span");
+    typeSpan.className = "prowlr-rule-type";
+    typeSpan.textContent = rule.type.toUpperCase();
+
+    const patternSpan = document.createElement("span");
+    patternSpan.className = "prowlr-rule-pattern";
+    patternSpan.textContent = rule.pattern;
+
+    const toggleBtn = document.createElement("button");
+    toggleBtn.className = "prowlr-rule-toggle";
+    toggleBtn.textContent = rule.active ? "Disable" : "Enable";
+    toggleBtn.addEventListener("click", async () => {
+      await sdk.backend.toggleScopeRule(rule.id);
       await refreshScopeRules(sdk, container);
     });
-  });
 
-  list.querySelectorAll(".prowlr-rule-delete").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      await sdk.backend.removeScopeRule(Number((btn as HTMLElement).dataset.id));
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "prowlr-rule-delete";
+    deleteBtn.textContent = "Delete";
+    deleteBtn.addEventListener("click", async () => {
+      await sdk.backend.removeScopeRule(rule.id);
       await refreshScopeRules(sdk, container);
     });
-  });
+
+    div.append(typeSpan, patternSpan, toggleBtn, deleteBtn);
+    list.appendChild(div);
+  }
 }
 
 async function refreshFindings(sdk: ProwlrSDK, container: HTMLElement) {
@@ -389,32 +444,55 @@ async function refreshFindings(sdk: ProwlrSDK, container: HTMLElement) {
     return;
   }
 
-  list.innerHTML = findings
-    .map(
-      (f) => `
-    <div class="prowlr-finding severity-${f.severity}">
-      <div class="prowlr-finding-header">
-        <span class="prowlr-severity">${f.severity.toUpperCase()}</span>
-        <span class="prowlr-finding-title">${f.title}</span>
-        ${f.exported ? '<span class="prowlr-exported">exported</span>' : ""}
-      </div>
-      <div class="prowlr-finding-meta">
-        <code>${f.method} ${f.url}</code>
-        <span>${f.timestamp.split("T")[0]}</span>
-      </div>
-      <div class="prowlr-finding-body">${f.description}</div>
-      <button class="prowlr-finding-delete" data-id="${f.id}">Delete</button>
-    </div>
-  `
-    )
-    .join("");
+  // Build DOM safely — no innerHTML with AI/user data
+  list.innerHTML = "";
+  for (const f of findings) {
+    const div = document.createElement("div");
+    div.className = `prowlr-finding severity-${f.severity}`;
 
-  list.querySelectorAll(".prowlr-finding-delete").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      await sdk.backend.deleteFinding(Number((btn as HTMLElement).dataset.id));
+    const header = document.createElement("div");
+    header.className = "prowlr-finding-header";
+
+    const sevSpan = document.createElement("span");
+    sevSpan.className = "prowlr-severity";
+    sevSpan.textContent = f.severity.toUpperCase();
+
+    const titleSpan = document.createElement("span");
+    titleSpan.className = "prowlr-finding-title";
+    titleSpan.textContent = f.title;
+
+    header.append(sevSpan, titleSpan);
+
+    if (f.exported) {
+      const exportedSpan = document.createElement("span");
+      exportedSpan.className = "prowlr-exported";
+      exportedSpan.textContent = "exported";
+      header.appendChild(exportedSpan);
+    }
+
+    const meta = document.createElement("div");
+    meta.className = "prowlr-finding-meta";
+    const code = document.createElement("code");
+    code.textContent = `${f.method} ${f.url}`;
+    const dateSpan = document.createElement("span");
+    dateSpan.textContent = f.timestamp.split("T")[0];
+    meta.append(code, dateSpan);
+
+    const body = document.createElement("div");
+    body.className = "prowlr-finding-body";
+    body.textContent = f.description;
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "prowlr-finding-delete";
+    deleteBtn.textContent = "Delete";
+    deleteBtn.addEventListener("click", async () => {
+      await sdk.backend.deleteFinding(f.id);
       await refreshFindings(sdk, container);
     });
-  });
+
+    div.append(header, meta, body, deleteBtn);
+    list.appendChild(div);
+  }
 }
 
 async function saveSettings(sdk: ProwlrSDK, container: HTMLElement) {
@@ -423,41 +501,70 @@ async function saveSettings(sdk: ProwlrSDK, container: HTMLElement) {
   const ollamaEndpoint = (container.querySelector("#prowlr-setting-ollama-endpoint") as HTMLInputElement).value;
   const ollamaModel = (container.querySelector("#prowlr-setting-ollama-model") as HTMLSelectElement).value;
   const claudeKey = (container.querySelector("#prowlr-setting-claude-key") as HTMLInputElement).value;
-  const claudeModel = (container.querySelector("#prowlr-setting-claude-model") as HTMLSelectElement).value;
+  const claudeModel = (container.querySelector("#prowlr-setting-claude-model") as HTMLInputElement).value;
   const claudeEndpoint = (container.querySelector("#prowlr-setting-claude-endpoint") as HTMLInputElement).value;
+  const claudeMaxTokens = (container.querySelector("#prowlr-setting-claude-max-tokens") as HTMLInputElement).value;
+  const claudeApiVersion = (container.querySelector("#prowlr-setting-claude-api-version") as HTMLInputElement).value;
+  const exportPath = (container.querySelector("#prowlr-setting-export-path") as HTMLInputElement).value;
+  const terminalTimeout = (container.querySelector("#prowlr-setting-terminal-timeout") as HTMLInputElement).value;
+  const terminalCwd = (container.querySelector("#prowlr-setting-terminal-cwd") as HTMLInputElement).value;
+  const aiPrompt = (container.querySelector("#prowlr-setting-ai-prompt") as HTMLTextAreaElement).value;
 
-  await sdk.backend.setSetting("scope_enforcement", enforcement);
-  await sdk.backend.setSetting("ai_provider", provider);
-  if (ollamaEndpoint) await sdk.backend.setSetting("ollama_endpoint", ollamaEndpoint);
-  if (ollamaModel) await sdk.backend.setSetting("ollama_model", ollamaModel);
-  if (claudeKey) await sdk.backend.setSetting("claude_api_key", claudeKey);
-  if (claudeModel) await sdk.backend.setSetting("claude_model", claudeModel);
-  if (claudeEndpoint) await sdk.backend.setSetting("claude_endpoint", claudeEndpoint);
+  // Always save all fields — empty string clears the setting
+  await Promise.all([
+    sdk.backend.setSetting("scope_enforcement", enforcement),
+    sdk.backend.setSetting("ai_provider", provider),
+    sdk.backend.setSetting("ollama_endpoint", ollamaEndpoint),
+    sdk.backend.setSetting("ollama_model", ollamaModel),
+    sdk.backend.setSetting("claude_api_key", claudeKey),
+    sdk.backend.setSetting("claude_model", claudeModel),
+    sdk.backend.setSetting("claude_endpoint", claudeEndpoint),
+    sdk.backend.setSetting("claude_max_tokens", claudeMaxTokens || "2048"),
+    sdk.backend.setSetting("claude_api_version", claudeApiVersion || "2023-06-01"),
+    sdk.backend.setSetting("export_path", exportPath),
+    sdk.backend.setSetting("terminal_timeout", terminalTimeout || "300"),
+    sdk.backend.setSetting("terminal_cwd", terminalCwd),
+    sdk.backend.setSetting("ai_analysis_prompt", aiPrompt),
+  ]);
 }
 
 async function loadSettings(sdk: ProwlrSDK, container: HTMLElement) {
-  const enforcement = await sdk.backend.getSetting("scope_enforcement");
-  const provider = await sdk.backend.getSetting("ai_provider");
-  const ollamaEndpoint = await sdk.backend.getSetting("ollama_endpoint");
-  const ollamaModel = await sdk.backend.getSetting("ollama_model");
-  const claudeModel = await sdk.backend.getSetting("claude_model");
-  const claudeEndpoint = await sdk.backend.getSetting("claude_endpoint");
+  const [enforcement, provider, ollamaEndpoint, ollamaModel, claudeModel,
+         claudeEndpoint, claudeMaxTokens, claudeApiVersion, exportPath,
+         terminalTimeout, terminalCwd, aiPrompt] = await Promise.all([
+    sdk.backend.getSetting("scope_enforcement"),
+    sdk.backend.getSetting("ai_provider"),
+    sdk.backend.getSetting("ollama_endpoint"),
+    sdk.backend.getSetting("ollama_model"),
+    sdk.backend.getSetting("claude_model"),
+    sdk.backend.getSetting("claude_endpoint"),
+    sdk.backend.getSetting("claude_max_tokens"),
+    sdk.backend.getSetting("claude_api_version"),
+    sdk.backend.getSetting("export_path"),
+    sdk.backend.getSetting("terminal_timeout"),
+    sdk.backend.getSetting("terminal_cwd"),
+    sdk.backend.getSetting("ai_analysis_prompt"),
+  ]);
 
   (container.querySelector("#prowlr-setting-enforcement") as HTMLSelectElement).value = enforcement || "warn";
 
   const providerSelect = container.querySelector("#prowlr-setting-provider") as HTMLSelectElement;
   providerSelect.value = provider || "ollama";
-  // Trigger visibility
   providerSelect.dispatchEvent(new Event("change"));
 
   (container.querySelector("#prowlr-setting-ollama-endpoint") as HTMLInputElement).value = ollamaEndpoint || "http://localhost:11434";
+  (container.querySelector("#prowlr-setting-claude-model") as HTMLInputElement).value = claudeModel || "claude-sonnet-4-20250514";
 
-  if (claudeModel) {
-    (container.querySelector("#prowlr-setting-claude-model") as HTMLSelectElement).value = claudeModel;
-  }
   if (claudeEndpoint) {
     (container.querySelector("#prowlr-setting-claude-endpoint") as HTMLInputElement).value = claudeEndpoint;
   }
+
+  (container.querySelector("#prowlr-setting-claude-max-tokens") as HTMLInputElement).value = claudeMaxTokens || "2048";
+  (container.querySelector("#prowlr-setting-claude-api-version") as HTMLInputElement).value = claudeApiVersion || "2023-06-01";
+  (container.querySelector("#prowlr-setting-export-path") as HTMLInputElement).value = exportPath || "/home/hunter/exports/findings";
+  (container.querySelector("#prowlr-setting-terminal-timeout") as HTMLInputElement).value = terminalTimeout || "300";
+  (container.querySelector("#prowlr-setting-terminal-cwd") as HTMLInputElement).value = terminalCwd || "";
+  (container.querySelector("#prowlr-setting-ai-prompt") as HTMLTextAreaElement).value = aiPrompt || "";
 
   // Load Ollama models if that's the active provider
   if (!provider || provider === "ollama") {
@@ -465,7 +572,7 @@ async function loadSettings(sdk: ProwlrSDK, container: HTMLElement) {
     const select = container.querySelector("#prowlr-setting-ollama-model") as HTMLSelectElement;
     if (models.length) {
       select.innerHTML = models.map((m) =>
-        `<option value="${m}" ${m === (ollamaModel || "llama3.1") ? "selected" : ""}>${m}</option>`
+        `<option value="${esc(m)}" ${m === (ollamaModel || "llama3.1") ? "selected" : ""}>${esc(m)}</option>`
       ).join("");
     }
   }
@@ -498,10 +605,11 @@ async function handleScopeCheck(sdk: ProwlrSDK, context: any) {
   if (requests.length === 0) return;
 
   for (const req of requests) {
-    const requestId = typeof req === "string" ? req : req.getId?.() || req.id;
-    const result = await sdk.backend.checkScope(
-      `https://placeholder.test` // URL extracted from request in backend
-    );
+    // Extract URL from the request object
+    const url = typeof req === "string"
+      ? req
+      : req.getUrl?.() || req.url || "https://unknown";
+    const result = await sdk.backend.checkScope(url);
     sdk.window.showToast(
       result.inScope ? "In scope" : `OUT OF SCOPE${result.matchedRule ? ` (${result.matchedRule})` : ""}`,
       { variant: result.inScope ? "success" : "warning" }
@@ -526,9 +634,9 @@ export const init = (sdk: ProwlrSDK) => {
   sdk.commands.register(Commands.exportFindings, {
     name: "Export Findings to Obsidian",
     run: async () => {
-      const markdown = await sdk.backend.exportFindingsToObsidian();
-      if (markdown.startsWith("No new")) {
-        sdk.window.showToast(markdown, { variant: "info" });
+      const result = await sdk.backend.exportFindingsToObsidian();
+      if (result.startsWith("No new")) {
+        sdk.window.showToast(result, { variant: "info" });
       } else {
         sdk.window.showToast("Findings exported", { variant: "success" });
       }

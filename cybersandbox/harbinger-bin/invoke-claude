@@ -10,9 +10,22 @@ set -euo pipefail
 # ── Config ───────────────────────────────────────────────────
 CLAUDE_API_KEY="${ANTHROPIC_API_KEY:-${CLAUDE_API_KEY:-}}"
 CLAUDE_ENDPOINT="${CLAUDE_ENDPOINT:-https://api.anthropic.com/v1/messages}"
-CLAUDE_MODEL="${CLAUDE_MODEL:-claude-sonnet-4-20250514}"
+CLAUDE_MODEL_SONNET="${CLAUDE_MODEL_SONNET:-claude-sonnet-4-20250514}"
+CLAUDE_MODEL_OPUS="${CLAUDE_MODEL_OPUS:-claude-opus-4-20250514}"
+CLAUDE_MODEL_HAIKU="${CLAUDE_MODEL_HAIKU:-claude-haiku-4-5-20251001}"
+CLAUDE_MODEL="${CLAUDE_MODEL:-$CLAUDE_MODEL_SONNET}"
+CLAUDE_API_VERSION="${CLAUDE_API_VERSION:-2023-06-01}"
 MAX_TOKENS="${CLAUDE_MAX_TOKENS:-4096}"
+CURL_TIMEOUT="${CURL_TIMEOUT:-120}"
+CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-10}"
 SYSTEM_PROMPT=""
+
+# Respect NO_COLOR (https://no-color.org/)
+if [[ -n "${NO_COLOR:-}" ]] || [[ ! -t 2 ]]; then
+  DIM=""; RESET=""
+else
+  DIM="\033[90m"; RESET="\033[0m"
+fi
 
 # ── Parse Args ───────────────────────────────────────────────
 usage() {
@@ -53,9 +66,9 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     -m|--model)
       case "$2" in
-        sonnet|s) CLAUDE_MODEL="claude-sonnet-4-20250514" ;;
-        opus|o)   CLAUDE_MODEL="claude-opus-4-20250514" ;;
-        haiku|h)  CLAUDE_MODEL="claude-haiku-4-5-20251001" ;;
+        sonnet|s) CLAUDE_MODEL="$CLAUDE_MODEL_SONNET" ;;
+        opus|o)   CLAUDE_MODEL="$CLAUDE_MODEL_OPUS" ;;
+        haiku|h)  CLAUDE_MODEL="$CLAUDE_MODEL_HAIKU" ;;
         *)        CLAUDE_MODEL="$2" ;;
       esac
       shift 2 ;;
@@ -116,13 +129,16 @@ fi
 
 # ── Call API ─────────────────────────────────────────────────
 if ! $RAW_OUTPUT; then
-  echo -e "\033[90m[claude:${CLAUDE_MODEL##*-}] thinking...\033[0m" >&2
+  echo -e "${DIM}[claude:${CLAUDE_MODEL##*-}] thinking...${RESET}" >&2
 fi
 
-RESPONSE=$(curl -sS "$CLAUDE_ENDPOINT" \
+RESPONSE=$(curl -sS \
+  --max-time "$CURL_TIMEOUT" \
+  --connect-timeout "$CURL_CONNECT_TIMEOUT" \
+  "$CLAUDE_ENDPOINT" \
   -H "Content-Type: application/json" \
   -H "x-api-key: ${CLAUDE_API_KEY}" \
-  -H "anthropic-version: 2023-06-01" \
+  -H "anthropic-version: ${CLAUDE_API_VERSION}" \
   -d "$REQUEST")
 
 # ── Parse Response ───────────────────────────────────────────
@@ -141,5 +157,5 @@ else
   # Show usage stats
   INPUT_TOKENS=$(echo "$RESPONSE" | jq -r '.usage.input_tokens // "?"')
   OUTPUT_TOKENS=$(echo "$RESPONSE" | jq -r '.usage.output_tokens // "?"')
-  echo -e "\n\033[90m[tokens: ${INPUT_TOKENS}in/${OUTPUT_TOKENS}out | model: ${CLAUDE_MODEL}]\033[0m" >&2
+  echo -e "\n${DIM}[tokens: ${INPUT_TOKENS}in/${OUTPUT_TOKENS}out | model: ${CLAUDE_MODEL}]${RESET}" >&2
 fi

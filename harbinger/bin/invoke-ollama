@@ -9,7 +9,16 @@ set -euo pipefail
 # ── Config ───────────────────────────────────────────────────
 OLLAMA_HOST="${OLLAMA_HOST:-http://localhost:11434}"
 OLLAMA_MODEL="${OLLAMA_MODEL:-llama3.1}"
+OLLAMA_TIMEOUT="${OLLAMA_TIMEOUT:-300}"
+CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-5}"
 SYSTEM_PROMPT=""
+
+# Respect NO_COLOR
+if [[ -n "${NO_COLOR:-}" ]] || [[ ! -t 2 ]]; then
+  DIM=""; RESET=""
+else
+  DIM="\033[90m"; RESET="\033[0m"
+fi
 
 # ── Parse Args ───────────────────────────────────────────────
 usage() {
@@ -109,10 +118,13 @@ fi
 
 # ── Call Ollama ──────────────────────────────────────────────
 if ! $RAW_OUTPUT; then
-  echo -e "\033[90m[ollama:${OLLAMA_MODEL}] thinking...\033[0m" >&2
+  echo -e "${DIM}[ollama:${OLLAMA_MODEL}] thinking...${RESET}" >&2
 fi
 
-RESPONSE=$(curl -sS "${OLLAMA_HOST}/api/generate" \
+RESPONSE=$(curl -sS \
+  --max-time "$OLLAMA_TIMEOUT" \
+  --connect-timeout "$CURL_CONNECT_TIMEOUT" \
+  "${OLLAMA_HOST}/api/generate" \
   -H "Content-Type: application/json" \
   -d "$REQUEST")
 
@@ -132,5 +144,5 @@ else
   DURATION=$(echo "$RESPONSE" | jq -r '.total_duration // 0')
   DURATION_SEC=$(echo "scale=1; $DURATION / 1000000000" | bc 2>/dev/null || echo "?")
   EVAL_COUNT=$(echo "$RESPONSE" | jq -r '.eval_count // "?"')
-  echo -e "\n\033[90m[tokens: ${EVAL_COUNT} | ${DURATION_SEC}s | model: ${OLLAMA_MODEL}]\033[0m" >&2
+  echo -e "\n${DIM}[tokens: ${EVAL_COUNT} | ${DURATION_SEC}s | model: ${OLLAMA_MODEL}]${RESET}" >&2
 fi

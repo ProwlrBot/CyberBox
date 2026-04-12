@@ -4,7 +4,7 @@ import type { SDK, DefineAPI, DefineEvents } from "caido:plugin";
 
 interface ScopeRule {
   id: number;
-  pattern: string;      // glob or regex for hostname
+  pattern: string;
   type: "include" | "exclude";
   active: boolean;
 }
@@ -35,6 +35,70 @@ interface AnalysisResult {
 }
 
 type AIProvider = "claude" | "ollama";
+
+const VALID_SEVERITIES = new Set(["info", "low", "medium", "high", "critical"]);
+
+const DEFAULT_ANALYSIS_PROMPT = `You are a web security analyst reviewing HTTP traffic from a bug bounty engagement. Analyze this request/response pair for vulnerabilities.
+
+REQUEST:
+{REQUEST}
+
+RESPONSE (first 4000 chars):
+{RESPONSE}
+
+Respond ONLY in JSON format (no markdown, no explanation outside the JSON):
+{
+  "summary": "one-line description of what this endpoint does",
+  "findings": ["list of potential vulnerabilities or interesting behaviors"],
+  "severity": "info|low|medium|high|critical",
+  "recommendations": ["next steps to test/confirm each finding"]
+}`;
+
+// ── Helpers ────────────────────────────────────────────────
+
+function sanitizeError(msg: string): string {
+  return msg.replace(/sk-ant-[a-zA-Z0-9_-]+/g, "sk-ant-***");
+}
+
+function validateEndpoint(url: string, type: "claude" | "ollama"): boolean {
+  try {
+    const parsed = new URL(url);
+    if (type === "claude") {
+      return parsed.protocol === "https:" && parsed.hostname.endsWith("anthropic.com");
+    }
+    // Ollama: allow localhost, 127.0.0.1, host.docker.internal, or any custom host
+    const allowed = ["localhost", "127.0.0.1", "host.docker.internal"];
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function validateAnalysisResult(raw: unknown): AnalysisResult {
+  const fallback: AnalysisResult = { summary: "", findings: [], severity: "info", recommendations: [] };
+  if (!raw || typeof raw !== "object") return fallback;
+  const obj = raw as Record<string, unknown>;
+
+  return {
+    summary: typeof obj.summary === "string" ? obj.summary.substring(0, 500) : "",
+    findings: Array.isArray(obj.findings)
+      ? obj.findings.filter((f): f is string => typeof f === "string").map((f) => f.substring(0, 1000))
+      : [],
+    severity: typeof obj.severity === "string" && VALID_SEVERITIES.has(obj.severity)
+      ? (obj.severity as AnalysisResult["severity"])
+      : "info",
+    recommendations: Array.isArray(obj.recommendations)
+      ? obj.recommendations.filter((r): r is string => typeof r === "string").map((r) => r.substring(0, 1000))
+      : [],
+  };
+}
+
+function getSettings(db: any): Record<string, string> {
+  return Object.fromEntries(
+    (db.prepare("SELECT key, value FROM settings").all() as { key: string; value: string }[])
+      .map((r: { key: string; value: string }) => [r.key, r.value])
+  );
+}
 
 // ── Database ────────────────────────────────────────────────
 
@@ -72,34 +136,61 @@ async function initDatabase(sdk: SDK) {
     )
   `);
 
-  // Default settings
+  // Default settings — INSERT OR IGNORE so user changes persist
   const stmt = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
-  stmt.run("scope_enforcement", "warn");           // "warn" | "off"
-  stmt.run("ai_provider", "ollama");               // "claude" | "ollama"
+  // Scope
+  stmt.run("scope_enforcement", "warn");
+  // AI provider
+  stmt.run("ai_provider", "ollama");
   // Claude
-  stmt.run("claude_api_key", "");                  // sk-ant-...
+  stmt.run("claude_api_key", "");
   stmt.run("claude_model", "claude-sonnet-4-20250514");
   stmt.run("claude_endpoint", "https://api.anthropic.com/v1/messages");
+  stmt.run("claude_max_tokens", "2048");
+  stmt.run("claude_api_version", "2023-06-01");
   // Ollama
   stmt.run("ollama_endpoint", "http://localhost:11434");
-  stmt.run("ollama_model", "llama3.1");            // whatever you have pulled
+  stmt.run("ollama_model", "llama3.1");
   // Export
-  stmt.run("obsidian_vault_path", "/vault");
+  stmt.run("export_path", "/home/hunter/exports/findings");
+  // Terminal
+  stmt.run("terminal_timeout", "300");
+  stmt.run("terminal_cwd", "");
+  // AI prompt (customizable)
+  stmt.run("ai_analysis_prompt", "");
+  // Quick commands (JSON array, empty = use defaults)
+  stmt.run("quick_commands", "");
 }
 
 // ── Scope Enforcement ───────────────────────────────────────
 
 function matchesPattern(hostname: string, pattern: string): boolean {
-  // Support glob-style wildcards: *.example.com
-  const regex = pattern
-    .replace(/\./g, "\\.")
-    .replace(/\*/g, ".*");
-  return new RegExp(`^${regex}$`, "i").test(hostname);
+  try {
+    // Escape all regex metacharacters except *, then convert * to .*
+    const escaped = pattern
+      .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
+      .replace(/\*/g, ".*");
+    return new RegExp(`^${escaped}$`, "i").test(hostname);
+  } catch {
+    return false;
+  }
 }
 
 async function checkScope(sdk: SDK, url: string): Promise<ScopeCheckResult> {
   const db = await sdk.meta.db();
-  const hostname = new URL(url).hostname;
+
+  // Check if scope enforcement is enabled
+  const settings = getSettings(db);
+  if (settings.scope_enforcement === "off") {
+    return { inScope: true, matchedRule: null };
+  }
+
+  let hostname: string;
+  try {
+    hostname = new URL(url).hostname;
+  } catch {
+    return { inScope: false, matchedRule: null };
+  }
 
   const rules = db.prepare(
     "SELECT * FROM scope_rules WHERE active = 1 ORDER BY type ASC"
@@ -137,6 +228,14 @@ async function addScopeRule(
   pattern: string,
   type: "include" | "exclude"
 ): Promise<ScopeRule> {
+  // Input validation
+  if (!pattern || pattern.length > 256) {
+    throw new Error("Pattern must be 1-256 characters");
+  }
+  if (type !== "include" && type !== "exclude") {
+    throw new Error("Type must be 'include' or 'exclude'");
+  }
+
   const db = await sdk.meta.db();
   const stmt = db.prepare("INSERT INTO scope_rules (pattern, type) VALUES (?, ?)");
   const result = stmt.run(pattern, type);
@@ -157,29 +256,6 @@ async function toggleScopeRule(sdk: SDK, id: number): Promise<void> {
 
 // ── AI Analysis ─────────────────────────────────────────────
 
-function getSettings(db: any): Record<string, string> {
-  return Object.fromEntries(
-    (db.prepare("SELECT key, value FROM settings").all() as { key: string; value: string }[])
-      .map((r) => [r.key, r.value])
-  );
-}
-
-const ANALYSIS_PROMPT = `You are a web security analyst reviewing HTTP traffic from a bug bounty engagement. Analyze this request/response pair for vulnerabilities.
-
-REQUEST:
-{REQUEST}
-
-RESPONSE (first 4000 chars):
-{RESPONSE}
-
-Respond ONLY in JSON format (no markdown, no explanation outside the JSON):
-{
-  "summary": "one-line description of what this endpoint does",
-  "findings": ["list of potential vulnerabilities or interesting behaviors"],
-  "severity": "info|low|medium|high|critical",
-  "recommendations": ["next steps to test/confirm each finding"]
-}`;
-
 async function callClaude(
   settings: Record<string, string>,
   prompt: string
@@ -188,24 +264,30 @@ async function callClaude(
   if (!apiKey) throw new Error("Claude API key not set — go to Prowlr settings");
 
   const endpoint = settings.claude_endpoint || "https://api.anthropic.com/v1/messages";
+  if (!validateEndpoint(endpoint, "claude")) {
+    throw new Error("Invalid Claude endpoint — must be https://*.anthropic.com");
+  }
+
   const model = settings.claude_model || "claude-sonnet-4-20250514";
+  const maxTokens = parseInt(settings.claude_max_tokens || "2048", 10) || 2048;
+  const apiVersion = settings.claude_api_version || "2023-06-01";
 
   const res = await fetch(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
+      "anthropic-version": apiVersion,
     },
     body: JSON.stringify({
       model,
-      max_tokens: 1024,
+      max_tokens: maxTokens,
       messages: [{ role: "user", content: prompt }],
     }),
   });
 
   if (!res.ok) {
-    const err = await res.text();
+    const err = sanitizeError(await res.text());
     throw new Error(`Claude ${res.status}: ${err.substring(0, 200)}`);
   }
 
@@ -256,14 +338,15 @@ async function testAIConnection(sdk: SDK): Promise<string> {
     } else {
       const apiKey = settings.claude_api_key;
       if (!apiKey) return "Claude API key not set";
-      // Minimal request to verify auth
       const endpoint = settings.claude_endpoint || "https://api.anthropic.com/v1/messages";
+      if (!validateEndpoint(endpoint, "claude")) return "Invalid Claude endpoint";
+      const apiVersion = settings.claude_api_version || "2023-06-01";
       const res = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
+          "anthropic-version": apiVersion,
         },
         body: JSON.stringify({
           model: settings.claude_model || "claude-sonnet-4-20250514",
@@ -272,13 +355,13 @@ async function testAIConnection(sdk: SDK): Promise<string> {
         }),
       });
       if (!res.ok) {
-        const err = await res.text();
+        const err = sanitizeError(await res.text());
         return `Claude auth failed (${res.status}): ${err.substring(0, 100)}`;
       }
       return `Claude OK — model: ${settings.claude_model || "claude-sonnet-4-20250514"}`;
     }
   } catch (err) {
-    return `Connection failed: ${err}`;
+    return `Connection failed: ${sanitizeError(String(err))}`;
   }
 }
 
@@ -312,7 +395,9 @@ async function analyzeRequest(sdk: SDK, requestId: string): Promise<AnalysisResu
   const reqText = new TextDecoder().decode(reqRaw);
   const resText = response ? new TextDecoder().decode(response.getRaw()) : "(no response)";
 
-  const prompt = ANALYSIS_PROMPT
+  // Use custom prompt if set, otherwise default
+  const promptTemplate = settings.ai_analysis_prompt || DEFAULT_ANALYSIS_PROMPT;
+  const prompt = promptTemplate
     .replace("{REQUEST}", reqText.substring(0, 4000))
     .replace("{RESPONSE}", resText.substring(0, 4000));
 
@@ -321,16 +406,22 @@ async function analyzeRequest(sdk: SDK, requestId: string): Promise<AnalysisResu
       ? await callClaude(settings, prompt)
       : await callOllama(settings, prompt);
 
+    // Parse and validate AI output — never trust raw JSON.parse
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]) as AnalysisResult;
+      try {
+        const parsed = JSON.parse(jsonMatch[0]);
+        return validateAnalysisResult(parsed);
+      } catch {
+        return { summary: content.substring(0, 500), findings: [], severity: "info", recommendations: [] };
+      }
     }
 
-    return { summary: content, findings: [], severity: "info", recommendations: [] };
+    return { summary: content.substring(0, 500), findings: [], severity: "info", recommendations: [] };
   } catch (err) {
-    sdk.console.error(`[Prowlr] ${provider} analysis failed: ${err}`);
+    sdk.console.error(`[Prowlr] ${provider} analysis failed: ${sanitizeError(String(err))}`);
     return {
-      summary: `${provider} failed: ${err}`,
+      summary: `${provider} failed: ${sanitizeError(String(err))}`,
       findings: [],
       severity: "info",
       recommendations: [],
@@ -361,10 +452,13 @@ async function saveAnalysisAsFinding(
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
+  // Validate severity again at persistence layer
+  const safeSeverity = VALID_SEVERITIES.has(analysis.severity) ? analysis.severity : "info";
+
   const insertResult = stmt.run(
     requestId,
     analysis.summary,
-    analysis.severity,
+    safeSeverity,
     analysis.findings.join("\n"),
     analysis.recommendations.join("\n"),
     url,
@@ -373,13 +467,13 @@ async function saveAnalysisAsFinding(
   );
 
   const id = Number(insertResult.lastInsertRowid);
-  sdk.console.log(`[Prowlr] Finding saved: ${analysis.summary}`);
+  sdk.console.log(`[Prowlr] Finding saved: ${analysis.summary.substring(0, 100)}`);
 
   return {
     id,
     requestId,
     title: analysis.summary,
-    severity: analysis.severity,
+    severity: safeSeverity as Finding["severity"],
     description: analysis.findings.join("\n"),
     evidence: analysis.recommendations.join("\n"),
     url,
@@ -442,33 +536,30 @@ async function exportFindingsToObsidian(sdk: SDK): Promise<string> {
   if (unexported.length === 0) return "No new findings to export.";
 
   const db = await sdk.meta.db();
-  const exportDir = "/home/hunter/exports/findings";
+  const settings = getSettings(db);
+  const exportDir = settings.export_path || "/home/hunter/exports/findings";
   const exported: string[] = [];
 
-  for (const finding of unexported) {
-    const markdown = findingToObsidian(finding);
-    const filename = `finding-${finding.id}-${finding.severity}-${finding.timestamp.split("T")[0]}.md`;
-    exported.push(`${filename}: ${finding.title}`);
-    db.prepare("UPDATE findings SET exported = 1 WHERE id = ?").run(finding.id);
-  }
+  const { mkdirSync, writeFileSync } = await import("fs");
+  const { join } = await import("path");
 
-  // Write files to the export volume via shell — Caido SDK has no fs API
-  // The export volume is writable and persists across restarts
-  const { execSync } = await import("child_process");
   try {
-    execSync(`mkdir -p ${exportDir}`);
-    for (let i = 0; i < unexported.length; i++) {
-      const finding = unexported[i];
+    mkdirSync(exportDir, { recursive: true });
+
+    for (const finding of unexported) {
       const markdown = findingToObsidian(finding);
-      const filename = `finding-${finding.id}-${finding.severity}-${finding.timestamp.split("T")[0]}.md`;
-      const escapedContent = markdown.replace(/'/g, "'\\''");
-      execSync(`cat > '${exportDir}/${filename}' << 'PROWLR_EOF'\n${markdown}\nPROWLR_EOF`);
+      const safeSeverity = (finding.severity || "info").replace(/[^a-z]/gi, "");
+      const safeDate = (finding.timestamp || "").split("T")[0].replace(/[^0-9-]/g, "");
+      const filename = `finding-${finding.id}-${safeSeverity}-${safeDate}.md`;
+      writeFileSync(join(exportDir, filename), markdown, "utf8");
+      exported.push(`${filename}: ${finding.title}`);
+      db.prepare("UPDATE findings SET exported = 1 WHERE id = ?").run(finding.id);
     }
+
     sdk.console.log(`[Prowlr] Exported ${unexported.length} findings to ${exportDir}`);
     return `Exported ${unexported.length} findings to ${exportDir}:\n${exported.join("\n")}`;
   } catch (err) {
-    sdk.console.log(`[Prowlr] Export write failed: ${err}`);
-    // Fallback: return markdown content for manual save
+    sdk.console.log(`[Prowlr] Export write failed: ${sanitizeError(String(err))}`);
     const result = unexported.map(findingToObsidian).join("\n---\n\n");
     return `Write failed — copy manually:\n\n${result}`;
   }
@@ -476,26 +567,45 @@ async function exportFindingsToObsidian(sdk: SDK): Promise<string> {
 
 // ── Terminal ────────────────────────────────────────────────
 
-// Active shell processes keyed by session ID
-const terminalSessions = new Map<string, any>();
+const terminalSessions = new Map<string, { proc: any; timeout: any }>();
 
 async function terminalExec(sdk: SDK<API, BackendEvents>, sessionId: string, command: string): Promise<string> {
+  // Input validation
+  if (!command || command.length > 4096) {
+    return "Command must be 1-4096 characters";
+  }
+
   const { spawn } = await import("child_process");
+  const db = await sdk.meta.db();
+  const settings = getSettings(db);
+  const timeoutSec = parseInt(settings.terminal_timeout || "300", 10) || 300;
+  const cwd = settings.terminal_cwd || process.env.HOME || "/";
 
   // Kill existing session if any
   const existing = terminalSessions.get(sessionId);
   if (existing) {
-    try { existing.kill(); } catch {}
+    clearTimeout(existing.timeout);
+    try { existing.proc.kill(); } catch {}
     terminalSessions.delete(sessionId);
   }
 
   return new Promise((resolve) => {
     const proc = spawn("bash", ["-c", command], {
-      cwd: process.env.HOME || "/home/hunter",
+      cwd,
       env: { ...process.env, TERM: "xterm-256color", COLUMNS: "120", LINES: "30" },
     });
 
-    terminalSessions.set(sessionId, proc);
+    // Store timeout ID so we can clear it on early exit
+    const killTimer = setTimeout(() => {
+      if (terminalSessions.has(sessionId)) {
+        try { proc.kill(); } catch {}
+        terminalSessions.delete(sessionId);
+        sdk.api.send("terminal:output", sessionId, `\r\n[timed out after ${timeoutSec}s]\r\n`);
+        sdk.api.send("terminal:exit", sessionId, 124);
+      }
+    }, timeoutSec * 1000);
+
+    terminalSessions.set(sessionId, { proc, timeout: killTimer });
     let output = "";
 
     proc.stdout?.on("data", (chunk: Buffer) => {
@@ -511,45 +621,52 @@ async function terminalExec(sdk: SDK<API, BackendEvents>, sessionId: string, com
     });
 
     proc.on("close", (code: number | null) => {
+      clearTimeout(killTimer);
       terminalSessions.delete(sessionId);
       sdk.api.send("terminal:exit", sessionId, code ?? 0);
       resolve(output);
     });
 
     proc.on("error", (err: Error) => {
+      clearTimeout(killTimer);
       terminalSessions.delete(sessionId);
       sdk.api.send("terminal:output", sessionId, `\r\nError: ${err.message}\r\n`);
       sdk.api.send("terminal:exit", sessionId, 1);
       resolve(`Error: ${err.message}`);
     });
-
-    // Auto-kill after 5 minutes to prevent runaway processes
-    setTimeout(() => {
-      if (terminalSessions.has(sessionId)) {
-        try { proc.kill(); } catch {}
-        terminalSessions.delete(sessionId);
-      }
-    }, 300_000);
   });
 }
 
 async function terminalInput(sdk: SDK, sessionId: string, data: string): Promise<void> {
-  const proc = terminalSessions.get(sessionId);
-  if (proc?.stdin?.writable) {
-    proc.stdin.write(data);
+  const session = terminalSessions.get(sessionId);
+  if (session?.proc?.stdin?.writable) {
+    session.proc.stdin.write(data);
   }
 }
 
 async function terminalKill(sdk: SDK, sessionId: string): Promise<void> {
-  const proc = terminalSessions.get(sessionId);
-  if (proc) {
-    try { proc.kill("SIGTERM"); } catch {}
+  const session = terminalSessions.get(sessionId);
+  if (session) {
+    clearTimeout(session.timeout);
+    try { session.proc.kill("SIGTERM"); } catch {}
     terminalSessions.delete(sessionId);
   }
 }
 
-// Quick commands — pre-built shortcuts for common hunting tasks
-function getQuickCommands(): Array<{ label: string; cmd: string; icon: string }> {
+// Quick commands — returns user-customized or default set
+async function getQuickCommands(sdk: SDK): Promise<Array<{ label: string; cmd: string; icon: string }>> {
+  const db = await sdk.meta.db();
+  const settings = getSettings(db);
+  const custom = settings.quick_commands;
+
+  if (custom) {
+    try {
+      const parsed = JSON.parse(custom);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    } catch {}
+  }
+
+  // Defaults — user can override via settings
   return [
     { label: "AI Analyze (Ollama)", cmd: "invoke-ollama", icon: "fas fa-robot" },
     { label: "AI Analyze (Claude)", cmd: "invoke-claude", icon: "fas fa-brain" },
@@ -570,8 +687,34 @@ async function getSetting(sdk: SDK, key: string): Promise<string> {
 }
 
 async function setSetting(sdk: SDK, key: string, value: string): Promise<void> {
+  // Validate endpoint settings to prevent SSRF
+  if (key === "claude_endpoint") {
+    if (value && !validateEndpoint(value, "claude")) {
+      throw new Error("Claude endpoint must be https://*.anthropic.com");
+    }
+  }
+  if (key === "ollama_endpoint") {
+    if (value && !validateEndpoint(value, "ollama")) {
+      throw new Error("Invalid Ollama endpoint URL");
+    }
+  }
+  // Validate numeric settings
+  if (key === "claude_max_tokens") {
+    const n = parseInt(value, 10);
+    if (isNaN(n) || n < 1 || n > 32000) {
+      throw new Error("max_tokens must be 1-32000");
+    }
+  }
+  if (key === "terminal_timeout") {
+    const n = parseInt(value, 10);
+    if (isNaN(n) || n < 10 || n > 3600) {
+      throw new Error("terminal_timeout must be 10-3600 seconds");
+    }
+  }
+
   const db = await sdk.meta.db();
   db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(key, value);
+  // Never log the value — could contain API keys
   sdk.console.log(`[Prowlr] Setting updated: ${key}`);
 }
 
@@ -615,7 +758,6 @@ export type BackendEvents = DefineEvents<{
 export async function init(sdk: SDK<API, BackendEvents>) {
   await initDatabase(sdk);
 
-  // Register all API functions
   sdk.api.register("checkScope", checkScope);
   sdk.api.register("getScopeRules", getScopeRules);
   sdk.api.register("addScopeRule", addScopeRule);
