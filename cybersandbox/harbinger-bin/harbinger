@@ -332,6 +332,54 @@ show_status() {
   fi
 }
 
+# ── Patterns (Fabric-style prompt library) ───────────────────
+HARBINGER_PATTERNS_DIR="${HARBINGER_PATTERNS_DIR:-$(cd "$HARBINGER_BIN/.." && pwd)/patterns}"
+
+list_patterns() {
+  if [[ ! -d "$HARBINGER_PATTERNS_DIR" ]]; then
+    err "No patterns dir: $HARBINGER_PATTERNS_DIR"
+    exit 1
+  fi
+  for p in "$HARBINGER_PATTERNS_DIR"/*/; do
+    [[ -d "$p" ]] || continue
+    basename "$p"
+  done
+}
+
+run_pattern() {
+  local name="$1"
+  shift || true
+  local pattern_file="$HARBINGER_PATTERNS_DIR/$name/system.md"
+  if [[ ! -f "$pattern_file" ]]; then
+    err "Pattern not found: $name"
+    echo "Available:" >&2
+    list_patterns >&2
+    exit 1
+  fi
+  local system_prompt
+  system_prompt=$(cat "$pattern_file")
+
+  # Read input from stdin or remaining args
+  local user_input=""
+  if [[ ! -t 0 ]]; then
+    user_input=$(cat)
+  else
+    user_input="$*"
+  fi
+  if [[ -z "$user_input" ]]; then
+    err "No input. Usage: harbinger pattern $name <text> OR  echo data | harbinger pattern $name"
+    exit 1
+  fi
+
+  # Route: JSON-shaped patterns → deep (Claude), others → fast (Ollama)
+  local tier="deep"
+  case "$name" in
+    extract_endpoints|triage_nuclei) tier="fast" ;;
+    write_report) tier="best" ;;
+  esac
+  ai "$tier" -s "$system_prompt" "$user_input"
+}
+
 # ── Main ─────────────────────────────────────────────────────
 usage() {
   cat <<'EOF'
@@ -343,6 +391,8 @@ Commands:
   scan <target>      Run nuclei + parameter discovery
   analyze <file>     AI-analyze a request/response file
   report <target>    Generate report from findings
+  pattern <name>     Run a Fabric-style prompt pattern on stdin/args
+  pattern list       List available patterns
   status             Show backends, tools, and targets
 
 AI Routing:
@@ -366,6 +416,12 @@ case "${1:-}" in
   analyze)  phase_analyze "${2:?Usage: harbinger analyze <file|text>}" ;;
   report)   phase_report "${2:?Usage: harbinger report <target>}" ;;
   status)   show_status ;;
+  pattern)
+    case "${2:-}" in
+      ""|list) list_patterns ;;
+      *)       run_pattern "$2" "${@:3}" ;;
+    esac
+    ;;
   -h|--help|help|"") usage ;;
   *)        err "Unknown command: $1"; usage ;;
 esac
