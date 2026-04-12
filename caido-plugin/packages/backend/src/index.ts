@@ -474,6 +474,93 @@ async function exportFindingsToObsidian(sdk: SDK): Promise<string> {
   }
 }
 
+// ── Terminal ────────────────────────────────────────────────
+
+// Active shell processes keyed by session ID
+const terminalSessions = new Map<string, any>();
+
+async function terminalExec(sdk: SDK<API, BackendEvents>, sessionId: string, command: string): Promise<string> {
+  const { spawn } = await import("child_process");
+
+  // Kill existing session if any
+  const existing = terminalSessions.get(sessionId);
+  if (existing) {
+    try { existing.kill(); } catch {}
+    terminalSessions.delete(sessionId);
+  }
+
+  return new Promise((resolve) => {
+    const proc = spawn("bash", ["-c", command], {
+      cwd: process.env.HOME || "/home/hunter",
+      env: { ...process.env, TERM: "xterm-256color", COLUMNS: "120", LINES: "30" },
+    });
+
+    terminalSessions.set(sessionId, proc);
+    let output = "";
+
+    proc.stdout?.on("data", (chunk: Buffer) => {
+      const text = chunk.toString();
+      output += text;
+      sdk.api.send("terminal:output", sessionId, text);
+    });
+
+    proc.stderr?.on("data", (chunk: Buffer) => {
+      const text = chunk.toString();
+      output += text;
+      sdk.api.send("terminal:output", sessionId, text);
+    });
+
+    proc.on("close", (code: number | null) => {
+      terminalSessions.delete(sessionId);
+      sdk.api.send("terminal:exit", sessionId, code ?? 0);
+      resolve(output);
+    });
+
+    proc.on("error", (err: Error) => {
+      terminalSessions.delete(sessionId);
+      sdk.api.send("terminal:output", sessionId, `\r\nError: ${err.message}\r\n`);
+      sdk.api.send("terminal:exit", sessionId, 1);
+      resolve(`Error: ${err.message}`);
+    });
+
+    // Auto-kill after 5 minutes to prevent runaway processes
+    setTimeout(() => {
+      if (terminalSessions.has(sessionId)) {
+        try { proc.kill(); } catch {}
+        terminalSessions.delete(sessionId);
+      }
+    }, 300_000);
+  });
+}
+
+async function terminalInput(sdk: SDK, sessionId: string, data: string): Promise<void> {
+  const proc = terminalSessions.get(sessionId);
+  if (proc?.stdin?.writable) {
+    proc.stdin.write(data);
+  }
+}
+
+async function terminalKill(sdk: SDK, sessionId: string): Promise<void> {
+  const proc = terminalSessions.get(sessionId);
+  if (proc) {
+    try { proc.kill("SIGTERM"); } catch {}
+    terminalSessions.delete(sessionId);
+  }
+}
+
+// Quick commands — pre-built shortcuts for common hunting tasks
+function getQuickCommands(): Array<{ label: string; cmd: string; icon: string }> {
+  return [
+    { label: "AI Analyze (Ollama)", cmd: "invoke-ollama", icon: "fas fa-robot" },
+    { label: "AI Analyze (Claude)", cmd: "invoke-claude", icon: "fas fa-brain" },
+    { label: "Harbinger Status", cmd: "harbinger status", icon: "fas fa-satellite-dish" },
+    { label: "csbx List", cmd: "csbx list", icon: "fas fa-puzzle-piece" },
+    { label: "Nuclei Scan", cmd: "echo 'Usage: nuclei -u <target>'", icon: "fas fa-search" },
+    { label: "Subfinder", cmd: "echo 'Usage: subfinder -d <domain>'", icon: "fas fa-globe" },
+    { label: "httpx Probe", cmd: "echo 'Usage: httpx -l hosts.txt'", icon: "fas fa-server" },
+  ];
+}
+
 // ── Settings ────────────────────────────────────────────────
 
 async function getSetting(sdk: SDK, key: string): Promise<string> {
@@ -509,11 +596,18 @@ export type API = DefineAPI<{
   // Settings
   getSetting: typeof getSetting;
   setSetting: typeof setSetting;
+  // Terminal
+  terminalExec: typeof terminalExec;
+  terminalInput: typeof terminalInput;
+  terminalKill: typeof terminalKill;
+  getQuickCommands: typeof getQuickCommands;
 }>;
 
 export type BackendEvents = DefineEvents<{
   "scope:violation": (url: string, rule: string | null) => void;
   "finding:created": (finding: Finding) => void;
+  "terminal:output": (sessionId: string, data: string) => void;
+  "terminal:exit": (sessionId: string, code: number) => void;
 }>;
 
 // ── Init ────────────────────────────────────────────────────
@@ -536,6 +630,10 @@ export async function init(sdk: SDK<API, BackendEvents>) {
   sdk.api.register("exportFindingsToObsidian", exportFindingsToObsidian);
   sdk.api.register("getSetting", getSetting);
   sdk.api.register("setSetting", setSetting);
+  sdk.api.register("terminalExec", terminalExec);
+  sdk.api.register("terminalInput", terminalInput);
+  sdk.api.register("terminalKill", terminalKill);
+  sdk.api.register("getQuickCommands", getQuickCommands);
 
   sdk.console.log("[Prowlr] Backend initialized");
 }

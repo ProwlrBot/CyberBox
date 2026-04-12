@@ -1,7 +1,12 @@
 import type { Caido } from "@caido/sdk-frontend";
-import type { API } from "prowlr-backend";
+import type { API, BackendEvents } from "prowlr-backend";
+import { Terminal } from "xterm";
+import { FitAddon } from "@xterm/addon-fit";
+import { WebLinksAddon } from "@xterm/addon-web-links";
+import "xterm/css/xterm.css";
+import "./styles/style.css";
 
-type ProwlrSDK = Caido<API>;
+type ProwlrSDK = Caido<API, BackendEvents>;
 
 const Page = "/prowlr" as const;
 
@@ -26,6 +31,7 @@ function buildPage(sdk: ProwlrSDK): HTMLElement {
     <div class="prowlr-tabs">
       <button class="prowlr-tab active" data-tab="scope">Scope</button>
       <button class="prowlr-tab" data-tab="findings">Findings</button>
+      <button class="prowlr-tab" data-tab="terminal">Terminal</button>
       <button class="prowlr-tab" data-tab="settings">Settings</button>
     </div>
 
@@ -48,6 +54,20 @@ function buildPage(sdk: ProwlrSDK): HTMLElement {
       </div>
       <div id="prowlr-findings-list"></div>
       <pre id="prowlr-export-output" class="hidden"></pre>
+    </div>
+
+    <div class="prowlr-panel hidden" id="prowlr-terminal">
+      <div class="prowlr-terminal-toolbar">
+        <div class="prowlr-quick-commands" id="prowlr-quick-cmds"></div>
+        <div class="prowlr-terminal-input-row">
+          <span class="prowlr-prompt">$</span>
+          <input type="text" id="prowlr-terminal-cmd" placeholder="Enter command..." />
+          <button id="prowlr-terminal-run">Run</button>
+          <button id="prowlr-terminal-kill" class="prowlr-btn-danger">Kill</button>
+          <button id="prowlr-terminal-clear" class="prowlr-btn-secondary">Clear</button>
+        </div>
+      </div>
+      <div id="prowlr-xterm" class="prowlr-xterm-container"></div>
     </div>
 
     <div class="prowlr-panel hidden" id="prowlr-settings">
@@ -190,6 +210,128 @@ function buildPage(sdk: ProwlrSDK): HTMLElement {
     await saveSettings(sdk, container);
     sdk.window.showToast("Settings saved", { variant: "success" });
   });
+
+  // ── Terminal setup ──────────────────────────────────────────
+  const termSessionId = `prowlr-${Date.now()}`;
+  let term: Terminal | null = null;
+  let fitAddon: FitAddon | null = null;
+
+  function initTerminal() {
+    const xtermEl = container.querySelector("#prowlr-xterm") as HTMLElement;
+    if (!xtermEl || term) return;
+
+    term = new Terminal({
+      theme: {
+        background: "#1a1a2e",
+        foreground: "#e0e0e0",
+        cursor: "#00ff88",
+        selectionBackground: "#44475a",
+        black: "#1a1a2e",
+        red: "#ff5555",
+        green: "#50fa7b",
+        yellow: "#f1fa8c",
+        blue: "#6272a4",
+        magenta: "#ff79c6",
+        cyan: "#8be9fd",
+        white: "#e0e0e0",
+      },
+      fontSize: 13,
+      fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+      cursorBlink: true,
+      scrollback: 5000,
+      convertEol: true,
+    });
+
+    fitAddon = new FitAddon();
+    term.loadAddon(fitAddon);
+    term.loadAddon(new WebLinksAddon());
+
+    term.open(xtermEl);
+    fitAddon.fit();
+
+    term.writeln("\x1b[36m╔══════════════════════════════════════════╗\x1b[0m");
+    term.writeln("\x1b[36m║\x1b[0m  \x1b[1;32mProwlr Terminal\x1b[0m                         \x1b[36m║\x1b[0m");
+    term.writeln("\x1b[36m║\x1b[0m  Run hunting tools without leaving Caido  \x1b[36m║\x1b[0m");
+    term.writeln("\x1b[36m╚══════════════════════════════════════════╝\x1b[0m");
+    term.writeln("");
+
+    // Resize observer
+    const resizeObserver = new ResizeObserver(() => {
+      if (fitAddon) fitAddon.fit();
+    });
+    resizeObserver.observe(xtermEl);
+  }
+
+  // Lazy-init terminal when tab is clicked
+  container.querySelector('[data-tab="terminal"]')?.addEventListener("click", () => {
+    setTimeout(() => {
+      initTerminal();
+      if (fitAddon) fitAddon.fit();
+    }, 50);
+  });
+
+  // Listen for terminal output events from backend
+  sdk.backend.onEvent("terminal:output", (sessionId: string, data: string) => {
+    if (sessionId === termSessionId && term) {
+      term.write(data);
+    }
+  });
+
+  sdk.backend.onEvent("terminal:exit", (sessionId: string, code: number) => {
+    if (sessionId === termSessionId && term) {
+      term.writeln(`\r\n\x1b[90m[process exited with code ${code}]\x1b[0m`);
+    }
+  });
+
+  // Terminal: run command
+  const runCmd = async () => {
+    const input = container.querySelector("#prowlr-terminal-cmd") as HTMLInputElement;
+    const cmd = input.value.trim();
+    if (!cmd) return;
+    if (term) {
+      term.writeln(`\x1b[32m$ ${cmd}\x1b[0m`);
+    }
+    input.value = "";
+    await sdk.backend.terminalExec(termSessionId, cmd);
+  };
+
+  container.querySelector("#prowlr-terminal-run")?.addEventListener("click", runCmd);
+  container.querySelector("#prowlr-terminal-cmd")?.addEventListener("keydown", (e) => {
+    if ((e as KeyboardEvent).key === "Enter") runCmd();
+  });
+
+  // Terminal: kill
+  container.querySelector("#prowlr-terminal-kill")?.addEventListener("click", async () => {
+    await sdk.backend.terminalKill(termSessionId);
+    if (term) term.writeln("\r\n\x1b[31m[killed]\x1b[0m");
+  });
+
+  // Terminal: clear
+  container.querySelector("#prowlr-terminal-clear")?.addEventListener("click", () => {
+    if (term) term.clear();
+  });
+
+  // Quick commands
+  (async () => {
+    const quickCmds = await sdk.backend.getQuickCommands();
+    const cmdContainer = container.querySelector("#prowlr-quick-cmds");
+    if (cmdContainer && quickCmds.length) {
+      cmdContainer.innerHTML = quickCmds.map((qc) =>
+        `<button class="prowlr-quick-cmd" data-cmd="${qc.cmd}" title="${qc.cmd}">
+          <i class="${qc.icon}"></i> ${qc.label}
+        </button>`
+      ).join("");
+
+      cmdContainer.querySelectorAll(".prowlr-quick-cmd").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const cmd = (btn as HTMLElement).dataset.cmd || "";
+          const input = container.querySelector("#prowlr-terminal-cmd") as HTMLInputElement;
+          input.value = cmd;
+          input.focus();
+        });
+      });
+    }
+  })();
 
   // Initial load
   refreshScopeRules(sdk, container);

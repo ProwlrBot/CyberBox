@@ -1,8 +1,8 @@
 {
   "id": "prowlr",
   "name": "Prowlr",
-  "version": "0.1.0",
-  "description": "Scope enforcement, AI-powered analysis, and Obsidian evidence export for bug bounty workflows",
+  "version": "0.2.0",
+  "description": "Scope enforcement, AI analysis, embedded terminal, and Obsidian export for bug bounty workflows",
   "author": {
     "name": "kdairatchi",
     "email": "prowlr@proton.me",
@@ -21,7 +21,6 @@
       "id": "prowlr-frontend",
       "name": "Prowlr Frontend",
       "entrypoint": "frontend/script.js",
-      "style": "frontend/style.css",
       "style": "frontend/style.css",
       "backend": {
         "id": "prowlr-backend"

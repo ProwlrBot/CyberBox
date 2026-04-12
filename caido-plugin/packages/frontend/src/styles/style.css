@@ -303,6 +303,130 @@
   font-size: 0.85rem;
 }
 
+/* ── Terminal ─────────────────────────────────────────────── */
+
+.prowlr-terminal-toolbar {
+  margin-bottom: 0.75rem;
+}
+
+.prowlr-quick-commands {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+
+.prowlr-quick-cmd {
+  background: var(--btn-bg, #1e1e3a);
+  border: 1px solid var(--border-color, #333);
+  color: var(--text-color, #e0e0e0);
+  padding: 0.3rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.prowlr-quick-cmd:hover {
+  background: #2a2a4a;
+  border-color: #00ff88;
+}
+
+.prowlr-quick-cmd i {
+  margin-right: 0.3rem;
+  font-size: 0.7rem;
+}
+
+.prowlr-terminal-input-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.prowlr-prompt {
+  color: #00ff88;
+  font-weight: bold;
+  font-family: monospace;
+  font-size: 1rem;
+}
+
+#prowlr-terminal-cmd {
+  flex: 1;
+  background: var(--input-bg, #0a0a1a);
+  border: 1px solid var(--border-color, #333);
+  color: #00ff88;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+}
+
+#prowlr-terminal-cmd:focus {
+  outline: none;
+  border-color: #00ff88;
+  box-shadow: 0 0 0 1px rgba(0, 255, 136, 0.2);
+}
+
+#prowlr-terminal-cmd::placeholder {
+  color: #555;
+}
+
+#prowlr-terminal-run {
+  background: #00ff88;
+  color: #0a0a1a;
+  border: none;
+  padding: 0.4rem 0.8rem;
+  border-radius: 4px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+#prowlr-terminal-run:hover {
+  background: #00cc6a;
+}
+
+.prowlr-btn-danger {
+  background: #ff4444;
+  color: white;
+  border: none;
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.prowlr-btn-danger:hover {
+  background: #cc3333;
+}
+
+.prowlr-xterm-container {
+  background: #1a1a2e;
+  border: 1px solid var(--border-color, #333);
+  border-radius: 6px;
+  padding: 0.5rem;
+  min-height: 400px;
+  max-height: 600px;
+  overflow: hidden;
+}
+
+.prowlr-xterm-container .xterm {
+  padding: 4px;
+}
+
+.prowlr-xterm-container .xterm-viewport {
+  overflow-y: auto !important;
+}
+
+.prowlr-xterm-container .xterm-viewport::-webkit-scrollbar {
+  width: 6px;
+}
+
+.prowlr-xterm-container .xterm-viewport::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 3px;
+}
+
 .hidden {
   display: none;
 }

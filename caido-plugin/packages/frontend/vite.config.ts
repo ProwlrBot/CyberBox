@@ -10,6 +10,7 @@ export default defineConfig({
       formats: ["iife"],
     },
     outDir: "../../dist/frontend",
+    cssCodeSplit: false,
     rollupOptions: {
       external: ["@caido/sdk-frontend", "@caido/frontend-sdk"],
       output: {
@@ -17,6 +18,10 @@ export default defineConfig({
         globals: {
           "@caido/sdk-frontend": "CaidoSDK",
           "@caido/frontend-sdk": "CaidoSDK",
+        },
+        assetFileNames: (assetInfo) => {
+          if (assetInfo.name?.endsWith(".css")) return "style.css";
+          return assetInfo.name || "asset";
         },
       },
     },
