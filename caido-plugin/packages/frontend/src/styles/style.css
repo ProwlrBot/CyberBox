@@ -1,0 +1,308 @@
+.prowlr-container {
+  padding: 1.5rem;
+  font-family: var(--font-family, system-ui, sans-serif);
+  color: var(--text-color, #e0e0e0);
+  max-width: 900px;
+}
+
+.prowlr-header h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.5rem;
+}
+
+.prowlr-header p {
+  margin: 0 0 1.5rem;
+  opacity: 0.6;
+  font-size: 0.85rem;
+}
+
+/* Tabs */
+.prowlr-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border-color, #333);
+  margin-bottom: 1rem;
+}
+
+.prowlr-tab {
+  background: none;
+  border: none;
+  color: var(--text-color, #999);
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  font-size: 0.9rem;
+}
+
+.prowlr-tab.active {
+  color: var(--accent-color, #6cf);
+  border-bottom-color: var(--accent-color, #6cf);
+}
+
+.prowlr-panel.hidden {
+  display: none;
+}
+
+/* Scope */
+.prowlr-scope-form {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.prowlr-scope-form input {
+  flex: 1;
+  padding: 0.4rem 0.6rem;
+  background: var(--input-bg, #1a1a2e);
+  border: 1px solid var(--border-color, #333);
+  color: var(--text-color, #e0e0e0);
+  border-radius: 4px;
+  font-family: monospace;
+}
+
+.prowlr-scope-form select,
+.prowlr-scope-form button {
+  padding: 0.4rem 0.8rem;
+  background: var(--button-bg, #2a2a4a);
+  border: 1px solid var(--border-color, #333);
+  color: var(--text-color, #e0e0e0);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.prowlr-rule {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--border-color, #222);
+}
+
+.prowlr-rule.inactive {
+  opacity: 0.4;
+}
+
+.prowlr-rule-type {
+  font-size: 0.7rem;
+  font-weight: bold;
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  min-width: 60px;
+  text-align: center;
+}
+
+.prowlr-rule.include .prowlr-rule-type {
+  background: #1a3a2a;
+  color: #6f6;
+}
+
+.prowlr-rule.exclude .prowlr-rule-type {
+  background: #3a1a1a;
+  color: #f66;
+}
+
+.prowlr-rule-pattern {
+  flex: 1;
+  font-family: monospace;
+  font-size: 0.85rem;
+}
+
+.prowlr-rule button {
+  background: none;
+  border: 1px solid var(--border-color, #333);
+  color: var(--text-color, #999);
+  padding: 0.2rem 0.5rem;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+
+/* Findings */
+.prowlr-findings-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.prowlr-findings-actions button {
+  padding: 0.4rem 0.8rem;
+  background: var(--button-bg, #2a2a4a);
+  border: 1px solid var(--border-color, #333);
+  color: var(--text-color, #e0e0e0);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.prowlr-finding {
+  border-left: 3px solid #666;
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+  background: var(--card-bg, #111);
+  border-radius: 0 4px 4px 0;
+}
+
+.prowlr-finding.severity-critical { border-left-color: #f33; }
+.prowlr-finding.severity-high { border-left-color: #f93; }
+.prowlr-finding.severity-medium { border-left-color: #fc3; }
+.prowlr-finding.severity-low { border-left-color: #6cf; }
+.prowlr-finding.severity-info { border-left-color: #999; }
+
+.prowlr-finding-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+
+.prowlr-severity {
+  font-size: 0.65rem;
+  font-weight: bold;
+  padding: 0.1rem 0.3rem;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.prowlr-finding-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.prowlr-exported {
+  font-size: 0.65rem;
+  color: #6f6;
+  opacity: 0.6;
+}
+
+.prowlr-finding-meta {
+  font-size: 0.75rem;
+  opacity: 0.6;
+  margin-bottom: 0.3rem;
+  display: flex;
+  justify-content: space-between;
+}
+
+.prowlr-finding-meta code {
+  font-family: monospace;
+}
+
+.prowlr-finding-body {
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  opacity: 0.8;
+}
+
+.prowlr-finding button {
+  margin-top: 0.3rem;
+  background: none;
+  border: 1px solid var(--border-color, #333);
+  color: #f66;
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.7rem;
+}
+
+/* Settings */
+.prowlr-setting {
+  margin-bottom: 1rem;
+}
+
+.prowlr-setting label {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.prowlr-setting input,
+.prowlr-setting select {
+  width: 100%;
+  max-width: 400px;
+  padding: 0.4rem 0.6rem;
+  background: var(--input-bg, #1a1a2e);
+  border: 1px solid var(--border-color, #333);
+  color: var(--text-color, #e0e0e0);
+  border-radius: 4px;
+}
+
+.prowlr-settings-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+#prowlr-settings-save {
+  padding: 0.5rem 1.2rem;
+  background: var(--accent-color, #6cf);
+  color: #000;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.prowlr-btn-secondary {
+  padding: 0.5rem 1.2rem;
+  background: var(--button-bg, #2a2a4a);
+  border: 1px solid var(--border-color, #333);
+  color: var(--text-color, #e0e0e0);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.prowlr-btn-small {
+  padding: 0.25rem 0.6rem;
+  background: var(--button-bg, #2a2a4a);
+  border: 1px solid var(--border-color, #333);
+  color: var(--text-color, #e0e0e0);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  margin-left: 0.5rem;
+}
+
+#prowlr-connection-status {
+  margin-top: 0.75rem;
+  padding: 0.5rem;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.8rem;
+}
+
+.prowlr-status-ok { background: #1a3a2a; color: #6f6; }
+.prowlr-status-error { background: #3a1a1a; color: #f66; }
+.prowlr-status-testing { background: #2a2a1a; color: #fc3; }
+
+#prowlr-settings h3 {
+  margin: 1.5rem 0 0.75rem;
+  font-size: 0.95rem;
+  border-bottom: 1px solid var(--border-color, #333);
+  padding-bottom: 0.3rem;
+}
+
+#prowlr-settings h3:first-child {
+  margin-top: 0;
+}
+
+/* Export output */
+#prowlr-export-output {
+  background: var(--input-bg, #0a0a1a);
+  border: 1px solid var(--border-color, #333);
+  border-radius: 4px;
+  padding: 1rem;
+  font-size: 0.8rem;
+  max-height: 400px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  margin-top: 1rem;
+}
+
+.prowlr-empty {
+  opacity: 0.4;
+  font-style: italic;
+  font-size: 0.85rem;
+}
+
+.hidden {
+  display: none;
+}

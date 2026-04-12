@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "sandbox": {
+      "type": "streamable-http",
+      "prefix": "sandbox",
+      "url": "http://127.0.0.1:8091/mcp"
+    },
+    "browser": {
+      "type": "streamable-http",
+      "url": "http://127.0.0.1:8100/mcp"
+    },
+    "chrome_devtools": {
+      "hidden": true,
+      "type": "stdio",
+      "command": "/usr/bin/chrome-devtools-mcp",
+      "args": ["--browserUrl", "http://127.0.0.1:9222"],
+      "prefix": "chrome_devtools"
+    },
+    "searxng": {
+      "type": "streamable-http",
+      "url": "http://host.docker.internal:8888/mcp",
+      "prefix": "search"
+    }
+  }
+}

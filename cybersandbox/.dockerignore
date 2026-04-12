@@ -1,0 +1,6 @@
+.git
+*.md
+LICENSE
+.env
+.env.*
+!.env.example

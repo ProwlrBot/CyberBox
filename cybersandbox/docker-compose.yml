@@ -1,0 +1,45 @@
+services:
+  cybersandbox:
+    container_name: cybersandbox
+    build:
+      context: .
+      dockerfile: Dockerfile
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    shm_size: "2gb"
+    mem_limit: "8g"
+    cpus: "4"
+    ports:
+      - "127.0.0.1:8082:8080"
+    volumes:
+      # Mount Obsidian vault (read-only — agents must not write directly)
+      - /mnt/c/Users/Dr34d/OneDrive/Documents/Obsidian Vault:/vault:ro
+      # Mount custom nuclei templates
+      - ${HOME}/nuclei-templates:/templates:ro
+      # Mount custom wordlists
+      - ${HOME}/Tools/Vibe-Trading:/opt/vibe-trading:ro
+      # Writable export dir — sync into Obsidian vault manually or via script
+      - cybersandbox-exports:/home/hunter/exports
+      # Persist workspace across restarts
+      - cybersandbox-workspace:/home/hunter
+    env_file:
+      - .env
+    environment:
+      TZ: ${TZ:-America/New_York}
+      WORKSPACE: /home/hunter
+      DISPLAY_WIDTH: "1920"
+      DISPLAY_HEIGHT: "1080"
+      SEARXNG_URL: "http://host.docker.internal:8888"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  cybersandbox-exports:
+  cybersandbox-workspace:

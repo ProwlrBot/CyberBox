@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+# invoke-claude — Send prompts to Claude API from the terminal
+# Usage: invoke-claude "analyze this request for vulns"
+#        cat request.txt | invoke-claude
+#        invoke-claude -m opus "complex analysis"
+#        invoke-claude -s "You are a security analyst" "find IDOR in this API"
+
+set -euo pipefail
+
+# ── Config ───────────────────────────────────────────────────
+CLAUDE_API_KEY="${ANTHROPIC_API_KEY:-${CLAUDE_API_KEY:-}}"
+CLAUDE_ENDPOINT="${CLAUDE_ENDPOINT:-https://api.anthropic.com/v1/messages}"
+CLAUDE_MODEL="${CLAUDE_MODEL:-claude-sonnet-4-20250514}"
+MAX_TOKENS="${CLAUDE_MAX_TOKENS:-4096}"
+SYSTEM_PROMPT=""
+
+# ── Parse Args ───────────────────────────────────────────────
+usage() {
+  cat <<'EOF'
+invoke-claude — Claude API from the terminal
+
+Usage:
+  invoke-claude [options] [prompt]
+  echo "data" | invoke-claude [options] [prompt]
+
+Options:
+  -m, --model MODEL    Model: sonnet (default), opus, haiku
+  -s, --system PROMPT  System prompt
+  -t, --tokens N       Max tokens (default: 4096)
+  -j, --json           Request JSON output
+  -r, --raw            Raw output (no formatting)
+  -h, --help           Show this help
+
+Models:
+  sonnet   claude-sonnet-4-20250514 (fast, good)
+  opus     claude-opus-4-20250514 (best)
+  haiku    claude-haiku-4-5-20251001 (fastest, cheapest)
+
+Examples:
+  invoke-claude "explain this vuln"
+  cat response.txt | invoke-claude "find security issues"
+  invoke-claude -m opus -s "You are a pentest expert" "analyze this"
+  curl -s target.com | invoke-claude -j "extract all API endpoints"
+EOF
+  exit 0
+}
+
+RAW_OUTPUT=false
+JSON_MODE=false
+PROMPT_PARTS=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -m|--model)
+      case "$2" in
+        sonnet|s) CLAUDE_MODEL="claude-sonnet-4-20250514" ;;
+        opus|o)   CLAUDE_MODEL="claude-opus-4-20250514" ;;
+        haiku|h)  CLAUDE_MODEL="claude-haiku-4-5-20251001" ;;
+        *)        CLAUDE_MODEL="$2" ;;
+      esac
+      shift 2 ;;
+    -s|--system)  SYSTEM_PROMPT="$2"; shift 2 ;;
+    -t|--tokens)  MAX_TOKENS="$2"; shift 2 ;;
+    -j|--json)    JSON_MODE=true; shift ;;
+    -r|--raw)     RAW_OUTPUT=true; shift ;;
+    -h|--help)    usage ;;
+    *)            PROMPT_PARTS+=("$1"); shift ;;
+  esac
+done
+
+# ── Auth Check ───────────────────────────────────────────────
+if [[ -z "$CLAUDE_API_KEY" ]]; then
+  echo "Error: No API key. Set ANTHROPIC_API_KEY or CLAUDE_API_KEY" >&2
+  echo "  export ANTHROPIC_API_KEY=sk-ant-api03-..." >&2
+  exit 1
+fi
+
+# ── Build Prompt ─────────────────────────────────────────────
+USER_PROMPT="${PROMPT_PARTS[*]:-}"
+
+# Read from stdin if available
+if [[ ! -t 0 ]]; then
+  STDIN_DATA=$(cat)
+  if [[ -n "$USER_PROMPT" ]]; then
+    USER_PROMPT="${USER_PROMPT}
+
+${STDIN_DATA}"
+  else
+    USER_PROMPT="$STDIN_DATA"
+  fi
+fi
+
+if [[ -z "$USER_PROMPT" ]]; then
+  echo "Error: No prompt provided. Use: invoke-claude \"your prompt\"" >&2
+  exit 1
+fi
+
+if $JSON_MODE; then
+  USER_PROMPT="${USER_PROMPT}
+
+Respond ONLY in valid JSON format."
+fi
+
+# ── Build Request ────────────────────────────────────────────
+MESSAGES=$(jq -n --arg content "$USER_PROMPT" '[{"role":"user","content":$content}]')
+
+REQUEST=$(jq -n \
+  --arg model "$CLAUDE_MODEL" \
+  --argjson max_tokens "$MAX_TOKENS" \
+  --argjson messages "$MESSAGES" \
+  '{model:$model, max_tokens:$max_tokens, messages:$messages}')
+
+if [[ -n "$SYSTEM_PROMPT" ]]; then
+  REQUEST=$(echo "$REQUEST" | jq --arg sys "$SYSTEM_PROMPT" '.system = $sys')
+fi
+
+# ── Call API ─────────────────────────────────────────────────
+if ! $RAW_OUTPUT; then
+  echo -e "\033[90m[claude:${CLAUDE_MODEL##*-}] thinking...\033[0m" >&2
+fi
+
+RESPONSE=$(curl -sS "$CLAUDE_ENDPOINT" \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: ${CLAUDE_API_KEY}" \
+  -H "anthropic-version: 2023-06-01" \
+  -d "$REQUEST")
+
+# ── Parse Response ───────────────────────────────────────────
+CONTENT=$(echo "$RESPONSE" | jq -r '.content[0].text // empty')
+
+if [[ -z "$CONTENT" ]]; then
+  ERROR=$(echo "$RESPONSE" | jq -r '.error.message // .error // "Unknown error"')
+  echo "Error: $ERROR" >&2
+  exit 1
+fi
+
+if $RAW_OUTPUT; then
+  echo "$CONTENT"
+else
+  echo "$CONTENT"
+  # Show usage stats
+  INPUT_TOKENS=$(echo "$RESPONSE" | jq -r '.usage.input_tokens // "?"')
+  OUTPUT_TOKENS=$(echo "$RESPONSE" | jq -r '.usage.output_tokens // "?"')
+  echo -e "\n\033[90m[tokens: ${INPUT_TOKENS}in/${OUTPUT_TOKENS}out | model: ${CLAUDE_MODEL}]\033[0m" >&2
+fi

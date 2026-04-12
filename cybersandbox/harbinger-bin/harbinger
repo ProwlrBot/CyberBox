@@ -1,0 +1,343 @@
+#!/usr/bin/env bash
+# harbinger — Autonomous bug bounty pipeline orchestrator
+# Like Aperant but for hunting. Dual-LLM (Claude + Ollama).
+#
+# Usage:
+#   harbinger hunt target.com
+#   harbinger recon target.com
+#   harbinger analyze request.txt
+#   harbinger triage findings.json
+#   harbinger report finding-42
+
+set -euo pipefail
+
+HARBINGER_DIR="${HARBINGER_DIR:-$HOME/.harbinger}"
+HARBINGER_BIN="$(cd "$(dirname "$0")" && pwd)"
+
+# ── Colors ───────────────────────────────────────────────────
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+DIM='\033[0;90m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+log()  { echo -e "${DIM}[harbinger]${NC} $*"; }
+info() { echo -e "${CYAN}[+]${NC} $*"; }
+warn() { echo -e "${YELLOW}[!]${NC} $*"; }
+err()  { echo -e "${RED}[x]${NC} $*" >&2; }
+ok()   { echo -e "${GREEN}[✓]${NC} $*"; }
+
+# ── Init ─────────────────────────────────────────────────────
+init_workspace() {
+  local target="$1"
+  local workspace="${HARBINGER_DIR}/targets/${target}"
+
+  mkdir -p "${workspace}"/{recon,findings,evidence,reports,logs}
+
+  cat > "${workspace}/target.json" <<EOF
+{
+  "target": "${target}",
+  "created": "$(date -Iseconds)",
+  "status": "active",
+  "scope": ["*.${target}"],
+  "phases_completed": []
+}
+EOF
+
+  echo "$workspace"
+}
+
+# ── AI Router ────────────────────────────────────────────────
+# Use Ollama for fast/cheap tasks, Claude for complex reasoning
+ai() {
+  local tier="$1"
+  shift
+
+  case "$tier" in
+    fast)
+      # Ollama for parsing, classification, summarization
+      "${HARBINGER_BIN}/invoke-ollama" -r "$@" 2>/dev/null
+      ;;
+    deep)
+      # Claude for vuln analysis, exploit reasoning, report writing
+      if [[ -n "${ANTHROPIC_API_KEY:-${CLAUDE_API_KEY:-}}" ]]; then
+        "${HARBINGER_BIN}/invoke-claude" -r "$@" 2>/dev/null
+      else
+        warn "No Claude API key — falling back to Ollama"
+        "${HARBINGER_BIN}/invoke-ollama" -r "$@" 2>/dev/null
+      fi
+      ;;
+    best)
+      # Claude Opus for the hardest reasoning tasks
+      if [[ -n "${ANTHROPIC_API_KEY:-${CLAUDE_API_KEY:-}}" ]]; then
+        "${HARBINGER_BIN}/invoke-claude" -r -m opus "$@" 2>/dev/null
+      else
+        "${HARBINGER_BIN}/invoke-ollama" -r "$@" 2>/dev/null
+      fi
+      ;;
+  esac
+}
+
+# ── Phase: Recon ─────────────────────────────────────────────
+phase_recon() {
+  local target="$1"
+  local workspace
+  workspace=$(init_workspace "$target")
+
+  info "Phase: RECON — ${target}"
+  log "Workspace: ${workspace}"
+
+  # Subdomain enumeration
+  info "Enumerating subdomains..."
+  if command -v subfinder &>/dev/null; then
+    subfinder -d "$target" -silent 2>/dev/null | sort -u > "${workspace}/recon/subdomains.txt"
+    local count
+    count=$(wc -l < "${workspace}/recon/subdomains.txt")
+    ok "Found ${count} subdomains"
+  else
+    warn "subfinder not found — skipping"
+  fi
+
+  # Probe live hosts
+  if command -v httpx &>/dev/null && [[ -s "${workspace}/recon/subdomains.txt" ]]; then
+    info "Probing live hosts..."
+    httpx -l "${workspace}/recon/subdomains.txt" -silent -status-code -title -tech-detect \
+      -json 2>/dev/null > "${workspace}/recon/live_hosts.json" || true
+    local live
+    live=$(wc -l < "${workspace}/recon/live_hosts.json")
+    ok "Found ${live} live hosts"
+  fi
+
+  # URL discovery
+  if command -v katana &>/dev/null && [[ -s "${workspace}/recon/subdomains.txt" ]]; then
+    info "Crawling for URLs..."
+    head -20 "${workspace}/recon/subdomains.txt" | \
+      katana -silent -d 2 -jc 2>/dev/null | sort -u > "${workspace}/recon/urls.txt" || true
+    local urls
+    urls=$(wc -l < "${workspace}/recon/urls.txt")
+    ok "Found ${urls} URLs"
+  fi
+
+  # Wayback URLs
+  if command -v waybackurls &>/dev/null; then
+    info "Fetching wayback URLs..."
+    echo "$target" | waybackurls 2>/dev/null | sort -u > "${workspace}/recon/wayback.txt" || true
+  fi
+
+  # AI-powered triage of recon data (use Ollama — fast, local)
+  if [[ -s "${workspace}/recon/live_hosts.json" ]]; then
+    info "AI triaging recon data..."
+    ai fast -s "You are a bug bounty recon analyst. Identify the most interesting targets for vulnerability testing." \
+      "Triage these live hosts and rank by attack surface interest. Focus on: API endpoints, admin panels, file upload, auth pages, old tech stacks.
+
+$(head -50 "${workspace}/recon/live_hosts.json")" > "${workspace}/recon/triage.md" || true
+    ok "Triage report: ${workspace}/recon/triage.md"
+  fi
+
+  # Log phase completion
+  local target_json="${workspace}/target.json"
+  jq '.phases_completed += ["recon"] | .last_recon = now' "$target_json" > "${target_json}.tmp" 2>/dev/null && \
+    mv "${target_json}.tmp" "$target_json" || true
+
+  ok "Recon complete — ${workspace}/recon/"
+}
+
+# ── Phase: Scan ──────────────────────────────────────────────
+phase_scan() {
+  local target="$1"
+  local workspace="${HARBINGER_DIR}/targets/${target}"
+
+  if [[ ! -d "$workspace" ]]; then
+    err "No workspace for ${target}. Run: harbinger recon ${target}"
+    exit 1
+  fi
+
+  info "Phase: SCAN — ${target}"
+
+  # Nuclei scan on live hosts
+  if command -v nuclei &>/dev/null && [[ -s "${workspace}/recon/live_hosts.json" ]]; then
+    info "Running nuclei..."
+    jq -r '.url // empty' "${workspace}/recon/live_hosts.json" | \
+      nuclei -silent -severity medium,high,critical -jsonl 2>/dev/null \
+      > "${workspace}/findings/nuclei.jsonl" || true
+    local findings
+    findings=$(wc -l < "${workspace}/findings/nuclei.jsonl")
+    ok "Nuclei: ${findings} findings"
+  fi
+
+  # Parameter discovery
+  if command -v arjun &>/dev/null && [[ -s "${workspace}/recon/urls.txt" ]]; then
+    info "Discovering parameters..."
+    head -10 "${workspace}/recon/urls.txt" | while read -r url; do
+      arjun -u "$url" --stable -oJ "${workspace}/findings/params_$(echo "$url" | md5sum | cut -c1-8).json" 2>/dev/null || true
+    done
+  fi
+
+  ok "Scan complete — ${workspace}/findings/"
+}
+
+# ── Phase: Analyze ───────────────────────────────────────────
+phase_analyze() {
+  local input="$1"
+  local workspace="${HARBINGER_DIR}/analysis"
+  mkdir -p "$workspace"
+
+  info "Phase: ANALYZE"
+
+  local data
+  if [[ -f "$input" ]]; then
+    data=$(cat "$input")
+  else
+    data="$input"
+  fi
+
+  # Use Claude for deep analysis
+  ai deep -s "You are an expert bug bounty hunter analyzing HTTP traffic. Be specific about vulnerability classes, CVSS scores, and reproduction steps." \
+    "Analyze this for security vulnerabilities:
+
+${data}"
+}
+
+# ── Phase: Report ────────────────────────────────────────────
+phase_report() {
+  local target="$1"
+  local workspace="${HARBINGER_DIR}/targets/${target}"
+
+  if [[ ! -d "$workspace" ]]; then
+    err "No workspace for ${target}"
+    exit 1
+  fi
+
+  info "Phase: REPORT — ${target}"
+
+  local findings_data=""
+  if [[ -s "${workspace}/findings/nuclei.jsonl" ]]; then
+    findings_data=$(cat "${workspace}/findings/nuclei.jsonl")
+  fi
+
+  if [[ -z "$findings_data" ]]; then
+    warn "No findings to report"
+    exit 0
+  fi
+
+  # Use Claude Opus for report writing (needs best reasoning)
+  ai best -s "You are a professional bug bounty report writer. Write clear, actionable reports with impact-first summaries. Use markdown format compatible with HackerOne/Bugcrowd." \
+    "Generate a bug bounty report for these findings on ${target}. Group by severity, include reproduction steps, and assess real-world impact.
+
+${findings_data}" > "${workspace}/reports/report-$(date +%Y%m%d).md"
+
+  ok "Report: ${workspace}/reports/report-$(date +%Y%m%d).md"
+}
+
+# ── Phase: Hunt (full pipeline) ──────────────────────────────
+phase_hunt() {
+  local target="$1"
+
+  echo -e "${BOLD}${CYAN}"
+  echo "  ╦ ╦┌─┐┬─┐┌┐ ┬┌┐┌┌─┐┌─┐┬─┐"
+  echo "  ╠═╣├─┤├┬┘├┴┐││││├┤ ├┤ ├┬┘"
+  echo "  ╩ ╩┴ ┴┴└─└─┘┴┘└┘└─┘└─┘┴└─"
+  echo -e "${NC}"
+  echo -e "  ${DIM}Autonomous Bug Bounty Pipeline${NC}"
+  echo -e "  ${DIM}Target: ${target}${NC}"
+  echo ""
+
+  phase_recon "$target"
+  echo ""
+  phase_scan "$target"
+  echo ""
+  phase_report "$target"
+
+  echo ""
+  ok "Hunt complete for ${target}"
+  log "Workspace: ${HARBINGER_DIR}/targets/${target}"
+}
+
+# ── Status ───────────────────────────────────────────────────
+show_status() {
+  echo -e "${BOLD}Harbinger Status${NC}"
+  echo ""
+
+  # Check AI backends
+  echo -e "${BOLD}AI Backends:${NC}"
+  if [[ -n "${ANTHROPIC_API_KEY:-${CLAUDE_API_KEY:-}}" ]]; then
+    ok "Claude: API key set"
+  else
+    warn "Claude: No API key (set ANTHROPIC_API_KEY)"
+  fi
+
+  if curl -sS "http://localhost:11434/api/tags" >/dev/null 2>&1; then
+    local models
+    models=$(curl -sS "http://localhost:11434/api/tags" | jq -r '.models[].name' | tr '\n' ', ' | sed 's/,$//')
+    ok "Ollama: running (${models:-no models})"
+  else
+    warn "Ollama: not running"
+  fi
+
+  echo ""
+  echo -e "${BOLD}Tools:${NC}"
+  for tool in nuclei subfinder httpx katana dalfox ffuf nmap waybackurls gau arjun; do
+    if command -v "$tool" &>/dev/null; then
+      printf "  ${GREEN}✓${NC} %-15s" "$tool"
+    else
+      printf "  ${RED}✗${NC} %-15s" "$tool"
+    fi
+  done
+  echo ""
+
+  echo ""
+  echo -e "${BOLD}Targets:${NC}"
+  if [[ -d "${HARBINGER_DIR}/targets" ]]; then
+    for t in "${HARBINGER_DIR}/targets"/*/; do
+      [[ -d "$t" ]] || continue
+      local name
+      name=$(basename "$t")
+      local phases
+      phases=$(jq -r '.phases_completed | join(", ")' "${t}/target.json" 2>/dev/null || echo "?")
+      echo "  ${name}: ${phases}"
+    done
+  else
+    echo "  (none — run: harbinger hunt target.com)"
+  fi
+}
+
+# ── Main ─────────────────────────────────────────────────────
+usage() {
+  cat <<'EOF'
+harbinger — Autonomous Bug Bounty Pipeline
+
+Commands:
+  hunt <target>      Full pipeline: recon → scan → report
+  recon <target>     Enumerate subdomains, probe hosts, crawl URLs
+  scan <target>      Run nuclei + parameter discovery
+  analyze <file>     AI-analyze a request/response file
+  report <target>    Generate report from findings
+  status             Show backends, tools, and targets
+
+AI Routing:
+  fast tasks (recon triage, parsing)  → Ollama (local, free)
+  deep tasks (vuln analysis)          → Claude Sonnet
+  best tasks (report writing)         → Claude Opus
+
+Environment:
+  ANTHROPIC_API_KEY    Claude API key
+  OLLAMA_HOST          Ollama endpoint (default: http://localhost:11434)
+  OLLAMA_MODEL         Default Ollama model (default: llama3.1)
+  HARBINGER_DIR        Workspace root (default: ~/.harbinger)
+EOF
+  exit 0
+}
+
+case "${1:-}" in
+  hunt)     phase_hunt "${2:?Usage: harbinger hunt <target>}" ;;
+  recon)    phase_recon "${2:?Usage: harbinger recon <target>}" ;;
+  scan)     phase_scan "${2:?Usage: harbinger scan <target>}" ;;
+  analyze)  phase_analyze "${2:?Usage: harbinger analyze <file|text>}" ;;
+  report)   phase_report "${2:?Usage: harbinger report <target>}" ;;
+  status)   show_status ;;
+  -h|--help|help|"") usage ;;
+  *)        err "Unknown command: $1"; usage ;;
+esac

@@ -1,0 +1,16 @@
+{
+  "name": "prowlr-frontend",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@caido/sdk-frontend": "0.41.0"
+  },
+  "devDependencies": {
+    "@caido/sdk-backend": "0.41.0",
+    "prowlr-backend": "workspace:*"
+  }
+}

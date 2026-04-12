@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+# invoke-ollama — Send prompts to local Ollama from the terminal
+# Usage: invoke-ollama "analyze this request for vulns"
+#        cat request.txt | invoke-ollama
+#        invoke-ollama -m deepseek-r1 "complex analysis"
+
+set -euo pipefail
+
+# ── Config ───────────────────────────────────────────────────
+OLLAMA_HOST="${OLLAMA_HOST:-http://localhost:11434}"
+OLLAMA_MODEL="${OLLAMA_MODEL:-llama3.1}"
+SYSTEM_PROMPT=""
+
+# ── Parse Args ───────────────────────────────────────────────
+usage() {
+  cat <<'EOF'
+invoke-ollama — Ollama from the terminal (local, private, free)
+
+Usage:
+  invoke-ollama [options] [prompt]
+  echo "data" | invoke-ollama [options] [prompt]
+
+Options:
+  -m, --model MODEL    Model name (default: llama3.1)
+  -s, --system PROMPT  System prompt
+  -j, --json           Request JSON output
+  -r, --raw            Raw output (no formatting)
+  -l, --list           List available models
+  -h, --help           Show this help
+
+Examples:
+  invoke-ollama "explain this HTTP response"
+  cat response.txt | invoke-ollama "find security issues"
+  invoke-ollama -m deepseek-r1 "analyze this code for vulns"
+  invoke-ollama -l
+  nuclei -jsonl -u target.com | invoke-ollama "triage these findings"
+EOF
+  exit 0
+}
+
+RAW_OUTPUT=false
+JSON_MODE=false
+LIST_MODE=false
+PROMPT_PARTS=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -m|--model)   OLLAMA_MODEL="$2"; shift 2 ;;
+    -s|--system)  SYSTEM_PROMPT="$2"; shift 2 ;;
+    -j|--json)    JSON_MODE=true; shift ;;
+    -r|--raw)     RAW_OUTPUT=true; shift ;;
+    -l|--list)    LIST_MODE=true; shift ;;
+    -h|--help)    usage ;;
+    *)            PROMPT_PARTS+=("$1"); shift ;;
+  esac
+done
+
+# ── List Models ──────────────────────────────────────────────
+if $LIST_MODE; then
+  RESPONSE=$(curl -sS "${OLLAMA_HOST}/api/tags" 2>/dev/null) || {
+    echo "Error: Ollama not running at ${OLLAMA_HOST}" >&2
+    echo "  Start it: ollama serve" >&2
+    exit 1
+  }
+  echo "$RESPONSE" | jq -r '.models[] | "\(.name)\t\(.size / 1073741824 | . * 100 | round / 100)GB\t\(.details.parameter_size // "?")"' | column -t -s $'\t'
+  exit 0
+fi
+
+# ── Connection Check ─────────────────────────────────────────
+if ! curl -sS "${OLLAMA_HOST}/api/tags" >/dev/null 2>&1; then
+  echo "Error: Ollama not running at ${OLLAMA_HOST}" >&2
+  echo "  Start it: ollama serve" >&2
+  echo "  Or set: export OLLAMA_HOST=http://your-host:11434" >&2
+  exit 1
+fi
+
+# ── Build Prompt ─────────────────────────────────────────────
+USER_PROMPT="${PROMPT_PARTS[*]:-}"
+
+if [[ ! -t 0 ]]; then
+  STDIN_DATA=$(cat)
+  if [[ -n "$USER_PROMPT" ]]; then
+    USER_PROMPT="${USER_PROMPT}
+
+${STDIN_DATA}"
+  else
+    USER_PROMPT="$STDIN_DATA"
+  fi
+fi
+
+if [[ -z "$USER_PROMPT" ]]; then
+  echo "Error: No prompt provided. Use: invoke-ollama \"your prompt\"" >&2
+  exit 1
+fi
+
+# ── Build Request ────────────────────────────────────────────
+REQUEST=$(jq -n \
+  --arg model "$OLLAMA_MODEL" \
+  --arg prompt "$USER_PROMPT" \
+  '{model:$model, prompt:$prompt, stream:false}')
+
+if [[ -n "$SYSTEM_PROMPT" ]]; then
+  REQUEST=$(echo "$REQUEST" | jq --arg sys "$SYSTEM_PROMPT" '.system = $sys')
+fi
+
+if $JSON_MODE; then
+  REQUEST=$(echo "$REQUEST" | jq '.format = "json"')
+fi
+
+# ── Call Ollama ──────────────────────────────────────────────
+if ! $RAW_OUTPUT; then
+  echo -e "\033[90m[ollama:${OLLAMA_MODEL}] thinking...\033[0m" >&2
+fi
+
+RESPONSE=$(curl -sS "${OLLAMA_HOST}/api/generate" \
+  -H "Content-Type: application/json" \
+  -d "$REQUEST")
+
+# ── Parse Response ───────────────────────────────────────────
+CONTENT=$(echo "$RESPONSE" | jq -r '.response // empty')
+
+if [[ -z "$CONTENT" ]]; then
+  ERROR=$(echo "$RESPONSE" | jq -r '.error // "Unknown error"')
+  echo "Error: $ERROR" >&2
+  exit 1
+fi
+
+if $RAW_OUTPUT; then
+  echo "$CONTENT"
+else
+  echo "$CONTENT"
+  DURATION=$(echo "$RESPONSE" | jq -r '.total_duration // 0')
+  DURATION_SEC=$(echo "scale=1; $DURATION / 1000000000" | bc 2>/dev/null || echo "?")
+  EVAL_COUNT=$(echo "$RESPONSE" | jq -r '.eval_count // "?"')
+  echo -e "\n\033[90m[tokens: ${EVAL_COUNT} | ${DURATION_SEC}s | model: ${OLLAMA_MODEL}]\033[0m" >&2
+fi
