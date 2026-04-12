@@ -20,7 +20,8 @@ services:
       - /mnt/c/Users/Dr34d/OneDrive/Documents/Obsidian Vault:/vault:ro
       # Mount custom nuclei templates
       - ${HOME}/nuclei-templates:/templates:ro
-      # Mount custom wordlists
+      # Wordlists — host SecLists checkout OR named volume populated on first run
+      - ${SECLISTS_PATH:-cybersandbox-wordlists}:/wordlists:ro
       - ${HOME}/Tools/Vibe-Trading:/opt/vibe-trading:ro
       # Writable export dir — sync into Obsidian vault manually or via script
       - cybersandbox-exports:/home/hunter/exports
@@ -43,3 +44,4 @@ services:
 volumes:
   cybersandbox-exports:
   cybersandbox-workspace:
+  cybersandbox-wordlists:

@@ -160,6 +160,10 @@ async function initDatabase(sdk: SDK) {
   stmt.run("ai_analysis_prompt", "");
   // Quick commands (JSON array, empty = use defaults)
   stmt.run("quick_commands", "");
+  // Guardrails (NemoClaw-style filters for prompt injection + output leakage)
+  stmt.run("guardrails_enabled", "true");
+  // AI rate limit (per provider, per minute)
+  stmt.run("ai_rate_limit_per_min", "20");
 }
 
 // ── Scope Enforcement ───────────────────────────────────────
@@ -252,6 +256,53 @@ async function removeScopeRule(sdk: SDK, id: number): Promise<void> {
 async function toggleScopeRule(sdk: SDK, id: number): Promise<void> {
   const db = await sdk.meta.db();
   db.prepare("UPDATE scope_rules SET active = NOT active WHERE id = ?").run(id);
+}
+
+// ── NemoClaw-style Guardrails ───────────────────────────────
+// Defensive filters for AI prompt injection + response leakage.
+// Togglable via `guardrails_enabled` setting (default: on).
+
+const INJECTION_PATTERNS = [
+  /ignore (?:all |the )?(?:previous|prior|above) (?:instructions?|prompts?|rules?)/i,
+  /disregard (?:all |your )?(?:instructions?|system prompt)/i,
+  /you are (?:now )?(?:a |an )?(?:dan|evil|unrestricted|jailbroken)/i,
+  /system\s*prompt\s*[:=]/i,
+  /<\|im_start\|>|<\|im_end\|>/,
+  /\[\[\s*SYSTEM\s*\]\]/i,
+  // Caido request bodies can legitimately contain "```"; only flag with verb context
+  /```(?:system|instructions?)\s*\n/i,
+];
+
+// Secret patterns to redact from AI output before display
+const SECRET_PATTERNS: Array<[RegExp, string]> = [
+  [/sk-ant-[a-zA-Z0-9_-]{20,}/g, "sk-ant-***"],
+  [/sk-[a-zA-Z0-9]{32,}/g, "sk-***"],
+  [/AKIA[0-9A-Z]{16}/g, "AKIA***"],
+  [/ghp_[a-zA-Z0-9]{30,}/g, "ghp_***"],
+  [/gho_[a-zA-Z0-9]{30,}/g, "gho_***"],
+  [/eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, "[JWT-REDACTED]"],
+];
+
+function sanitizePromptInput(text: string, enabled: boolean): { text: string; flagged: boolean } {
+  if (!enabled) return { text, flagged: false };
+  let flagged = false;
+  let out = text;
+  for (const pat of INJECTION_PATTERNS) {
+    if (pat.test(out)) {
+      flagged = true;
+      out = out.replace(pat, "[FILTERED-INJECTION]");
+    }
+  }
+  return { text: out, flagged };
+}
+
+function sanitizeAIOutput(text: string, enabled: boolean): string {
+  if (!enabled) return text;
+  let out = text;
+  for (const [pat, repl] of SECRET_PATTERNS) {
+    out = out.replace(pat, repl);
+  }
+  return out;
 }
 
 // ── Rate Limiter ────────────────────────────────────────────
@@ -417,29 +468,47 @@ async function analyzeRequest(sdk: SDK, requestId: string): Promise<AnalysisResu
   const reqText = new TextDecoder().decode(reqRaw);
   const resText = response ? new TextDecoder().decode(response.getRaw()) : "(no response)";
 
+  // Guardrails: filter prompt injection attempts from captured traffic before sending to AI
+  const guardrailsOn = (settings.guardrails_enabled ?? "true") !== "false";
+  const cleanReq = sanitizePromptInput(reqText.substring(0, 4000), guardrailsOn);
+  const cleanRes = sanitizePromptInput(resText.substring(0, 4000), guardrailsOn);
+
   // Use custom prompt if set, otherwise default
   const promptTemplate = settings.ai_analysis_prompt || DEFAULT_ANALYSIS_PROMPT;
   const prompt = promptTemplate
-    .replace("{REQUEST}", reqText.substring(0, 4000))
-    .replace("{RESPONSE}", resText.substring(0, 4000));
+    .replace("{REQUEST}", cleanReq.text)
+    .replace("{RESPONSE}", cleanRes.text);
 
   try {
-    const content = provider === "claude"
+    let content = provider === "claude"
       ? await callClaude(settings, prompt)
       : await callOllama(settings, prompt);
 
-    // Parse and validate AI output — never trust raw JSON.parse
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      try {
-        const parsed = JSON.parse(jsonMatch[0]);
-        return validateAnalysisResult(parsed);
-      } catch {
-        return { summary: content.substring(0, 500), findings: [], severity: "info", recommendations: [] };
-      }
+    // Redact any secrets the AI may have echoed from the traffic
+    content = sanitizeAIOutput(content, guardrailsOn);
+
+    const injectionFlagged = cleanReq.flagged || cleanRes.flagged;
+    if (injectionFlagged) {
+      sdk.console.log("[Prowlr guardrails] prompt-injection pattern filtered from traffic before AI call");
     }
 
-    return { summary: content.substring(0, 500), findings: [], severity: "info", recommendations: [] };
+    // Parse and validate AI output — never trust raw JSON.parse
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    let result: AnalysisResult;
+    if (jsonMatch) {
+      try {
+        result = validateAnalysisResult(JSON.parse(jsonMatch[0]));
+      } catch {
+        result = { summary: content.substring(0, 500), findings: [], severity: "info", recommendations: [] };
+      }
+    } else {
+      result = { summary: content.substring(0, 500), findings: [], severity: "info", recommendations: [] };
+    }
+
+    if (injectionFlagged) {
+      result.findings = ["[guardrail] prompt-injection pattern detected in traffic — filtered before AI", ...result.findings];
+    }
+    return result;
   } catch (err) {
     sdk.console.error(`[Prowlr] ${provider} analysis failed: ${sanitizeError(String(err))}`);
     return {

@@ -3,6 +3,7 @@ name: CyberSandbox Build & Push
 on:
   push:
     branches: [main]
+    tags: ['v*']
     paths:
       - 'cybersandbox/**'
       - '.github/workflows/cybersandbox-build.yml'
@@ -11,6 +12,11 @@ on:
     paths:
       - 'cybersandbox/**'
   workflow_dispatch:
+    inputs:
+      push_latest:
+        description: 'Push :latest tag'
+        type: boolean
+        default: true
 
 env:
   REGISTRY: ghcr.io
@@ -43,10 +49,13 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=sha,prefix=
+            type=sha,prefix=sha-,format=short
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Build (and push on main)
+      - name: Build (and push on main/tags)
         uses: docker/build-push-action@v5
         with:
           context: cybersandbox
@@ -55,3 +64,13 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
+
+      - name: Image summary
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "### Published image" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
