@@ -254,6 +254,24 @@ async function toggleScopeRule(sdk: SDK, id: number): Promise<void> {
   db.prepare("UPDATE scope_rules SET active = NOT active WHERE id = ?").run(id);
 }
 
+// ── Rate Limiter ────────────────────────────────────────────
+// Sliding window per provider. Default: 20 calls/min, configurable via settings.
+const rateWindow: Record<string, number[]> = { claude: [], ollama: [] };
+
+function checkRateLimit(provider: AIProvider, settings: Record<string, string>): void {
+  const limit = Math.max(1, parseInt(settings.ai_rate_limit_per_min || "20", 10) || 20);
+  const now = Date.now();
+  const windowMs = 60_000;
+  const bucket = rateWindow[provider];
+  // drop entries older than window
+  while (bucket.length && now - bucket[0]! > windowMs) bucket.shift();
+  if (bucket.length >= limit) {
+    const retryIn = Math.ceil((windowMs - (now - bucket[0]!)) / 1000);
+    throw new Error(`AI rate limit: ${limit}/min reached for ${provider} — retry in ${retryIn}s`);
+  }
+  bucket.push(now);
+}
+
 // ── AI Analysis ─────────────────────────────────────────────
 
 async function callClaude(
@@ -262,6 +280,8 @@ async function callClaude(
 ): Promise<string> {
   const apiKey = settings.claude_api_key;
   if (!apiKey) throw new Error("Claude API key not set — go to Prowlr settings");
+
+  checkRateLimit("claude", settings);
 
   const endpoint = settings.claude_endpoint || "https://api.anthropic.com/v1/messages";
   if (!validateEndpoint(endpoint, "claude")) {
@@ -299,6 +319,8 @@ async function callOllama(
   settings: Record<string, string>,
   prompt: string
 ): Promise<string> {
+  checkRateLimit("ollama", settings);
+
   const endpoint = settings.ollama_endpoint || "http://localhost:11434";
   const model = settings.ollama_model || "llama3.1";
 
