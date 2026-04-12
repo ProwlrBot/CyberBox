@@ -1,0 +1,5 @@
+name: subfinder
+repo: projectdiscovery/subfinder
+install_type: go
+go_install_path: github.com/projectdiscovery/subfinder/v2/cmd/subfinder
+version: latest

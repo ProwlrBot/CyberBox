@@ -562,6 +562,89 @@ PYEOF
 }
 
 # ── Main ─────────────────────────────────────────────────────
+# ── pdtm-format install ──────────────────────────────────────
+# Accepts a manifest shaped like projectdiscovery/pdtm tool entries:
+#   name: subfinder
+#   repo: projectdiscovery/subfinder
+#   install_type: go       # or "binary"
+#   go_install_path: github.com/projectdiscovery/subfinder/v2/cmd/subfinder
+#   version: latest
+#
+# Usage: csbx pdtm <manifest.yaml> | <repo:tool> | <go-install-path>
+cmd_pdtm() {
+  local input="$1"
+  local name repo install_type go_path version
+
+  if [[ -f "$input" ]]; then
+    # Manifest file
+    name=$(yaml_get "$input" "name")
+    repo=$(yaml_get "$input" "repo")
+    install_type=$(yaml_get "$input" "install_type")
+    go_path=$(yaml_get "$input" "go_install_path")
+    version=$(yaml_get "$input" "version")
+  elif [[ "$input" == *"/"*"/"* ]] || [[ "$input" == "github.com/"* ]]; then
+    # Raw go install path
+    go_path="$input"
+    name=$(basename "$go_path")
+    install_type="go"
+    version="latest"
+  else
+    err "Need a manifest file or a Go install path (e.g. github.com/org/tool/cmd/tool)"
+    return 1
+  fi
+
+  validate_name "$name" || return 1
+  install_type="${install_type:-go}"
+  version="${version:-latest}"
+
+  case "$install_type" in
+    go)
+      if ! command -v go &>/dev/null; then
+        err "Go toolchain required for install_type=go"
+        return 1
+      fi
+      if [[ -z "$go_path" ]]; then
+        err "install_type=go requires go_install_path"
+        return 1
+      fi
+      info "Installing ${name} via: go install ${go_path}@${version}"
+      if ! GOBIN="${CSBX_BIN}" go install "${go_path}@${version}"; then
+        err "go install failed"
+        return 1
+      fi
+      ;;
+    binary)
+      err "install_type=binary not yet implemented — use a csbx.yaml install script"
+      return 1
+      ;;
+    *)
+      err "Unknown install_type: $install_type"
+      return 1
+      ;;
+  esac
+
+  # Record installation
+  CSBX_INSTALLED="$CSBX_INSTALLED" CSBX_NAME="$name" CSBX_TYPE="tool" \
+    CSBX_REPO="${repo:-${go_path%%/cmd*}}" CSBX_TARGET="${CSBX_BIN}/${name}" \
+    CSBX_SOURCE="pdtm" python3 - <<'PYEOF' 2>/dev/null
+import yaml, datetime, os
+installed = os.environ['CSBX_INSTALLED']
+with open(installed) as f:
+    d = yaml.safe_load(f) or {'plugins': {}}
+d.setdefault('plugins', {})[os.environ['CSBX_NAME']] = {
+    'type': 'tool',
+    'source': 'pdtm',
+    'repo': os.environ['CSBX_REPO'],
+    'installed_at': datetime.datetime.now().isoformat(),
+    'path': os.environ['CSBX_TARGET']
+}
+with open(installed, 'w') as f:
+    yaml.dump(d, f, default_flow_style=False)
+PYEOF
+
+  ok "${name} installed → ${CSBX_BIN}/${name}"
+}
+
 usage() {
   cat <<'EOF'
 csbx — CyberSandbox Plugin Manager
@@ -577,6 +660,7 @@ COMMANDS:
   list                  List installed plugins
   list --available      List all registry plugins
   sync                  Force re-fetch registry
+  pdtm <manifest|path>  Install a pdtm-format Go tool (projectdiscovery-compatible)
   doctor                Health check
 
 PLUGIN TYPES:
@@ -611,6 +695,7 @@ case "${1:-}" in
   update)   cmd_update "${2:?Usage: csbx update <plugin|--all>}" ;;
   list)     cmd_list "${2:-}" ;;
   sync)     registry_sync ;;
+  pdtm)     cmd_pdtm "${2:?Usage: csbx pdtm <manifest.yaml|go-install-path>}" ;;
   doctor)   cmd_doctor ;;
   -h|--help|help|"") usage ;;
   *)        err "Unknown command: $1"; usage ;;
