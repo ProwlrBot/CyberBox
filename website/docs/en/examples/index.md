@@ -1,8 +1,10 @@
 # Examples
 
-This section provides practical examples and integration guides for using CyberBox in real-world scenarios.
-
-> **Note:** Many code samples on this page were inherited from the upstream agent-sandbox SDK docs and are being migrated. For the current canonical API — method names, argument shapes, and response types — consult the SDK READMEs in [`sdk/python/README.md`](https://github.com/ProwlrBot/CyberBox/blob/main/sdk/python/README.md) and [`sdk/js/README.md`](https://github.com/ProwlrBot/CyberBox/blob/main/sdk/js/README.md) and the runnable TypeScript example under [`examples/cybersandbox-js-quickstart/`](https://github.com/ProwlrBot/CyberBox/tree/main/examples/cybersandbox-js-quickstart).
+Practical integration guides for using CyberBox in real-world scenarios. All
+snippets below match the current CyberBox SDK surface (`agent-sandbox` on
+PyPI, `@agent-infra/sandbox` on npm). If you spot drift, the SDK source is
+authoritative — see [`sdk/python/README.md`](https://github.com/ProwlrBot/CyberBox/blob/main/sdk/python/README.md)
+and [`sdk/js/README.md`](https://github.com/ProwlrBot/CyberBox/blob/main/sdk/js/README.md).
 
 ## Quick Examples
 
@@ -87,337 +89,328 @@ spec:
 
 ### Python SDK
 
-Install the Python SDK for CyberBox:
+Install the Python SDK:
 
 ```bash
 pip install agent-sandbox
+# or with uv:
+uv add agent-sandbox
 ```
 
 #### Basic Configuration
 
-Import and configure the Python client:
+The SDK ships `Sandbox` (sync) and `AsyncSandbox` (async). Both accept
+`base_url`, `timeout`, `headers`, `follow_redirects`, and `httpx_client`.
+There is no `retries` / `retry_delay` option — pass a pre-configured
+`httpx.Client` / `httpx.AsyncClient` if you need custom transport behaviour.
 
 ```python
-from agent_sandbox import AsyncSandbox
-import asyncio
+from agent_sandbox import Sandbox
 
-# Initialize the client
-client = AsyncSandbox(
+client = Sandbox(
     base_url="http://localhost:8080",  # CyberBox URL
-    timeout=30.0,  # Request timeout in seconds
-    retries=3,     # Number of retry attempts
-    retry_delay=1.0  # Delay between retries
+    timeout=30.0,                      # seconds
 )
 ```
 
+Every resource method returns a Pydantic model (`Response*`) with four
+fields: `success`, `message`, `data`, `hint`. The typed payload is on
+`.data`.
+
 #### Shell Operations
 
-Execute shell commands and manage sessions:
+Execute commands and manage shell sessions via `client.shell.exec_command`.
+Sessions are addressed by `id` (optional — one is created for you if
+omitted); pass the same `id` on subsequent calls to keep state.
 
 ```python
-async def shell_example():
-    # Execute a simple command
-    result = await client.shell.exec(command="ls -la")
+# Run a one-shot command
+result = client.shell.exec_command(command="ls -la")
+if result.success and result.data:
+    print("Output:", result.data.output)
+    print("Exit code:", result.data.exit_code)
 
-    if result.success:
-        print(f"Output: {result.data.output}")
-        print(f"Exit code: {result.data.exit_code}")
+# Pin a session id to persist cwd / env across calls
+session_id = "my-session-1"
+client.shell.exec_command(
+    command="cd /workspace && pwd",
+    id=session_id,
+)
+client.shell.exec_command(command="ls", id=session_id)
 
-    # Execute with session management
-    session_id = "my-session-1"
-    await client.shell.exec(
-        command="cd /workspace && pwd",
-        session_id=session_id
-    )
+# Fire-and-forget long-running command
+client.shell.exec_command(
+    command="python long_script.py",
+    async_mode=True,
+    id=session_id,
+)
 
-    # Continue in the same session
-    result = await client.shell.exec(
-        command="ls",
-        session_id=session_id
-    )
+# Read back buffered output
+view = client.shell.view(id=session_id)
+if view.data:
+    print(view.data.output)
+```
 
-    # Asynchronous execution for long-running tasks
-    await client.shell.exec(
-        command="python long_script.py",
-        async_mode=True,
-        session_id=session_id
-    )
+Async variant — replace `Sandbox` with `AsyncSandbox` and `await` each call:
 
-    # View session output
-    view_result = await client.shell.view(session_id=session_id)
-    print(view_result.data.output)
+```python
+import asyncio
+from agent_sandbox import AsyncSandbox
 
-# Run the example
-asyncio.run(shell_example())
+async def main() -> None:
+    client = AsyncSandbox(base_url="http://localhost:8080")
+    result = await client.shell.exec_command(command="uptime")
+    if result.data:
+        print(result.data.output)
+
+asyncio.run(main())
 ```
 
 #### File Operations
 
-Manage files and directories:
+The file resource uses `read_file` / `write_file` / `list_path` /
+`find_files` / `search_in_file` / `grep_files`. There is no `file.read`
+or `file.list` alias.
 
 ```python
-async def file_example():
-    # Write a file
-    await client.file.write(
-        file="/tmp/example.py",
-        content="""
-import matplotlib.pyplot as plt
-import numpy as np
+# Write a file
+client.file.write_file(
+    file="/tmp/example.py",
+    content=(
+        "import numpy as np\n"
+        "print(np.arange(10))\n"
+    ),
+)
 
-x = np.linspace(0, 10, 100)
-y = np.sin(x)
+# Read a file
+read = client.file.read_file(file="/tmp/example.py")
+if read.data:
+    print(read.data.content)
 
-plt.plot(x, y)
-plt.savefig('/tmp/plot.png')
-print("Plot saved!")
-        """.strip()
-    )
+# List a directory (recursive)
+listing = client.file.list_path(path="/tmp", recursive=True)
+if listing.data:
+    for entry in listing.data.files:
+        print(f"{entry.name}: {entry.size} bytes")
 
-    # Read file content
-    content = await client.file.read(file="/tmp/example.py")
-    if content.success:
-        print(f"File content:\n{content.data.content}")
+# Regex-search within a single file
+search = client.file.search_in_file(
+    file="/tmp/example.py",
+    regex=r"import \w+",
+)
+if search.data:
+    for match in search.data.matches:
+        print(f"line {match.line}: {match.content}")
 
-    # List directory contents
-    files = await client.file.list(
-        path="/tmp",
-        recursive=True,
-        include_size=True
-    )
+# Find files by name / glob pattern under a path
+found = client.file.find_files(path="/tmp", glob="*.py")
 
-    for file_info in files.data.files:
-        print(f"{file_info.name}: {file_info.size} bytes")
-
-    # Search in files
-    search_result = await client.file.search(
-        file="/tmp/example.py",
-        regex=r"import \w+"
-    )
-
-    if search_result.success:
-        for match in search_result.data.matches:
-            print(f"Line {match.line}: {match.content}")
-
-    # Find files by pattern
-    found_files = await client.file.find(
-        path="/tmp",
-        glob="*.py"
-    )
-
-asyncio.run(file_example())
+# Grep across multiple files
+grepped = client.file.grep_files(path="/tmp", pattern="TODO")
 ```
 
 #### Code Execution
 
-Execute Python and JavaScript code securely:
+Jupyter (stateful, persistent kernel sessions):
 
 ```python
-async def code_execution_example():
-    # Execute Python code in Jupyter kernel
-    jupyter_result = await client.jupyter.execute(
-        code="""
-import pandas as pd
-import numpy as np
+jupyter_result = client.jupyter.execute_code(
+    code=(
+        "import pandas as pd\n"
+        "df = pd.DataFrame({'x': range(5), 'y': range(5, 10)})\n"
+        "print(df)\n"
+    ),
+    timeout=60,
+    session_id="data-analysis-session",   # keep kernel state across calls
+)
 
-# Create sample data
-df = pd.DataFrame({
-    'x': np.random.randn(100),
-    'y': np.random.randn(100)
-})
+if jupyter_result.data:
+    for output in jupyter_result.data.outputs:
+        if output.output_type == "stream":
+            print(output.text)
+        elif output.output_type == "execute_result":
+            print(output.data.get("text/plain", ""))
+```
 
-print(f"DataFrame shape: {df.shape}")
-print(df.head())
-        """,
-        timeout=60,
-        session_id="data-analysis-session"
-    )
+Node.js (stateful):
 
-    if jupyter_result.success:
-        print("Jupyter Output:")
-        for output in jupyter_result.data.outputs:
-            if output.output_type == "stream":
-                print(output.text)
-            elif output.output_type == "execute_result":
-                print(output.data.get("text/plain", ""))
+```python
+nodejs_result = client.nodejs.execute_code(
+    code="console.log(process.version)",
+    timeout=30,
+)
+if nodejs_result.data:
+    print(nodejs_result.data.stdout)
+```
 
-    # Execute Node.js code
-    nodejs_result = await client.nodejs.execute(
-        code="""
-const fs = require('fs');
-const path = require('path');
+One-shot multi-language execution via `client.code` (stateless):
 
-// Read package.json if it exists
-try {
-    const packagePath = path.join(process.cwd(), 'package.json');
-    if (fs.existsSync(packagePath)) {
-        const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
-        console.log(`Project: ${pkg.name || 'Unknown'}`);
-        console.log(`Version: ${pkg.version || 'Unknown'}`);
-    } else {
-        console.log('No package.json found');
-    }
-} catch (error) {
-    console.error('Error:', error.message);
-}
-        """,
-        timeout=30
-    )
-
-    if nodejs_result.success:
-        print(f"Node.js Output: {nodejs_result.data.stdout}")
-
-asyncio.run(code_execution_example())
+```python
+py = client.code.execute_code(language="python", code="print(2 + 2)")
+if py.data:
+    print(py.data)
 ```
 
 #### MCP Integration
 
-Work with Model Context Protocol services:
+MCP methods are namespaced with the `mcp_` prefix and the arguments payload
+is a single `request` dict (not `arguments=`):
 
 ```python
-async def mcp_example():
-    # List available MCP servers
-    servers = await client.mcp.list_servers()
-    print("Available MCP servers:", servers.data)
+# List configured MCP servers
+servers = client.mcp.list_mcp_servers()
+print("MCP servers:", servers.data)
 
-    # Get tools from a specific server
-    browser_tools = await client.mcp.list_tools(server_name="browser")
+# List tools from a specific server
+tools = client.mcp.list_mcp_tools(server_name="browser")
+if tools.data:
+    for tool in tools.data.tools:
+        print(tool.name, "-", tool.description)
 
-    for tool in browser_tools.data.tools:
-        print(f"Tool: {tool.name}")
-        print(f"Description: {tool.description}")
-
-    # Execute a tool
-    screenshot_result = await client.mcp.execute_tool(
-        server_name="browser",
-        tool_name="screenshot",
-        arguments={
-            "url": "https://example.com",
-            "width": 1920,
-            "height": 1080
-        }
-    )
-
-    if screenshot_result.success:
-        # Save screenshot data
-        await client.file.write(
-            file="/tmp/screenshot.png",
-            content=screenshot_result.data.content[0].data,  # Base64 image data
-            append=False
-        )
-
-asyncio.run(mcp_example())
+# Execute a tool — server_name / tool_name are POSITIONAL,
+# the argument payload goes through `request=`
+shot = client.mcp.execute_mcp_tool(
+    "browser",
+    "screenshot",
+    request={
+        "url": "https://example.com",
+        "width": 1920,
+        "height": 1080,
+    },
+)
 ```
 
-#### Error Handling and Best Practices
+#### Error Handling
+
+Resource methods return `Response*` models — check `.success` and `.data`
+rather than relying on exceptions. `httpx`-level failures (timeout, DNS,
+connection refused) will raise from the underlying client.
 
 ```python
-async def robust_example():
-    try:
-        # Always use context managers for resource cleanup
-        async with AsyncSandbox("http://localhost:8080") as client:
-            # Set up error handling
-            result = await client.shell.exec("potentially-failing-command")
+try:
+    result = client.shell.exec_command(command="potentially-failing-command")
+    if not result.success:
+        print("command failed:", result.message)
+    elif result.data and result.data.exit_code != 0:
+        print("non-zero exit:", result.data.exit_code)
 
-            if not result.success:
-                print(f"Command failed: {result.message}")
-                if hasattr(result, 'error_code'):
-                    print(f"Error code: {result.error_code}")
-
-            # Check sandbox status
-            status = await client.sandbox.get_context()
-            print(f"Sandbox uptime: {status.data.uptime}")
-            print(f"Available packages: {len(status.data.packages)}")
-
-    except Exception as e:
-        print(f"Connection error: {e}")
-
-asyncio.run(robust_example())
+    # Sandbox health / environment info
+    ctx = client.sandbox.get_context()
+    if ctx.data:
+        print("system env:", ctx.data)
+except Exception as e:
+    # Transport error — socket, DNS, timeout, etc.
+    print(f"transport error: {e}")
 ```
-
 
 ### Node.js SDK
 
-To install the SDK, use the following command:
-
 ```bash
-npm install @agent-infra/sandbox
+pnpm add @agent-infra/sandbox
+# or: npm install @agent-infra/sandbox
 ```
-
 
 #### Basic Configuration
 
-Start by importing the SDK and configuring the client:
+The JS client constructor takes `environment` (base URL), plus optional
+`timeoutInSeconds`, `maxRetries`, and `headers`. There is no `baseUrl`,
+`timeout` (ms), `retries`, or `retryDelay` option — those were
+upstream names that no longer exist.
 
 ```typescript
 import { SandboxClient } from "@agent-infra/sandbox";
 
 const client = new SandboxClient({
-  baseUrl: `https://{aio.sandbox.example}`, //The Url and Port should consistent with the CyberBox
-  timeout: 30000, // Optional: request timeout in milliseconds
-  retries: 3, // Optional: number of retry attempts
-  retryDelay: 1000, // Optional: delay between retries in milliseconds
+  environment: process.env.SANDBOX_API_URL ?? "http://localhost:8080",
+  timeoutInSeconds: 30,
+  maxRetries: 3,
 });
+```
+
+Every method returns an `HttpResponsePromise` resolving to an `APIResponse`
+discriminated union. Always narrow on `res.ok` before reading `res.body`:
+
+```typescript
+const res = await client.shell.execCommand({ command: "uname -a" });
+if (res.ok) {
+  console.log(res.body.data?.output);
+} else {
+  console.error("API error:", res.error);
+}
 ```
 
 #### Shell Execution
 
-Execute shell commands within the sandbox:
-
 ```typescript
-const response = await client.shellExec({
+const res = await client.shell.execCommand({
   command: "ls -la",
 });
-
-if (response.success) {
-  console.log("Command Output:", response.data.output);
-} else {
-  console.error("Error:", response.message);
+if (res.ok) {
+  console.log("output:", res.body.data?.output);
+  console.log("exit code:", res.body.data?.exit_code);
 }
 
-// Asynchronous rotation training results, suitable for long-term tasks
-const response = await client.shellExecWithPolling({
-  command: "ls -la",
-  maxWaitTime: 60 * 1000,
-});
+// Persist state across calls by pinning the session id.
+const sessionId = "my-session-1";
+await client.shell.execCommand({ command: "cd /workspace", id: sessionId });
+const listing = await client.shell.execCommand({ command: "ls", id: sessionId });
 ```
 
 #### File Management
 
-List files in a directory:
-
 ```typescript
-const fileList = await client.fileList({
-  path: "/home/gem",
+const listing = await client.file.listPath({
+  path: "/workspace",
   recursive: true,
 });
-
-if (fileList.success) {
-  console.log("Files:", fileList.data.files);
-} else {
-  console.error("Error:", fileList.message);
+if (listing.ok) {
+  console.log(listing.body.data?.files);
 }
+
+const read = await client.file.readFile({ file: "/workspace/README.md" });
+if (read.ok) {
+  console.log(read.body.data?.content);
+}
+
+await client.file.writeFile({
+  file: "/tmp/hello.txt",
+  content: "hello, sandbox",
+});
 ```
 
 #### Jupyter Code Execution
 
-Run Jupyter notebook code:
-
 ```typescript
-const jupyterResponse = await client.jupyterExecute({
+const res = await client.jupyter.executeCode({
   code: "print('Hello, Jupyter!')",
-  kernel_name: "python3",
+  kernelName: "python3",
 });
-
-if (jupyterResponse.success) {
-  console.log("Output:", jupyterResponse.data);
-} else {
-  console.error("Error:", jupyterResponse.message);
+if (res.ok) {
+  console.log(res.body.data?.outputs);
 }
 ```
 
-## Next Steps
+#### MCP Tool Calls
 
-Ready to implement these patterns? Choose your path:
+```typescript
+// List configured servers
+const servers = await client.mcp.listMcpServers();
+if (servers.ok) console.log(servers.body.data);
+
+// List tools from a server
+const tools = await client.mcp.listMcpTools("browser");
+if (tools.ok) console.log(tools.body.data?.tools);
+
+// Execute a tool. serverName, toolName, and the argument record are POSITIONAL.
+const shot = await client.mcp.executeMcpTool(
+  "browser",
+  "screenshot",
+  { url: "https://example.com", width: 1920, height: 1080 },
+);
+if (shot.ok) console.log(shot.body.data);
+```
+
+## Next Steps
 
 - **[Terminal Examples](/examples/terminal)** - Start with terminal integration
 - **[Browser Examples](/examples/browser)** - Explore browser automation
