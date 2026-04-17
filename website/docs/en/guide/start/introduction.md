@@ -4,21 +4,11 @@
 
 Most sandboxes are **single-purpose** (browser, code, or shell), making file sharing and functional coordination extremely challenging. For instance, files downloaded by a browser sandbox need to be shared with other sandboxes through NAS/OSS, and an Agent task typically requires multiple sandboxes to be ready before it can run.
 
-![](/images/background.png)
+## What is CyberBox?
 
-
-## What is AIO Sandbox?
-
-![](/images/aio-sandbox.png)
-
-AIO Sandbox is an **all-in-one** agent sandbox environment that combines Browser, Shell, File, MCP operations, and VSCode Server in a single Docker container. Built on Cloud-native lightweight sandbox technology, it provides a unified sandbox environment for AI agents and developers.
-
-![](/images/aio-index.png)
+CyberBox is an **all-in-one** agent sandbox environment that combines Browser, Shell, File, MCP operations, and VSCode Server in a single Docker container. Built on Cloud-native lightweight sandbox technology, it provides a unified sandbox environment for AI agents and developers.
 
 Beyond tool integration, it offers live sandbox previews to observe agent activity, and provides agent-friendly APIs (**MCP-ready**) for easy integration for Agents.
-
-![](/images/mcp.png)
-
 
 ## Key Features
 
@@ -72,7 +62,7 @@ Great for scenarios requiring:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                         AIO Sandbox                         │
+│                         CyberBox                         │
 ├─────────────────────────────────────────────────────────────┤
 │  🌐 Browser + VNC       │  💻 VSCode Server                  │
 ├─────────────────────────────────────────────────────────────┤
@@ -86,6 +76,6 @@ Great for scenarios requiring:
 
 ## Getting Started
 
-Ready to dive in? Check out our [Quick Start guide](/guide/start/quick-start) to get your AIO Sandbox running in minutes.
+Ready to dive in? Check out our [Quick Start guide](/guide/start/quick-start) to get your CyberBox running in minutes.
 
 For detailed information about specific components, explore the guides in the sidebar navigation.

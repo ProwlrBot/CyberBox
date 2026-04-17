@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 48" fill="none" aria-labelledby="cb-logo-title">
+  <title id="cb-logo-title">CyberBox</title>
+  <rect x="2" y="4" width="40" height="40" rx="10" fill="#0b0f17"/>
+  <rect x="2" y="4" width="40" height="40" rx="10" stroke="#8b5cf6" stroke-width="2"/>
+  <path d="M22 14l11 6.35v12.7L22 39.4l-11-6.35v-12.7z" fill="none" stroke="#a78bfa" stroke-width="1.75" stroke-linejoin="round"/>
+  <path d="M22 14v13l11 6.35M11 20.35L22 27" stroke="#c4b5fd" stroke-width="1.75" stroke-linejoin="round"/>
+  <text x="56" y="32" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="22" font-weight="700" fill="#0b0f17" letter-spacing="-0.3">CyberBox</text>
+</svg>

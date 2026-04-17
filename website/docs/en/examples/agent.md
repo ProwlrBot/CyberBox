@@ -1,12 +1,12 @@
 # Agent Integration
 
-This guide shows how to integrate AI agents with AIO Sandbox, leveraging the Model Context Protocol (MCP) and REST APIs for powerful agent workflows.
+This guide shows how to integrate AI agents with CyberBox, leveraging the Model Context Protocol (MCP) and REST APIs for powerful agent workflows.
 
 ## Quick Start
 
 ### Basic Agent Setup
 
-The simplest way to connect an agent to AIO Sandbox is through the MCP interface:
+The simplest way to connect an agent to CyberBox is through the MCP interface:
 
 ```python
 import asyncio
@@ -67,7 +67,7 @@ if __name__ == "__main__":
 
 ### MCP Integration
 
-AIO Sandbox provides built-in MCP servers for seamless agent integration:
+CyberBox provides built-in MCP servers for seamless agent integration:
 
 ```python
 import json
@@ -267,7 +267,7 @@ async def persistent_session_example():
 
 ### LangChain Integration
 
-Integrate AIO Sandbox with LangChain for advanced agent workflows:
+Integrate CyberBox with LangChain for advanced agent workflows:
 
 ```python
 from langchain.tools import BaseTool
@@ -277,7 +277,7 @@ from pydantic import BaseModel, Field
 
 class SandboxExecuteTool(BaseTool):
     name = "sandbox_execute"
-    description = "Execute shell commands in AIO Sandbox"
+    description = "Execute shell commands in CyberBox"
     agent: AIOSandboxAgent = Field(...)
 
     def _run(self, command: str) -> str:
@@ -295,7 +295,7 @@ class SandboxExecuteTool(BaseTool):
 
 class SandboxFileTool(BaseTool):
     name = "sandbox_file_ops"
-    description = "Read and write files in AIO Sandbox"
+    description = "Read and write files in CyberBox"
     agent: AIOSandboxAgent = Field(...)
 
     def _run(self, action: str, path: str, content: str = "") -> str:
@@ -354,7 +354,7 @@ class OpenAISandboxAssistant:
     async def create_assistant(self):
         """Create OpenAI Assistant with sandbox function calls"""
         assistant = self.client.beta.assistants.create(
-            name="AIO Sandbox Assistant",
+            name="CyberBox Assistant",
             instructions="You help users execute code and manage files in a sandbox environment.",
             model="gpt-4-turbo-preview",
             tools=[
@@ -532,8 +532,8 @@ if __name__ == "__main__":
 ```yaml
 version: '3.8'
 services:
-  aio-sandbox:
-    image: ghcr.io/agent-infra/sandbox:latest
+  cybersandbox:
+    image: ghcr.io/prowlrbot/cybersandbox:latest
     ports:
       - "8080:8080"
     volumes:
@@ -551,10 +551,10 @@ services:
   ai-agent:
     build: ./agent
     environment:
-      - SANDBOX_URL=http://aio-sandbox:8080
+      - SANDBOX_URL=http://cybersandbox:8080
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
-      - aio-sandbox
+      - cybersandbox
     restart: unless-stopped
 
 volumes:
@@ -579,8 +579,8 @@ spec:
         app: ai-agent
     spec:
       containers:
-      - name: aio-sandbox
-        image: ghcr.io/agent-infra/sandbox:latest
+      - name: cybersandbox
+        image: ghcr.io/prowlrbot/cybersandbox:latest
         ports:
         - containerPort: 8080
         resources:
@@ -625,6 +625,6 @@ For more examples and advanced patterns:
 - Check the [Browser Automation examples](/examples/browser)
 - Explore [Terminal Integration patterns](/examples/terminal)
 - Review the [API documentation](/api/) for detailed specifications
-- Visit the [GitHub repository](https://github.com/agent-infra/sandbox) for latest updates
+- Visit the [GitHub repository](https://github.com/ProwlrBot/CyberBox) for latest updates
 
 Need help? Join our community or open an issue on GitHub!

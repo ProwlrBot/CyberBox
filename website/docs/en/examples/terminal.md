@@ -1,6 +1,6 @@
 # Terminal Integration Examples
 
-This section provides comprehensive examples for integrating with AIO Sandbox's WebSocket terminal interface.
+This section provides comprehensive examples for integrating with CyberBox's WebSocket terminal interface.
 
 ## Basic Terminal Client
 
@@ -104,7 +104,7 @@ terminal.connect();
 setTimeout(() => {
     terminal.sendCommand('ls -la');
     terminal.sendCommand('pwd');
-    terminal.sendCommand('echo "Hello from AIO Sandbox!"');
+    terminal.sendCommand('echo "Hello from CyberBox!"');
 }, 1000);
 ```
 
@@ -462,7 +462,7 @@ asyncio.run(multi_session_demo())
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AIO Sandbox Terminal</title>
+    <title>CyberBox Terminal</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
     <style>
         #terminal { height: 400px; width: 100%; }
@@ -471,7 +471,7 @@ asyncio.run(multi_session_demo())
     </style>
 </head>
 <body>
-    <h1>AIO Sandbox Terminal Interface</h1>
+    <h1>CyberBox Terminal Interface</h1>
     
     <div class="controls">
         <button onclick="connectTerminal()">Connect</button>
@@ -526,7 +526,7 @@ asyncio.run(multi_session_demo())
             websocket = new WebSocket('ws://localhost:8080/v1/shell/ws');
             
             websocket.onopen = () => {
-                terminal.write('\\r\\n\\x1b[32mConnected to AIO Sandbox\\x1b[0m\\r\\n');
+                terminal.write('\\r\\n\\x1b[32mConnected to CyberBox\\x1b[0m\\r\\n');
             };
             
             websocket.onmessage = (event) => {
@@ -656,7 +656,7 @@ const AIOTerminal = ({ baseUrl = 'ws://localhost:8080' }) => {
         
         ws.onopen = () => {
             setConnected(true);
-            terminal.write('\\r\\n\\x1b[32mConnected to AIO Sandbox\\x1b[0m\\r\\n');
+            terminal.write('\\r\\n\\x1b[32mConnected to CyberBox\\x1b[0m\\r\\n');
         };
         
         ws.onmessage = (event) => {

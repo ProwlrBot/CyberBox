@@ -151,8 +151,8 @@ const SECTION_TITLE = {
 };
 
 const SECTION_DESC = {
-  en: 'No more juggling multiple services. AIO Sandbox ships a complete, pre-wired environment in a single Docker container.',
-  zh: '无需管理多个服务。AIO Sandbox 在单个 Docker 容器中提供完整的预配置环境。',
+  en: 'No more juggling multiple services. CyberBox ships a complete, pre-wired security workspace in a single Docker container.',
+  zh: '无需管理多个服务。CyberBox 在单个 Docker 容器中提供完整的预配置安全工作空间。',
 };
 
 export default function HomeLayout() {

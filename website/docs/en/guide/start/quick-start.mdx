@@ -2,7 +2,7 @@
 
 import { Tab, Tabs } from '@rspress/core/theme';
 
-Get up and running with AIO Sandbox in just a few minutes.
+Get up and running with CyberBox in just a few minutes.
 
 ## Prerequisites
 
@@ -15,7 +15,7 @@ Get up and running with AIO Sandbox in just a few minutes.
 
 ```bash
 # Pull and run the latest version
-docker run --security-opt seccomp=unconfined --rm -it -p 8080:8080 ghcr.io/agent-infra/sandbox:latest
+docker run --security-opt seccomp=unconfined --rm -it -p 8080:8080 ghcr.io/prowlrbot/cybersandbox:latest
 ```
 
 ### Option 2: For Users in Mainland China
@@ -28,10 +28,10 @@ docker run --security-opt seccomp=unconfined --rm -it -p 8080:8080 enterprise-pu
 
 ### Option 3: Use a specific version
 
-Format `agent-infra/sandbox:${version}`, for example, to use version 1.0.0.150:
+Format `prowlrbot/cybersandbox:${version}`, for example, to use version 1.0.0.150:
 
 ```bash
-docker run --security-opt seccomp=unconfined --rm -it -p 8080:8080 ghcr.io/agent-infra/sandbox:1.0.0.150
+docker run --security-opt seccomp=unconfined --rm -it -p 8080:8080 ghcr.io/prowlrbot/cybersandbox:1.0.0.150
 
 # or users in mainland China
 docker run --security-opt seccomp=unconfined --rm -it -p 8080:8080 enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:1.0.0.150
@@ -40,13 +40,13 @@ docker run --security-opt seccomp=unconfined --rm -it -p 8080:8080 enterprise-pu
 > If port 8080 is occupied, map to a different port:
 
 ```bash
-docker run --security-opt seccomp=unconfined --rm -it -p 3000:8080 ghcr.io/agent-infra/sandbox:latest
+docker run --security-opt seccomp=unconfined --rm -it -p 3000:8080 ghcr.io/prowlrbot/cybersandbox:latest
 # Then access via http://localhost:3000
 ```
 
 ## Welcome
 
-After running the Docker command, you'll see the AIO Sandbox ASCII logo:
+After running the Docker command, you'll see the CyberBox ASCII logo:
 
 ```bash
  █████╗ ██╗ ██████╗     ███████╗ █████╗ ███╗   ██╗██████╗ ██████╗  ██████╗ ██╗  ██╗
@@ -95,7 +95,6 @@ client = Sandbox(base_url="http://localhost:8080")
 
   </Tab>
 </Tabs>
-
 
 ## 3. Interact with the sandbox
 
@@ -239,8 +238,6 @@ curl -X 'GET' \
 
 Convert a webpage to Markdown with embedded base64 screenshot:
 
-![](/images/example.png)
-
 <Tabs>
   <Tab label="Python">
 
@@ -249,7 +246,6 @@ import asyncio
 import base64
 from playwright.async_api import async_playwright
 from agent_sandbox import Sandbox
-
 
 async def site_to_markdown():
     # initialize sandbox client
@@ -297,7 +293,6 @@ print("Done!")
 
     return "./output.md"
 
-
 if __name__ == "__main__":
     # Run the async function
     result = asyncio.run(site_to_markdown())
@@ -320,7 +315,6 @@ Once running, you can access different interfaces:
 | **Code Server** | `http://localhost:8080/code-server/` | VSCode Server |
 | **MCP Servers** | `http://localhost:8080/mcp` | Model Context Protocol Servers |
 | **Jupyter** | `http://localhost:8080/jupyter` | VSCode Server |
-
 
 ## Getting Help
 

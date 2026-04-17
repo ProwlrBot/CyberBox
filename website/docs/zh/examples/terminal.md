@@ -1,6 +1,6 @@
 # 终端集成示例
 
-本节提供与 AIO Sandbox 的 WebSocket 终端接口集成的全面示例。
+本节提供与 CyberBox 的 WebSocket 终端接口集成的全面示例。
 
 ## 基本终端客户端
 
@@ -104,7 +104,7 @@ terminal.connect();
 setTimeout(() => {
     terminal.sendCommand('ls -la');
     terminal.sendCommand('pwd');
-    terminal.sendCommand('echo "你好，来自 AIO Sandbox！"');
+    terminal.sendCommand('echo "你好，来自 CyberBox！"');
 }, 1000);
 ```
 
@@ -462,7 +462,7 @@ asyncio.run(multi_session_demo())
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AIO Sandbox 终端</title>
+    <title>CyberBox 终端</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
     <style>
         #terminal { height: 400px; width: 100%; }
@@ -471,7 +471,7 @@ asyncio.run(multi_session_demo())
     </style>
 </head>
 <body>
-    <h1>AIO Sandbox 终端界面</h1>
+    <h1>CyberBox 终端界面</h1>
 
     <div class="controls">
         <button onclick="connectTerminal()">连接</button>
@@ -526,7 +526,7 @@ asyncio.run(multi_session_demo())
             websocket = new WebSocket('ws://localhost:8080/v1/shell/ws');
 
             websocket.onopen = () => {
-                terminal.write('\\r\\n\\x1b[32m已连接到 AIO Sandbox\\x1b[0m\\r\\n');
+                terminal.write('\\r\\n\\x1b[32m已连接到 CyberBox\\x1b[0m\\r\\n');
             };
 
             websocket.onmessage = (event) => {
@@ -656,7 +656,7 @@ const AIOTerminal = ({ baseUrl = 'ws://localhost:8080' }) => {
 
         ws.onopen = () => {
             setConnected(true);
-            terminal.write('\\r\\n\\x1b[32m已连接到 AIO Sandbox\\x1b[0m\\r\\n');
+            terminal.write('\\r\\n\\x1b[32m已连接到 CyberBox\\x1b[0m\\r\\n');
         };
 
         ws.onmessage = (event) => {

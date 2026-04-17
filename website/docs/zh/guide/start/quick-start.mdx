@@ -2,7 +2,7 @@
 
 import { Tab, Tabs } from '@rspress/core/theme';
 
-只需几分钟即可启动并运行 AIO Sandbox。
+只需几分钟即可启动并运行 CyberBox。
 
 ## 先决条件
 
@@ -15,7 +15,7 @@ import { Tab, Tabs } from '@rspress/core/theme';
 
 ```bash
 # 拉取并运行最新版本
-docker run --security-opt seccomp=unconfined --rm -it -p 8080:8080 ghcr.io/agent-infra/sandbox:latest
+docker run --security-opt seccomp=unconfined --rm -it -p 8080:8080 ghcr.io/prowlrbot/cybersandbox:latest
 ```
 
 ### 选项 2：中国大陆用户
@@ -29,13 +29,13 @@ docker run --security-opt seccomp=unconfined --rm -it -p 8080:8080 enterprise-pu
 > 如果端口 8080 被占用，映射到不同的端口：
 
 ```bash
-docker run --security-opt seccomp=unconfined --rm -it -p 3000:8080 ghcr.io/agent-infra/sandbox:latest
+docker run --security-opt seccomp=unconfined --rm -it -p 3000:8080 ghcr.io/prowlrbot/cybersandbox:latest
 # 然后通过 http://localhost:3000 访问
 ```
 
 ## 欢迎
 
-运行 Docker 命令后，您将看到 AIO Sandbox ASCII 标志：
+运行 Docker 命令后，您将看到 CyberBox ASCII 标志：
 
 ```bash
  █████╗ ██╗ ██████╗     ███████╗ █████╗ ███╗   ██╗██████╗ ██████╗  ██████╗ ██╗  ██╗
@@ -84,7 +84,6 @@ client = Sandbox(base_url="http://localhost:8080")
 
   </Tab>
 </Tabs>
-
 
 ## 3. 与沙盒交互
 
@@ -228,8 +227,6 @@ curl -X 'GET' \
 
 将网页转换为带有嵌入 base64 截图的 Markdown：
 
-![](/images/example.png)
-
 <Tabs>
   <Tab label="Python">
 
@@ -238,7 +235,6 @@ import asyncio
 import base64
 from playwright.async_api import async_playwright
 from agent_sandbox import Sandbox
-
 
 async def site_to_markdown():
     # 初始化沙盒客户端
@@ -286,7 +282,6 @@ print("完成！")
 
     return "./output.md"
 
-
 if __name__ == "__main__":
     # 运行异步函数
     result = asyncio.run(site_to_markdown())
@@ -309,7 +304,6 @@ if __name__ == "__main__":
 | **Code Server** | `http://localhost:8080/code-server/` | VSCode Server |
 | **MCP 服务器** | `http://localhost:8080/mcp` | 模型上下文协议服务器 |
 | **Jupyter** | `http://localhost:8080/jupyter` | VSCode Server |
-
 
 ## 获取帮助
 

@@ -1,14 +1,10 @@
 # Preview Proxy
 
-AIO Sandbox includes built-in proxy endpoints that allow you to preview and test web applications and services directly from your development environment.
-
-![](/images/port-preview.png)
+CyberBox includes built-in proxy endpoints that allow you to preview and test web applications and services directly from your development environment.
 
 ## SubDomain Proxy(Recommend)
 
 Any domain name that satisfies the `${port}-${domain}` format will be forwarded to the corresponding port within the sandbox.
-
-![](/images/subdomain-proxy.png)
 
 ## SubPath Proxy Types
 

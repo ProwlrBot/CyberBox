@@ -1,6 +1,6 @@
 # 示例
 
-本节提供使用 AIO Sandbox 在实际场景中的实用示例和集成指南。
+本节提供使用 CyberBox 在实际场景中的实用示例和集成指南。
 
 ## 快速示例
 
@@ -16,7 +16,7 @@
 - [Web 抓取示例](/examples/browser#scraping) - 数据提取模式
 
 ### Agent 集成
-使用 AIO Sandbox 构建 AI Agent：
+使用 CyberBox 构建 AI Agent：
 - [基本 Agent 设置](/examples/agent) - 将 Agent 连接到沙盒
 - [MCP 集成](/examples/agent#mcp) - 使用模型上下文协议
 - [多工具工作流](/examples/agent#workflows) - 组合多个 API
@@ -27,8 +27,8 @@
 ```yaml
 version: '3.8'
 services:
-  aio-sandbox:
-    image: ghcr.io/agent-infra/sandbox:latest
+  cybersandbox:
+    image: ghcr.io/prowlrbot/cybersandbox:latest
     ports:
       - "8080:8080"
     volumes:
@@ -44,20 +44,20 @@ volumes:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: aio-sandbox
+  name: cybersandbox
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: aio-sandbox
+      app: cybersandbox
   template:
     metadata:
       labels:
-        app: aio-sandbox
+        app: cybersandbox
     spec:
       containers:
       - name: sandbox
-        image: ghcr.io/agent-infra/sandbox:latest
+        image: ghcr.io/prowlrbot/cybersandbox:latest
         ports:
         - containerPort: 8080
         resources:
@@ -71,10 +71,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: aio-sandbox-service
+  name: cybersandbox-service
 spec:
   selector:
-    app: aio-sandbox
+    app: cybersandbox
   ports:
   - port: 80
     targetPort: 8080
@@ -85,10 +85,10 @@ spec:
 
 ### Python SDK
 
-安装 AIO Sandbox 的 Python SDK：
+安装 CyberBox 的 Python SDK：
 
 ```bash
-pip install aio-sandbox
+pip install agent-sandbox
 ```
 
 #### 基本配置
@@ -101,7 +101,7 @@ import asyncio
 
 # 初始化客户端
 client = AioClient(
-    base_url="http://localhost:8080",  # AIO Sandbox URL
+    base_url="http://localhost:8080",  # CyberBox URL
     timeout=30.0,  # 请求超时（秒）
     retries=3,     # 重试次数
     retry_delay=1.0  # 重试之间的延迟
@@ -350,7 +350,7 @@ npm install @agent-infra/sandbox
 import { AioClient } from "@agent-infra/sandbox";
 
 const client = new AioClient({
-  baseUrl: `https://{aio.sandbox.example}`, // URL 和端口应与 Aio Sandbox 一致
+  baseUrl: `https://{aio.sandbox.example}`, // URL 和端口应与 CyberBox 一致
   timeout: 30000, // 可选：请求超时（毫秒）
   retries: 3, // 可选：重试次数
   retryDelay: 1000, // 可选：重试之间的延迟（毫秒）
@@ -423,4 +423,4 @@ if (jupyterResponse.success) {
 
 如需其他支持：
 - 查看 [API 文档](/api/) 了解详细规范
-- 探索 [GitHub 仓库](https://github.com/agent-infra/sandbox) 获取最新更新
+- 探索 [GitHub 仓库](https://github.com/ProwlrBot/CyberBox) 获取最新更新

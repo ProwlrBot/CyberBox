@@ -1,6 +1,6 @@
-# AIO Sandbox Documentation
+# CyberBox Documentation
 
-This documentation provides comprehensive guides and API references for the AIO Sandbox environment.
+This documentation provides comprehensive guides and API references for the CyberBox environment.
 
 ## 📚 Documentation Structure
 
@@ -39,7 +39,7 @@ npm run docs:build
 ```
 
 ### Live API Documentation
-When AIO Sandbox is running, access the interactive Swagger UI at:
+When CyberBox is running, access the interactive Swagger UI at:
 - **Swagger UI**: http://localhost:8080/v1/docs
 - **OpenAPI Spec**: http://localhost:8080/openapi.json
 
@@ -103,10 +103,10 @@ Contributions to documentation are welcome! Please:
 
 ## 📚 Resources
 
-- **GitHub Repository**: https://github.com/agent-infra/sandbox
-- **Issue Tracker**: https://github.com/agent-infra/sandbox/issues
-- **Docker Hub**: https://hub.docker.com/r/agent-infra/sandbox
+- **GitHub Repository**: https://github.com/ProwlrBot/CyberBox
+- **Issue Tracker**: https://github.com/ProwlrBot/CyberBox/issues
+- **Docker Hub**: https://ghcr.io/prowlrbot/cybersandbox
 
 ## 📄 License
 
-This documentation is part of the AIO Sandbox project and follows the same license terms.
+This documentation is part of the CyberBox project and follows the same license terms.

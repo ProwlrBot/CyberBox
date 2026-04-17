@@ -1,8 +1,6 @@
 # Shell 终端
 
-AIO Sandbox 提供基于 WebSocket 的 Shell 终端，支持实时命令执行和会话管理，`/terminal` 用于 UI 集成。
-
-![](/images/terminal.png)
+CyberBox 提供基于 WebSocket 的 Shell 终端，支持实时命令执行和会话管理，`/terminal` 用于 UI 集成。
 
 ## WebSocket 连接
 

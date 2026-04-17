@@ -1,8 +1,6 @@
 # Code Server
 
-AIO Sandbox 包含一个功能齐全的 VSCode Server（Code Server），提供可通过 Web 浏览器访问的完整云开发环境。
-
-![](/images/code-server.png)
+CyberBox 包含一个功能齐全的 VSCode Server（Code Server），提供可通过 Web 浏览器访问的完整云开发环境。
 
 ## 访问 Code Server
 

@@ -2,13 +2,11 @@
 
 import { Tab, Tabs } from '@rspress/core/theme';
 
-AIO Sandbox 提供了完整的浏览器环境和 VNC（虚拟网络计算）访问，支持与 Web 应用程序和基于 GUI 的工作流进行可视化交互。
-
-![](/images/browser.png)
+CyberBox 提供了完整的浏览器环境和 VNC（虚拟网络计算）访问，支持与 Web 应用程序和基于 GUI 的工作流进行可视化交互。
 
 ## 概述
 
-AIO Sandbox 提供多种与浏览器交互的方式：
+CyberBox 提供多种与浏览器交互的方式：
 - **CDP（Chrome DevTools 协议）**：低级程序化控制
 - **VNC 访问**：具有可视化访问的完整桌面环境
 - **GUI 操作**：可视化截图和交互
@@ -44,7 +42,7 @@ curl http://localhost:8080/json/version | jq '.webSocketDebuggerUrl'
 
 ### Chrome DevTools 协议（CDP）
 
-AIO Sandbox 暴露 CDP 用于程序化浏览器控制：
+CyberBox 暴露 CDP 用于程序化浏览器控制：
 
 ```bash
 # 获取 CDP 端点
@@ -194,10 +192,7 @@ async with async_playwright() as p:
 
 连接到 `/mcp` 端点后，所有以 `browser_` 为前缀的工具都是浏览器相关工具，提供全面的浏览器控制功能。这些工具包括导航、交互、截图捕获等。
 
-![](/images/browser-mcp.png)
-
 有关详细的实现和使用，请参阅 [@agent-infra/mcp-server-browser](https://www.npmjs.com/package/@agent-infra/mcp-server-browser)。
-
 
 ## GUI 操作
 
@@ -226,9 +221,6 @@ curl -X 'GET' \
 </Tabs>
 
 返回 `image/png` 格式的图像：
-
-![](/images/browser-screenshot.png)
-
 
 ### GUI 操作
 
@@ -304,7 +296,6 @@ curl -X 'POST' \
 | `HOTKEY` | 组合键 | `keys` (数组) | - |
 
 示例组合键：`["ctrl", "c"]` 用于复制，`["ctrl", "v"]` 用于粘贴
-
 
 ## 接管
 

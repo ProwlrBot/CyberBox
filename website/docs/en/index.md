@@ -2,42 +2,42 @@
 pageType: home
 
 hero:
-  name: AIO Sandbox
+  name: CyberBox
   text: |
-    All-in-One Environment
-    for AI Agents
+    All-in-One Docker Security
+    Workspace for Hunters & Agents
   tagline: |
-    🌐 Browser | 💻 Terminal | 📁 File
+    🌐 Caido Proxy | 💻 Terminal | 📁 Files
 
-    🔧 VSCode | 📊 Jupyter | <img src="/icons/mcp.png" style="display: inline-block; width: 1.2em; height: 1.2em; vertical-align: -0.25em; margin-right: 4px;" /> MCP
+    🔧 VSCode | 📊 Jupyter | 🤖 Dual AI (Claude + Ollama) | 🧰 160+ Tools
   actions:
     - theme: brand
       text: Get Started
       link: /guide/start/introduction
     - theme: alt
       text: GitHub
-      link: https://github.com/agent-infra/sandbox
+      link: https://github.com/ProwlrBot/CyberBox
   image:
-    src: /aio-icon.png
-    alt: AIO Sandbox Logo
+    src: /brand/icon.svg
+    alt: CyberBox Logo
 
 features:
-  - title: Unified Environment
-    details: One Docker container with shared filesystem. Files downloaded in the browser are instantly accessible in Terminal and VSCode.
+  - title: Unified Workspace
+    details: One Docker container, shared filesystem across Terminal, VSCode, Jupyter, and the Caido proxy — no context switching.
     icon: 🌐
-  - title: Out of the Box
-    details: Built‑in VNC browser, VS Code, Jupyter, file manager, and terminal—accessible directly via API/SDK.
+  - title: Tools Out of the Box
+    details: 160+ pre-installed offensive and defensive tools (nuclei, subfinder, httpx, katana, dalfox, caido, and more).
     icon: ⚡
   - title: Secure Execution
-    details: Isolated Python and Node.js sandboxes. Safe code execution without system risks.
+    details: Isolated Python and Node.js sandboxes with NeMo Guardrails — run untrusted payloads without touching the host.
     icon: 🔐
   - title: Agent-Ready
-    details: Pre-configured MCP Server with Browser, File, Terminal, Markdown, Ready-to-use for AI agents.
+    details: MCP server exposes shell, browser, files, code, and Caido — ready for Claude, Ollama, and custom agents.
     icon: 🤖
   - title: Developer Friendly
-    details: Cloud-based VSCode with persistent terminals, intelligent port forwarding(via `${Port}-${domain}/` or `/proxy`), and instant frontend/backend previews.
+    details: Cloud VSCode, persistent terminals, smart port forwarding (via `${Port}-${domain}/` or `/proxy`), instant previews.
     icon: 🔧
   - title: Production Ready
-    details: Enterprise-grade Docker deployment. Lightweight, scalable.
+    details: Signed container images (cosign + SBOM), GHCR-published, Trivy-scanned supply chain. Built to scale.
     icon: 🚀
 ---

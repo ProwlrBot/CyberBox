@@ -1,10 +1,10 @@
 # Browser Automation Examples
 
-This guide shows how to use AIO Sandbox for browser automation, web scraping, and UI testing.
+This guide shows how to use CyberBox for browser automation, web scraping, and UI testing.
 
 ## Overview
 
-AIO Sandbox provides multiple ways to interact with browsers:
+CyberBox provides multiple ways to interact with browsers:
 
 - **VNC Access**: Visual browser interaction through remote desktop
 - **Chrome DevTools Protocol (CDP)**: Programmatic browser control
@@ -368,7 +368,7 @@ import asyncio
 
 async def playwright_example():
     async with async_playwright() as p:
-        # Connect to existing browser in AIO Sandbox
+        # Connect to existing browser in CyberBox
         browser = await p.chromium.connect_over_cdp(
             "ws://localhost:8080/cdp"
         )
@@ -396,7 +396,7 @@ asyncio.run(playwright_example())
 
 ## Selenium Integration
 
-Use Selenium WebDriver with AIO Sandbox:
+Use Selenium WebDriver with CyberBox:
 
 ```python
 from selenium import webdriver
@@ -556,7 +556,7 @@ async def monitor_console_logs():
     print("Console monitoring result:", console_check.result)
 ```
 
-## Integration with Other AIO Sandbox Components
+## Integration with Other CyberBox Components
 
 ### Browser + File Operations
 
@@ -619,11 +619,11 @@ print(summary.to_string())
     print("Analysis Result:", result.content)
 ```
 
-This comprehensive guide covers the main approaches to browser automation with AIO Sandbox. Choose the method that best fits your use case:
+This comprehensive guide covers the main approaches to browser automation with CyberBox. Choose the method that best fits your use case:
 
 - **VNC** for visual interaction and debugging
 - **CDP** for low-level browser control
 - **MCP Browser Server** for high-level automation
 - **Playwright/Selenium** for familiar frameworks
 
-For more advanced scenarios, combine browser automation with other AIO Sandbox components like file operations, shell commands, and code execution.
+For more advanced scenarios, combine browser automation with other CyberBox components like file operations, shell commands, and code execution.

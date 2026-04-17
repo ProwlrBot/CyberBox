@@ -1,12 +1,10 @@
 # MCP 集成
 
-AIO Sandbox 中的模型上下文协议（MCP）Hub 为 AI Agent 提供了一个集中式接口，通过单个端点访问多个服务。
-
-![](/images/mcp.png)
+CyberBox 中的模型上下文协议（MCP）Hub 为 AI Agent 提供了一个集中式接口，通过单个端点访问多个服务。
 
 ## 什么是 MCP？
 
-MCP（模型上下文协议）是 AI Agent 与外部工具和服务交互的标准化方式。AIO Sandbox 包含一个预配置的 MCP Hub，聚合了多个有用的服务器。
+MCP（模型上下文协议）是 AI Agent 与外部工具和服务交互的标准化方式。CyberBox 包含一个预配置的 MCP Hub，聚合了多个有用的服务器。
 
 ## 可用的 MCP 服务器
 

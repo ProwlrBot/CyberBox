@@ -1,8 +1,6 @@
 # Shell Terminal
 
-AIO Sandbox provides a WebSocket-based shell terminal that enables real-time command execution and session management, `/terminal` for UI Integration.
-
-![](/images/terminal.png)
+CyberBox provides a WebSocket-based shell terminal that enables real-time command execution and session management, `/terminal` for UI Integration.
 
 ## WebSocket Connection
 

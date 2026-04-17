@@ -1,7 +1,7 @@
 {
   "oneLineCommand": {
-    "zh": "docker run --rm -it -p 8080:8080 enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest",
-    "en": "docker run --rm -it -p 8080:8080 ghcr.io/agent-infra/sandbox:latest"
+    "zh": "docker run --rm -it -p 8080:8080 ghcr.io/prowlrbot/cybersandbox:latest",
+    "en": "docker run --rm -it -p 8080:8080 ghcr.io/prowlrbot/cybersandbox:latest"
   },
   "gettingStarted": {
     "zh": "开始",
@@ -48,7 +48,7 @@
     "en": "Try searching for different keywords"
   },
   "footerMessage": {
-    "zh": "为 AI Agents 打造 · AIO Sandbox © 2026",
-    "en": "Built with ❤️ for AI Agents · AIO Sandbox © 2026"
+    "zh": "为安全研究与 AI Agent 打造 · CyberBox · ProwlrBot © 2026",
+    "en": "Built for hunters and agents · CyberBox · ProwlrBot © 2026"
   }
 }

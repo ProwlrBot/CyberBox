@@ -1,6 +1,6 @@
 # Examples
 
-This section provides practical examples and integration guides for using AIO Sandbox in real-world scenarios.
+This section provides practical examples and integration guides for using CyberBox in real-world scenarios.
 
 ## Quick Examples
 
@@ -16,7 +16,7 @@ Explore browser automation capabilities:
 - [Web Scraping Examples](/examples/browser#scraping) - Data extraction patterns
 
 ### Agent Integration
-Build AI agents with AIO Sandbox:
+Build AI agents with CyberBox:
 - [Basic Agent Setup](/examples/agent) - Connect agents to sandbox
 - [MCP Integration](/examples/agent#mcp) - Use Model Context Protocol
 - [Multi-Tool Workflows](/examples/agent#workflows) - Combine multiple APIs
@@ -27,8 +27,8 @@ Build AI agents with AIO Sandbox:
 ```yaml
 version: '3.8'
 services:
-  aio-sandbox:
-    image: ghcr.io/agent-infra/sandbox:latest
+  cybersandbox:
+    image: ghcr.io/prowlrbot/cybersandbox:latest
     ports:
       - "8080:8080"
     volumes:
@@ -44,20 +44,20 @@ volumes:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: aio-sandbox
+  name: cybersandbox
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: aio-sandbox
+      app: cybersandbox
   template:
     metadata:
       labels:
-        app: aio-sandbox
+        app: cybersandbox
     spec:
       containers:
       - name: sandbox
-        image: ghcr.io/agent-infra/sandbox:latest
+        image: ghcr.io/prowlrbot/cybersandbox:latest
         ports:
         - containerPort: 8080
         resources:
@@ -71,10 +71,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: aio-sandbox-service
+  name: cybersandbox-service
 spec:
   selector:
-    app: aio-sandbox
+    app: cybersandbox
   ports:
   - port: 80
     targetPort: 8080
@@ -85,10 +85,10 @@ spec:
 
 ### Python SDK
 
-Install the Python SDK for AIO Sandbox:
+Install the Python SDK for CyberBox:
 
 ```bash
-pip install aio-sandbox
+pip install agent-sandbox
 ```
 
 #### Basic Configuration
@@ -101,7 +101,7 @@ import asyncio
 
 # Initialize the client
 client = AioClient(
-    base_url="http://localhost:8080",  # AIO Sandbox URL
+    base_url="http://localhost:8080",  # CyberBox URL
     timeout=30.0,  # Request timeout in seconds
     retries=3,     # Number of retry attempts
     retry_delay=1.0  # Delay between retries
@@ -350,7 +350,7 @@ Start by importing the SDK and configuring the client:
 import { AioClient } from "@agent-infra/sandbox";
 
 const client = new AioClient({
-  baseUrl: `https://{aio.sandbox.example}`, //The Url and Port should consistent with the Aio Sandbox
+  baseUrl: `https://{aio.sandbox.example}`, //The Url and Port should consistent with the CyberBox
   timeout: 30000, // Optional: request timeout in milliseconds
   retries: 3, // Optional: number of retry attempts
   retryDelay: 1000, // Optional: delay between retries in milliseconds
@@ -423,4 +423,4 @@ Ready to implement these patterns? Choose your path:
 
 For additional support:
 - Check the [API documentation](/api/) for detailed specifications
-- Explore the [GitHub repository](https://github.com/agent-infra/sandbox) for latest updates
+- Explore the [GitHub repository](https://github.com/ProwlrBot/CyberBox) for latest updates

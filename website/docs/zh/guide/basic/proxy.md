@@ -1,14 +1,10 @@
 # 预览代理
 
-AIO Sandbox 包含内置代理端点，允许您直接从开发环境预览和测试 Web 应用程序和服务。
-
-![](/images/port-preview.png)
+CyberBox 包含内置代理端点，允许您直接从开发环境预览和测试 Web 应用程序和服务。
 
 ## 子域代理（推荐）
 
 任何满足 `${port}-${domain}` 格式的域名都将被转发到沙盒内的相应端口。
-
-![](/images/subdomain-proxy.png)
 
 ## 子路径代理类型
 

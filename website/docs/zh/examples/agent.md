@@ -1,12 +1,12 @@
 # Agent 集成
 
-本指南展示如何将 AI Agent 与 AIO Sandbox 集成，利用模型上下文协议（MCP）和 REST API 实现强大的 Agent 工作流。
+本指南展示如何将 AI Agent 与 CyberBox 集成，利用模型上下文协议（MCP）和 REST API 实现强大的 Agent 工作流。
 
 ## 快速开始
 
 ### 基本 Agent 设置
 
-通过 MCP 接口连接 Agent 到 AIO Sandbox 的最简单方法：
+通过 MCP 接口连接 Agent 到 CyberBox 的最简单方法：
 
 ```python
 import asyncio
@@ -67,7 +67,7 @@ if __name__ == "__main__":
 
 ### MCP 集成
 
-AIO Sandbox 提供内置 MCP 服务器，实现无缝 Agent 集成：
+CyberBox 提供内置 MCP 服务器，实现无缝 Agent 集成：
 
 ```python
 import json
@@ -267,7 +267,7 @@ async def persistent_session_example():
 
 ### LangChain 集成
 
-将 AIO Sandbox 与 LangChain 集成，实现高级 Agent 工作流：
+将 CyberBox 与 LangChain 集成，实现高级 Agent 工作流：
 
 ```python
 from langchain.tools import BaseTool
@@ -277,7 +277,7 @@ from pydantic import BaseModel, Field
 
 class SandboxExecuteTool(BaseTool):
     name = "sandbox_execute"
-    description = "在 AIO Sandbox 中执行 Shell 命令"
+    description = "在 CyberBox 中执行 Shell 命令"
     agent: AIOSandboxAgent = Field(...)
 
     def _run(self, command: str) -> str:
@@ -295,7 +295,7 @@ class SandboxExecuteTool(BaseTool):
 
 class SandboxFileTool(BaseTool):
     name = "sandbox_file_ops"
-    description = "在 AIO Sandbox 中读写文件"
+    description = "在 CyberBox 中读写文件"
     agent: AIOSandboxAgent = Field(...)
 
     def _run(self, action: str, path: str, content: str = "") -> str:
@@ -354,7 +354,7 @@ class OpenAISandboxAssistant:
     async def create_assistant(self):
         """创建具有沙盒函数调用的 OpenAI 助手"""
         assistant = self.client.beta.assistants.create(
-            name="AIO Sandbox 助手",
+            name="CyberBox 助手",
             instructions="您帮助用户在沙盒环境中执行代码和管理文件。",
             model="gpt-4-turbo-preview",
             tools=[
@@ -532,8 +532,8 @@ if __name__ == "__main__":
 ```yaml
 version: '3.8'
 services:
-  aio-sandbox:
-    image: ghcr.io/agent-infra/sandbox:latest
+  cybersandbox:
+    image: ghcr.io/prowlrbot/cybersandbox:latest
     ports:
       - "8080:8080"
     volumes:
@@ -551,10 +551,10 @@ services:
   ai-agent:
     build: ./agent
     environment:
-      - SANDBOX_URL=http://aio-sandbox:8080
+      - SANDBOX_URL=http://cybersandbox:8080
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
-      - aio-sandbox
+      - cybersandbox
     restart: unless-stopped
 
 volumes:
@@ -579,8 +579,8 @@ spec:
         app: ai-agent
     spec:
       containers:
-      - name: aio-sandbox
-        image: ghcr.io/agent-infra/sandbox:latest
+      - name: cybersandbox
+        image: ghcr.io/prowlrbot/cybersandbox:latest
         ports:
         - containerPort: 8080
         resources:
@@ -625,6 +625,6 @@ spec:
 - 查看[浏览器自动化示例](/examples/browser)
 - 探索[终端集成模式](/examples/terminal)
 - 查看 [API 文档](/api/) 了解详细规范
-- 访问 [GitHub 仓库](https://github.com/agent-infra/sandbox) 获取最新更新
+- 访问 [GitHub 仓库](https://github.com/ProwlrBot/CyberBox) 获取最新更新
 
 需要帮助？加入我们的社区或在 GitHub 上提出问题！

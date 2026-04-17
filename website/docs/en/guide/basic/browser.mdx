@@ -2,13 +2,11 @@
 
 import { Tab, Tabs } from '@rspress/core/theme';
 
-AIO Sandbox provides a full browser environment with VNC (Virtual Network Computing) access, enabling visual interaction with web applications and GUI-based workflows.
-
-![](/images/browser.png)
+CyberBox provides a full browser environment with VNC (Virtual Network Computing) access, enabling visual interaction with web applications and GUI-based workflows.
 
 ## Overview
 
-AIO Sandbox offers multiple ways to interact with the browser:
+CyberBox offers multiple ways to interact with the browser:
 - **CDP (Chrome DevTools Protocol)**: Low-level programmatic control
 - **VNC Access**: Full desktop environment with visual access
 - **GUI Actions**: Visual screenshots and interactions
@@ -44,7 +42,7 @@ curl http://localhost:8080/json/version | jq '.webSocketDebuggerUrl'
 
 ### Chrome DevTools Protocol (CDP)
 
-AIO Sandbox exposes CDP for programmatic browser control:
+CyberBox exposes CDP for programmatic browser control:
 
 ```bash
 # Get CDP endpoint
@@ -194,10 +192,7 @@ async with async_playwright() as p:
 
 Once connected to `/mcp` endpoint, all tools with the `browser_` prefix are browser-related tools that provide comprehensive browser control capabilities. These tools include navigation, interaction, screenshot capture, and more.
 
-![](/images/browser-mcp.png)
-
 For detailed implementation and usage, see [@agent-infra/mcp-server-browser](https://www.npmjs.com/package/@agent-infra/mcp-server-browser).
-
 
 ## GUI Actions
 
@@ -226,9 +221,6 @@ curl -X 'GET' \
 </Tabs>
 
 Return an image in the format `image/png`:
-
-![](/images/browser-screenshot.png)
-
 
 ### GUI Actions
 
@@ -304,7 +296,6 @@ curl -X 'POST' \
 | `HOTKEY` | Key combination | `keys` (Array) | - |
 
 Example hotkey: `["ctrl", "c"]` for copy, `["ctrl", "v"]` for paste
-
 
 ## Take Over
 

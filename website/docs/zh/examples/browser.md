@@ -1,10 +1,10 @@
 # 浏览器自动化示例
 
-本指南展示如何使用 AIO Sandbox 进行浏览器自动化、Web 抓取和 UI 测试。
+本指南展示如何使用 CyberBox 进行浏览器自动化、Web 抓取和 UI 测试。
 
 ## 概述
 
-AIO Sandbox 提供多种与浏览器交互的方式：
+CyberBox 提供多种与浏览器交互的方式：
 
 - **VNC 访问**：通过远程桌面进行可视化浏览器交互
 - **Chrome DevTools 协议（CDP）**：程序化浏览器控制
@@ -368,7 +368,7 @@ import asyncio
 
 async def playwright_example():
     async with async_playwright() as p:
-        # 连接到 AIO Sandbox 中的现有浏览器
+        # 连接到 CyberBox 中的现有浏览器
         browser = await p.chromium.connect_over_cdp(
             "ws://localhost:8080/cdp"
         )
@@ -396,7 +396,7 @@ asyncio.run(playwright_example())
 
 ## Selenium 集成
 
-使用 Selenium WebDriver 与 AIO Sandbox：
+使用 Selenium WebDriver 与 CyberBox：
 
 ```python
 from selenium import webdriver
@@ -556,7 +556,7 @@ async def monitor_console_logs():
     print("控制台监控结果：", console_check.result)
 ```
 
-## 与其他 AIO Sandbox 组件集成
+## 与其他 CyberBox 组件集成
 
 ### 浏览器 + 文件操作
 
@@ -619,11 +619,11 @@ print(summary.to_string())
     print("分析结果：", result.content)
 ```
 
-这份全面的指南涵盖了使用 AIO Sandbox 进行浏览器自动化的主要方法。选择最适合您用例的方法：
+这份全面的指南涵盖了使用 CyberBox 进行浏览器自动化的主要方法。选择最适合您用例的方法：
 
 - **VNC** 用于可视化交互和调试
 - **CDP** 用于底层浏览器控制
 - **MCP 浏览器服务器** 用于高级自动化
 - **Playwright/Selenium** 用于熟悉的框架
 
-对于更高级的场景，将浏览器自动化与其他 AIO Sandbox 组件（如文件操作、Shell 命令和代码执行）结合使用。
+对于更高级的场景，将浏览器自动化与其他 CyberBox 组件（如文件操作、Shell 命令和代码执行）结合使用。

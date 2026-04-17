@@ -15,18 +15,18 @@ import { pluginGoogleAnalytics } from 'rsbuild-plugin-google-analytics';
 import { pluginOpenGraph } from 'rsbuild-plugin-open-graph';
 import { pluginFontOpenSans } from 'rspress-plugin-font-open-sans';
 
-const siteUrl = 'https://sandbox.agent-infra.com';
+const siteUrl = 'https://prowlrbot.com/cyberbox';
 
 export default defineConfig({
   root: path.join(__dirname, 'docs'),
   lang: 'en',
-  title: 'AIO Sandbox',
+  title: 'CyberBox',
   description:
-    'All-in-One Agent Sandbox Environment - Browser, Shell, File, VSCode Server, and MCP Hub in One Container',
-  icon: '/aio-icon.png',
+    'CyberBox — all-in-one Docker security workspace with 160+ tools, dual AI, Caido proxy, and plugin marketplace',
+  icon: '/brand/favicon.svg',
   logo: {
-    dark: '/aio-icon.png',
-    light: '/aio-icon.png',
+    dark: '/brand/logo-dark.svg',
+    light: '/brand/logo-light.svg',
   },
   themeDir: path.join(__dirname, 'theme'),
   route: {
@@ -85,14 +85,14 @@ export default defineConfig({
     {
       lang: 'en',
       label: 'English',
-      title: 'AIO Sandbox',
-      description: 'All-in-One Environment for AI Agents',
+      title: 'CyberBox',
+      description: 'All-in-One Docker security workspace for hunters and agents',
     },
     {
       lang: 'zh',
       label: '简体中文',
-      title: 'AIO Sandbox',
-      description: '面向 AI Agents 的一体化沙盒环境',
+      title: 'CyberBox',
+      description: '面向安全研究与 AI Agent 的一体化 Docker 沙盒',
     },
   ],
   themeConfig: {
@@ -101,11 +101,11 @@ export default defineConfig({
       {
         icon: 'github',
         mode: 'link',
-        content: 'https://github.com/agent-infra/sandbox',
+        content: 'https://github.com/ProwlrBot/CyberBox',
       },
     ],
     footer: {
-      message: 'Built with ❤️ for AI Agents · AIO Sandbox © 2026',
+      message: 'CyberBox · ProwlrBot © 2026',
     },
     locales: [
       {
@@ -113,7 +113,7 @@ export default defineConfig({
         label: 'English',
         editLink: {
           docRepoBaseUrl:
-            'https://github.com/agent-infra/sandbox/tree/main/site/docs',
+            'https://github.com/ProwlrBot/CyberBox/tree/main/website/docs',
           text: '📝 Edit this page on GitHub',
         },
         searchPlaceholderText: 'Search',
@@ -126,7 +126,7 @@ export default defineConfig({
         label: '简体中文',
         editLink: {
           docRepoBaseUrl:
-            'https://github.com/agent-infra/sandbox/tree/main/site/docs',
+            'https://github.com/ProwlrBot/CyberBox/tree/main/website/docs',
           text: '📝 在 GitHub 上编辑此页',
         },
         searchPlaceholderText: '搜索',

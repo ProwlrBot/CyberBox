@@ -1,12 +1,10 @@
 # MCP Integration
 
-The Model Context Protocol (MCP) Hub in AIO Sandbox provides a centralized interface for AI agents to access multiple services through a single endpoint.
-
-![](/images/mcp.png)
+The Model Context Protocol (MCP) Hub in CyberBox provides a centralized interface for AI agents to access multiple services through a single endpoint.
 
 ## What is MCP?
 
-MCP (Model Context Protocol) is a standardized way for AI agents to interact with external tools and services. AIO Sandbox includes a pre-configured MCP Hub that aggregates multiple useful servers.
+MCP (Model Context Protocol) is a standardized way for AI agents to interact with external tools and services. CyberBox includes a pre-configured MCP Hub that aggregates multiple useful servers.
 
 ## Available MCP Servers
 
