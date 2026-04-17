@@ -5,23 +5,37 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "agent-sandbox"
 version = "0.0.27"
-description = "Python SDK for the All-in-One Sandbox API, >=1.4.0"
+description = "Python SDK for the CyberSandbox HTTP API (shell, file, code, browser, Jupyter, Node.js, MCP)"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 authors = [
+    { name = "kdairatchi", email = "prowlr@proton.me" },
     { name = "zhengxi.zhou", email = "zhengxi.zhou@bytedance.com" },
     { name = "jinxin001", email = "jinxin001@bytedance.com" },
     { name = "zhangjingtian.oana", email = "zhangjingtian.oana@bytedance.com" }
 ]
+keywords = [
+    "sandbox",
+    "cybersandbox",
+    "cyberbox",
+    "security",
+    "sdk",
+    "agent",
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 requires-python = ">=3.8"
 dependencies = [
@@ -32,6 +46,8 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/agent-infra/sandbox-sdk"
-Repository = "https://github.com/agent-infra/sandbox-sdk"
-Documentation = "https://github.com/agent-infra/sandbox-sdk#readme"
+Homepage = "https://github.com/ProwlrBot/CyberBox"
+Repository = "https://github.com/ProwlrBot/CyberBox"
+Documentation = "https://github.com/ProwlrBot/CyberBox/tree/main/sdk/python#readme"
+Issues = "https://github.com/ProwlrBot/CyberBox/issues"
+Changelog = "https://github.com/ProwlrBot/CyberBox/releases"

@@ -1,44 +1,61 @@
 # @agent-infra/sandbox
 
-Node.js/TypeScript SDK for AIO Sandbox integration, providing tools and interfaces for sandbox management and cloud provider integrations.
+Node.js/TypeScript SDK for the CyberSandbox HTTP API — shipped as part of
+[ProwlrBot/CyberBox](https://github.com/ProwlrBot/CyberBox). It talks to the
+hardened sandbox container at `ghcr.io/prowlrbot/cybersandbox:latest`, exposing
+shell, file, browser, code-execution, Jupyter, Node.js, MCP, and provider
+APIs.
+
+The package is a Fern-generated client plus custom cloud provider adapters.
+It is API-compatible with upstream `@agent-infra/sandbox`; the published
+artifact is maintained out of the CyberBox monorepo.
 
 ## Installation
 
 ```bash
-npm install @agent-infra/sandbox
-```
-
-or with yarn:
-
-```bash
-yarn add @agent-infra/sandbox
-```
-
-or with pnpm:
-
-```bash
 pnpm add @agent-infra/sandbox
+# or: npm install @agent-infra/sandbox
+# or: yarn add @agent-infra/sandbox
 ```
 
-## Quick Start
+Start the sandbox container the SDK talks to:
 
-### Basic Usage
+```bash
+docker pull ghcr.io/prowlrbot/cybersandbox:latest
+docker run --rm -p 8080:8080 ghcr.io/prowlrbot/cybersandbox:latest
+```
+
+## 30-second Quick Start
 
 ```typescript
-import { SandboxApiClient } from '@agent-infra/sandbox';
+import { SandboxClient } from '@agent-infra/sandbox';
 
-// Initialize the client
-const client = new SandboxApiClient({
-  environment: 'https://your-sandbox-api.com',
-  // Add authentication if required
+const client = new SandboxClient({
+  environment: process.env.SANDBOX_API_URL || 'http://localhost:8080',
 });
 
-// Use the API
+// Run a shell command inside the sandbox.
+const shell = await client.shell.execCommand({
+  command: 'echo "hello from cybersandbox"',
+});
+console.log(shell.body);
+
+// Execute Python.
+const py = await client.code.executeCode({
+  language: 'python',
+  code: 'print(2 + 2)',
+});
+console.log(py.body);
+```
+
+### File read
+
+```typescript
 const result = await client.file.read({
-  path: '/path/to/file',
+  path: '/workspace/README.md',
 });
 
-console.log(result);
+console.log(result.body);
 ```
 
 ### Using Cloud Providers
@@ -148,14 +165,15 @@ class MyCustomProvider extends providers.BaseProvider {
 
 ## API Reference
 
-### SandboxApiClient
+### SandboxClient
 
 The main client for interacting with the Sandbox API.
 
 ```typescript
-const client = new SandboxApiClient({
-  environment: string,          // API base URL
-  timeout?: number,             // Request timeout in milliseconds
+const client = new SandboxClient({
+  environment: string,              // API base URL (e.g. http://localhost:8080)
+  timeoutInSeconds?: number,        // Per-request timeout in seconds
+  maxRetries?: number,              // Retry count (default 2)
   headers?: Record<string, string>, // Custom headers
 });
 ```
@@ -370,8 +388,9 @@ ISC
 
 ## Links
 
-- [Repository](https://github.com/agent-infra/sandbox-sdk)
-- [Issues](https://github.com/agent-infra/sandbox-sdk/issues)
+- [CyberBox monorepo](https://github.com/ProwlrBot/CyberBox)
+- [CyberSandbox image](https://github.com/ProwlrBot/CyberBox/pkgs/container/cybersandbox)
+- [Issues](https://github.com/ProwlrBot/CyberBox/issues)
 - [Volcengine Documentation](https://www.volcengine.com/docs/)
 
 ## Support

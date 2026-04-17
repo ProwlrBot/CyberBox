@@ -1,39 +1,55 @@
-# Agent Sandbox Python SDK
+# agent-sandbox (Python SDK)
 
-A Python SDK for the All-in-One Sandbox API, providing access to sandbox, shell, file, jupyter, nodejs, and mcp services.
+Python SDK for the **CyberSandbox** HTTP API — shipped as part of
+[ProwlrBot/CyberBox](https://github.com/ProwlrBot/CyberBox). It talks to the
+hardened sandbox container at `ghcr.io/prowlrbot/cybersandbox:latest` and
+exposes sync (`Sandbox`) and async (`AsyncSandbox`) clients for shell, file,
+browser, code, Jupyter, Node.js, MCP, skills, and cloud provider operations.
+
+The package is API-compatible with upstream `agent-sandbox`; the published
+artifact is maintained out of the CyberBox monorepo.
 
 ## Installation
 
 ```bash
 pip install agent-sandbox
+# or with uv:
+uv add agent-sandbox
 ```
 
-## Usage
+Start the sandbox container the SDK talks to:
+
+```bash
+docker pull ghcr.io/prowlrbot/cybersandbox:latest
+docker run --rm -p 8080:8080 ghcr.io/prowlrbot/cybersandbox:latest
+```
+
+## 30-second Quick Start
 
 ```python
 from agent_sandbox import Sandbox
 
-client = Sandbox(base_url="http://localhost:8091")
+client = Sandbox(base_url="http://localhost:8080")
 
+# Sandbox context (env, installed tools, etc.)
 ctx = client.sandbox.get_context()
 print(ctx)
 
-result = client.shell.exec_command(command="ls -la")
+# Run a shell command inside the sandbox.
+result = client.shell.exec_command(command="echo 'hello from cybersandbox'")
 print(result)
 ```
 
 ## Async Support
 
-The SDK also provides async support through the `AsyncSandbox` class:
+`AsyncSandbox` mirrors the sync client for use inside asyncio / FastAPI / etc.
 
 ```python
 import asyncio
 from agent_sandbox import AsyncSandbox
 
 async def main():
-    client = AsyncSandbox(base_url="http://localhost:8091")
-    
-    # Get sandbox context
+    client = AsyncSandbox(base_url="http://localhost:8080")
     ctx = await client.sandbox.get_context()
     print(ctx)
 
@@ -43,65 +59,60 @@ async def main():
 asyncio.run(main())
 ```
 
+## Modules
+
+The client exposes a property per service. Each returns a resource client
+generated from the sandbox OpenAPI spec.
+
+- `client.sandbox` — environment info, installed packages
+- `client.shell` / `client.bash` — shell sessions and one-shot commands
+- `client.file` — read, write, search, edit, upload
+- `client.code` — multi-language code execution
+- `client.jupyter` — Jupyter kernel sessions
+- `client.nodejs` — Node.js sessions
+- `client.browser`, `client.browser_page`, `client.browser_tabs`,
+  `client.browser_cookies`, `client.browser_state`, `client.browser_network`,
+  `client.browser_captcha` — browser automation surfaces
+- `client.mcp` — MCP tool calls
+- `client.skills` — sandbox-registered skills
+- `client.proxy` — outbound proxy routing
+- `client.auth` / `client.util` — helpers
+
 ## Cloud Providers
 
 ### Volcengine
 
-Create a sandbox instance using the Volcengine provider. For more details, please refer to [examples/provider_volcengine.py](examples/provider_volcengine.py).
+See [`examples/volcengine-provider`](https://github.com/ProwlrBot/CyberBox/tree/main/examples/volcengine-provider)
+for the full script.
 
-```
-from __future__ import print_function
-
+```python
 import os
-import sys
-
-# Add the parent directory to Python path so we can import agent_sandbox
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from agent_sandbox.providers import VolcengineProvider
 
+provider = VolcengineProvider(
+    access_key=os.environ["VOLC_ACCESSKEY"],
+    secret_key=os.environ["VOLC_SECRETKEY"],
+    region=os.environ.get("VOLCENGINE_REGION", "cn-beijing"),
+)
 
-def main():
-    """
-    Main function demonstrating Volcengine provider usage.
-    """
-    # Configuration - replace with your actual credentials
-    access_key = os.getenv("VOLC_ACCESSKEY")
-    secret_key = os.getenv("VOLC_SECRETKEY")
-    region = os.getenv("VOLCENGINE_REGION", "cn-beijing")
-    
-    # Initialize the Volcengine provider
-    provider = VolcengineProvider(
-        access_key=access_key,
-        secret_key=secret_key,
-        region=region
-    )
-    
-    print("=== Volcengine Sandbox Provider Example ===\n")
-    
-    function_id = "yatoczqh"
-    
-    print("1. Creating a sandbox...")
-    sandbox_id = provider.create_sandbox(function_id=function_id)
-    print(f"Create response: {sandbox_id}")
-
-
-if __name__ == "__main__":
-    main()
+sandbox_id = provider.create_sandbox(function_id="yatoczqh")
+print("sandbox:", sandbox_id)
 ```
-
-## Features
-
-- **Sandbox**: Access sandbox environment information and installed packages
-- **Shell**: Execute shell commands with session management
-- **File**: Read, write, search, and manage files
-- **Jupyter**: Execute Python code in Jupyter kernels
-- **Node.js**: Execute JavaScript code in Node.js environment
-- **MCP**: Interact with Model Context Protocol servers
 
 ## Requirements
 
 - Python 3.8+
-- httpx
-- pydantic
-- typing_extensions (for Python < 3.10)
+- `httpx[socks]`
+- `pydantic` (v1 or v2)
+- `typing_extensions` (Python < 3.10)
+
+## Links
+
+- [CyberBox monorepo](https://github.com/ProwlrBot/CyberBox)
+- [CyberSandbox image](https://github.com/ProwlrBot/CyberBox/pkgs/container/cybersandbox)
+- [Issues](https://github.com/ProwlrBot/CyberBox/issues)
+- [Examples](https://github.com/ProwlrBot/CyberBox/tree/main/examples)
+
+## License
+
+Apache-2.0

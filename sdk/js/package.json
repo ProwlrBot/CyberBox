@@ -23,8 +23,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/agent-infra/sandbox-sdk.git",
-    "directory": "js"
+    "url": "git+https://github.com/ProwlrBot/CyberBox.git",
+    "directory": "sdk/js"
+  },
+  "homepage": "https://github.com/ProwlrBot/CyberBox/tree/main/sdk/js#readme",
+  "bugs": {
+    "url": "https://github.com/ProwlrBot/CyberBox/issues"
   },
   "files": [
     "dist",
@@ -34,11 +38,14 @@
   "keywords": [
     "aio",
     "sandbox",
+    "cybersandbox",
+    "cyberbox",
+    "security",
     "sdk",
     "nodejs",
     "typescript"
   ],
-  "author": "",
+  "author": "kdairatchi <prowlr@proton.me>",
   "license": "ISC",
   "devDependencies": {
     "@rslib/core": "^0.17.1",
