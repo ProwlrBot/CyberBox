@@ -45,9 +45,27 @@ dependencies = [
     "volcengine-python-sdk>=4.0.17",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0,<9.0",
+    "mypy>=1.0,<2.0",
+]
+
 [project.urls]
 Homepage = "https://github.com/ProwlrBot/CyberBox"
 Repository = "https://github.com/ProwlrBot/CyberBox"
 Documentation = "https://github.com/ProwlrBot/CyberBox/tree/main/sdk/python#readme"
 Issues = "https://github.com/ProwlrBot/CyberBox/issues"
 Changelog = "https://github.com/ProwlrBot/CyberBox/releases"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+# Fern-generated code uses a lot of Any; keep mypy pragmatic on the SDK.
+# CI currently runs mypy as informational (continue-on-error) until the
+# generated surface is cleaned up.
+warn_unused_ignores = false
