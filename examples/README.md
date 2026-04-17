@@ -4,6 +4,7 @@ This directory contains examples demonstrating various use cases and integration
 
 ## Table of Contents
 
+- [cybersandbox-js-quickstart](./cybersandbox-js-quickstart) - Minimal JS/TS quickstart against the CyberSandbox image via `@agent-infra/sandbox`
 - [basic-file-operations](./basic-file-operations) - Core file operations (upload, read, list, download)
 - [oss-upload](./oss-upload) - Stream sandbox files to cloud storage (Volcengine TOS, AWS S3)
 - [volcengine-provider](./volcengine-provider) - Volcengine cloud provider integration
