@@ -30,6 +30,7 @@ jobs:
       contents: read
       packages: write
       security-events: write   # trivy SARIF upload
+      id-token: write          # cosign keyless OIDC signing
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -117,6 +118,7 @@ jobs:
           trivyignores: cybersandbox/.trivyignore
 
       - name: Push image
+        id: push
         if: github.event_name != 'pull_request'
         uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         with:
@@ -128,10 +130,129 @@ jobs:
           provenance: true
           sbom: true
 
+      - name: Install cosign
+        if: github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # v3.7.0
+
+      # Keyless signing via Fulcio/Rekor: binds the image digest to this
+      # workflow's OIDC identity. Sign by digest so we sign content, not
+      # mutable tags.
+      - name: Sign image (cosign keyless)
+        if: github.event_name != 'pull_request'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$TAGS" | while IFS= read -r tag; do
+            [ -z "$tag" ] && continue
+            echo "cosign sign ${tag}@${DIGEST}"
+            cosign sign --yes "${tag}@${DIGEST}"
+          done
+
       - name: Image summary
         if: github.event_name != 'pull_request'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.push.outputs.digest }}
         run: |
-          echo "### Published image" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          echo "${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Published image"
+            echo '```'
+            echo "$TAGS"
+            echo ''
+            echo "digest: $DIGEST"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Independent verification job: proves the signed image can be validated
+  # from scratch (fresh runner, no build cache), and that the published SBOM
+  # is non-empty. Runs on push/tag/workflow_dispatch, never on PRs (nothing
+  # was pushed).
+  verify-supply-chain:
+    needs: [build]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: read
+      id-token: write   # cosign verify may hit Rekor with identity
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Log in to GHCR (read)
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # v3.7.0
+
+      - name: Resolve image digest
+        id: resolve
+        env:
+          REGISTRY: ${{ env.REGISTRY }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+        run: |
+          set -euo pipefail
+          # Use the short-sha tag produced by docker/metadata-action.
+          short="$(printf '%s' "${GITHUB_SHA}" | cut -c1-7)"
+          ref="${REGISTRY}/${IMAGE_NAME}:sha-${short}"
+          digest="$(docker buildx imagetools inspect "$ref" --format '{{ .Manifest.Digest }}')"
+          echo "ref=${ref}" >> "$GITHUB_OUTPUT"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+          echo "Resolved ${ref} -> ${digest}"
+
+      - name: Verify cosign signature
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          DIGEST: ${{ steps.resolve.outputs.digest }}
+          IDENTITY_REGEX: "^https://github.com/${{ github.repository }}/.github/workflows/cybersandbox-build.yml@refs/"
+        run: |
+          set -euo pipefail
+          cosign verify "${IMAGE}@${DIGEST}" \
+            --certificate-identity-regexp "${IDENTITY_REGEX}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            | tee cosign-verify.json
+          test -s cosign-verify.json
+
+      - name: Verify SBOM is non-empty
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          DIGEST: ${{ steps.resolve.outputs.digest }}
+        run: |
+          set -euo pipefail
+          # buildx attaches the SBOM as an OCI referrer; inspect it directly.
+          docker buildx imagetools inspect "${IMAGE}@${DIGEST}" \
+            --format '{{ json .SBOM }}' > sbom.json
+          bytes="$(wc -c < sbom.json)"
+          echo "SBOM payload bytes: ${bytes}"
+          if [ "${bytes}" -lt 64 ]; then
+            echo "SBOM payload is suspiciously small (${bytes} bytes)" >&2
+            head -c 2000 sbom.json || true
+            exit 1
+          fi
+          if ! grep -q -E '"SPDXID"|"spdxVersion"|"bomFormat"' sbom.json; then
+            echo "SBOM does not contain SPDX or CycloneDX markers" >&2
+            head -c 2000 sbom.json || true
+            exit 1
+          fi
+
+      - name: Supply-chain summary
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          DIGEST: ${{ steps.resolve.outputs.digest }}
+        run: |
+          {
+            echo "### Supply-chain verification"
+            echo '```'
+            echo "image:  ${IMAGE}"
+            echo "digest: ${DIGEST}"
+            echo "signed: yes (cosign keyless / Fulcio / Rekor)"
+            echo "sbom:   present"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
