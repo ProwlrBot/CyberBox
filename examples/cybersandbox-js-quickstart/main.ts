@@ -9,18 +9,27 @@ async function main() {
   });
 
   const ctx = await client.sandbox.getContext();
+  if (!ctx.ok) {
+    throw new Error(`sandbox.getContext failed: ${JSON.stringify(ctx.error)}`);
+  }
   console.log('sandbox context:', ctx.body);
 
   const shell = await client.shell.execCommand({
     command: 'echo "hello from cybersandbox"',
   });
-  console.log('shell stdout:', shell.body);
+  if (!shell.ok) {
+    throw new Error(`shell.execCommand failed: ${JSON.stringify(shell.error)}`);
+  }
+  console.log('shell output:', shell.body.data?.output);
 
   const py = await client.code.executeCode({
     language: 'python',
     code: 'print(2 + 2)',
   });
-  console.log('python output:', py.body);
+  if (!py.ok) {
+    throw new Error(`code.executeCode failed: ${JSON.stringify(py.error)}`);
+  }
+  console.log('python output:', py.body.data);
 }
 
 main().catch((err) => {
