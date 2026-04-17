@@ -33,6 +33,7 @@
   "files": [
     "dist",
     "README.md",
+    "LICENSE",
     "package.json"
   ],
   "keywords": [
@@ -46,7 +47,7 @@
     "typescript"
   ],
   "author": "kdairatchi <prowlr@proton.me>",
-  "license": "ISC",
+  "license": "Apache-2.0",
   "devDependencies": {
     "@rslib/core": "^0.17.1",
     "@types/node": "^20.19.24",

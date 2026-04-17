@@ -25,6 +25,20 @@ docker pull ghcr.io/prowlrbot/cybersandbox:latest
 docker run --rm -p 8080:8080 ghcr.io/prowlrbot/cybersandbox:latest
 ```
 
+## Response shape
+
+Every resource method returns an `HttpResponsePromise` that resolves to an
+`APIResponse` discriminated union:
+
+```typescript
+// Success branch:
+{ ok: true, body: <parsed response>, rawResponse }
+// Failure branch:
+{ ok: false, error: <typed error>, rawResponse }
+```
+
+Always narrow on `res.ok` before reading `res.body`.
+
 ## 30-second Quick Start
 
 ```typescript
@@ -38,24 +52,30 @@ const client = new SandboxClient({
 const shell = await client.shell.execCommand({
   command: 'echo "hello from cybersandbox"',
 });
-console.log(shell.body);
+if (shell.ok) {
+  console.log(shell.body.data?.output);
+}
 
 // Execute Python.
 const py = await client.code.executeCode({
   language: 'python',
   code: 'print(2 + 2)',
 });
-console.log(py.body);
+if (py.ok) {
+  console.log(py.body.data);
+}
 ```
 
 ### File read
 
 ```typescript
-const result = await client.file.read({
-  path: '/workspace/README.md',
+const result = await client.file.readFile({
+  file: '/workspace/README.md',
 });
 
-console.log(result.body);
+if (result.ok) {
+  console.log(result.body.data?.content);
+}
 ```
 
 ### Using Cloud Providers
@@ -131,11 +151,11 @@ console.log('Available domains:', domains);
 
 #### Volcengine Provider
 
-- ✅ Sandbox lifecycle management (create, delete, get, list)
-- ✅ Application deployment and monitoring
-- ✅ APIG (API Gateway) domain management
-- ✅ Automatic request signing with HMAC-SHA256
-- ✅ Support for temporary credentials
+- Sandbox lifecycle management (create, delete, get, list)
+- Application deployment and monitoring
+- APIG (API Gateway) domain management
+- Automatic request signing with HMAC-SHA256
+- Support for temporary credentials
 
 #### Extensible Provider System
 
@@ -173,20 +193,33 @@ The main client for interacting with the Sandbox API.
 const client = new SandboxClient({
   environment: string,              // API base URL (e.g. http://localhost:8080)
   timeoutInSeconds?: number,        // Per-request timeout in seconds
-  maxRetries?: number,              // Retry count (default 2)
+  maxRetries?: number,              // Retry count
   headers?: Record<string, string>, // Custom headers
 });
 ```
 
 #### Available Modules
 
-- `client.file` - File operations
-- `client.shell` - Shell command execution
-- `client.browser` - Browser automation
-- `client.code` - Code execution
-- `client.jupyter` - Jupyter notebook operations
-- `client.nodejs` - Node.js specific operations
-- `client.mcp` - MCP tool execution
+Every module exposes namespace methods; each call returns an
+`HttpResponsePromise<APIResponse<…>>` (see "Response shape" above).
+
+- `client.sandbox` — environment info (`getContext`, `getPythonPackages`, `getNodejsPackages`)
+- `client.shell` / `client.bash` — shell sessions (`execCommand`, `view`, `waitForProcess`,
+  `writeToProcess`, `killProcess`, `createSession`, `listSessions`, `cleanupSession`,
+  `cleanupAllSessions`, `getTerminalUrl`, `updateSession`)
+- `client.file` — `readFile`, `writeFile`, `listPath`, `findFiles`, `globFiles`,
+  `grepFiles`, `searchInFile`, `replaceInFile`, `strReplaceEditor`, `uploadFile`,
+  `downloadFile`
+- `client.code` — `executeCode`, `getInfo`
+- `client.jupyter` — `executeCode`, `getInfo`, session controls
+- `client.nodejs` — `executeCode`, `getInfo`, session controls
+- `client.browser`, `client.browserPage`, `client.browserTabs`,
+  `client.browserCookies`, `client.browserState`, `client.browserNetwork`,
+  `client.browserCaptcha` — browser automation surfaces
+- `client.mcp` — MCP tool calls
+- `client.skills` — sandbox-registered skills
+- `client.proxy` — outbound proxy routing
+- `client.auth` / `client.util` — helpers
 
 ### Providers
 
@@ -241,70 +274,29 @@ This package is written in TypeScript and includes full type definitions. TypeSc
 import type {
   SandboxApi,
   BaseClientOptions,
-  BaseRequestOptions
+  BaseRequestOptions,
 } from '@agent-infra/sandbox';
 ```
 
-## Examples
+## Error handling
 
-### Execute Shell Command
-
-```typescript
-const result = await client.shell.exec({
-  command: 'ls -la',
-  timeout: 5000,
-});
-console.log(result.stdout);
-```
-
-### Read File
+Resource methods never throw on an HTTP error status — they resolve to the
+`{ ok: false, error, rawResponse }` branch. Network-level failures (DNS,
+timeout, aborted request) reject the promise, so wrap the call in
+`try/catch` if you need to distinguish both.
 
 ```typescript
-const fileContent = await client.file.read({
-  path: '/path/to/file.txt',
-});
-console.log(fileContent.content);
-```
-
-### Browser Automation
-
-```typescript
-const browserInfo = await client.browser.info();
-console.log('Browser:', browserInfo);
-
-await client.browser.config({
-  action: {
-    type: 'click',
-    selector: '#button',
-  },
-});
-```
-
-### Execute Python Code
-
-```typescript
-const result = await client.code.execute({
-  code: 'print("Hello from sandbox!")',
-  language: 'python',
-});
-console.log(result.output);
-```
-
-## Error Handling
-
-```typescript
-import { SandboxApiError, SandboxApiTimeoutError } from '@agent-infra/sandbox';
-
 try {
-  const result = await client.file.read({ path: '/nonexistent' });
-} catch (error) {
-  if (error instanceof SandboxApiTimeoutError) {
-    console.error('Request timed out');
-  } else if (error instanceof SandboxApiError) {
-    console.error('API error:', error.statusCode, error.message);
-  } else {
-    console.error('Unexpected error:', error);
+  const res = await client.file.readFile({ file: '/nonexistent' });
+  if (!res.ok) {
+    // Typed error; `res.error.statusCode` === 422 for UnprocessableEntity.
+    console.error('API error:', res.error);
+    return;
   }
+  console.log(res.body.data?.content);
+} catch (err) {
+  // Transport error (timeout, aborted, network).
+  console.error('Request failed:', err);
 }
 ```
 
@@ -317,7 +309,6 @@ sdk/js/
 ├── src/              # TypeScript source code
 │   ├── api/          # Generated API modules
 │   ├── core/         # Core utilities
-│   ├── errors/       # Error classes
 │   ├── providers/    # Cloud provider implementations (custom code)
 │   │   ├── base.ts       # Base provider interface
 │   │   ├── volcengine.ts # Volcengine implementation
@@ -332,8 +323,6 @@ sdk/js/
 ```
 
 ### Building
-
-The SDK uses TypeScript and compiles source code from `src/` to `dist/`:
 
 ```bash
 npm run build
@@ -384,7 +373,7 @@ See [providers/README.md](./providers/README.md) for detailed information on imp
 
 ## License
 
-ISC
+Apache-2.0 — see [LICENSE](./LICENSE).
 
 ## Links
 
@@ -399,6 +388,5 @@ For questions and support, please open an issue on GitHub.
 
 ---
 
-**Version**: 1.0.0
 **Node.js**: >=18.0.0
 **TypeScript**: >=5.0.0

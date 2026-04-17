@@ -37,8 +37,13 @@ print(ctx)
 
 # Run a shell command inside the sandbox.
 result = client.shell.exec_command(command="echo 'hello from cybersandbox'")
-print(result)
+print(result.data.output if result.data else result)
 ```
+
+Every resource method returns a Pydantic response model (typically
+`Response*`) whose `.data` field holds the typed payload. Use
+`client.<resource>.with_raw_response` if you need the underlying HTTP
+response.
 
 ## Async Support
 
@@ -54,7 +59,7 @@ async def main():
     print(ctx)
 
     result = await client.shell.exec_command(command="ls -la")
-    print(result)
+    print(result.data.output if result.data else result)
 
 asyncio.run(main())
 ```

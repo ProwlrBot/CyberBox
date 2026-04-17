@@ -1,4 +1,5 @@
 include README.md
+include LICENSE
 include pyproject.toml
 recursive-include sandbox *.py
 recursive-include sandbox *.pyi
