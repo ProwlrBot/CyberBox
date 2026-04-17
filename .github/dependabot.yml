@@ -1,0 +1,92 @@
+# Dependabot configuration for CyberBox.
+# Groups related updates so we don't get a tidal wave of PRs.
+# Schedules are in America/Chicago (kdairatchi).
+version: 2
+
+updates:
+  # GitHub Actions used across every workflow under .github/workflows/.
+  # Daily because action CVEs (see tj-actions/changed-files) move fast and
+  # SHA pins make drift easy to miss visually.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      timezone: "America/Chicago"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(ci)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    groups:
+      docker-actions:
+        patterns:
+          - "docker/*"
+      sigstore-actions:
+        patterns:
+          - "sigstore/*"
+      github-official:
+        patterns:
+          - "actions/*"
+          - "github/*"
+      security-actions:
+        patterns:
+          - "aquasecurity/*"
+          - "gitleaks/*"
+          - "trufflesecurity/*"
+
+  # CyberSandbox base image (FROM pin in cybersandbox/Dockerfile).
+  - package-ecosystem: "docker"
+    directory: "/cybersandbox"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      timezone: "America/Chicago"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(csbx)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "docker"
+
+  # JS SDK (sdk/js).
+  - package-ecosystem: "npm"
+    directory: "/sdk/js"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      timezone: "America/Chicago"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(sdk-js)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "javascript"
+    groups:
+      js-dev:
+        dependency-type: "development"
+      js-prod:
+        dependency-type: "production"
+
+  # Python SDK (sdk/python).
+  - package-ecosystem: "pip"
+    directory: "/sdk/python"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      timezone: "America/Chicago"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(sdk-py)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "python"
+    groups:
+      py-dev:
+        dependency-type: "development"
+      py-prod:
+        dependency-type: "production"
