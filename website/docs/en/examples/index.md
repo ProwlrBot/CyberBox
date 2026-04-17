@@ -2,6 +2,8 @@
 
 This section provides practical examples and integration guides for using CyberBox in real-world scenarios.
 
+> **Note:** Many code samples on this page were inherited from the upstream agent-sandbox SDK docs and are being migrated. For the current canonical API — method names, argument shapes, and response types — consult the SDK READMEs in [`sdk/python/README.md`](https://github.com/ProwlrBot/CyberBox/blob/main/sdk/python/README.md) and [`sdk/js/README.md`](https://github.com/ProwlrBot/CyberBox/blob/main/sdk/js/README.md) and the runnable TypeScript example under [`examples/cybersandbox-js-quickstart/`](https://github.com/ProwlrBot/CyberBox/tree/main/examples/cybersandbox-js-quickstart).
+
 ## Quick Examples
 
 ### Terminal Integration
@@ -96,11 +98,11 @@ pip install agent-sandbox
 Import and configure the Python client:
 
 ```python
-from aio_sandbox import AioClient
+from agent_sandbox import AsyncSandbox
 import asyncio
 
 # Initialize the client
-client = AioClient(
+client = AsyncSandbox(
     base_url="http://localhost:8080",  # CyberBox URL
     timeout=30.0,  # Request timeout in seconds
     retries=3,     # Number of retry attempts
@@ -312,7 +314,7 @@ asyncio.run(mcp_example())
 async def robust_example():
     try:
         # Always use context managers for resource cleanup
-        async with AioClient("http://localhost:8080") as client:
+        async with AsyncSandbox("http://localhost:8080") as client:
             # Set up error handling
             result = await client.shell.exec("potentially-failing-command")
 
@@ -347,9 +349,9 @@ npm install @agent-infra/sandbox
 Start by importing the SDK and configuring the client:
 
 ```typescript
-import { AioClient } from "@agent-infra/sandbox";
+import { SandboxClient } from "@agent-infra/sandbox";
 
-const client = new AioClient({
+const client = new SandboxClient({
   baseUrl: `https://{aio.sandbox.example}`, //The Url and Port should consistent with the CyberBox
   timeout: 30000, // Optional: request timeout in milliseconds
   retries: 3, // Optional: number of retry attempts

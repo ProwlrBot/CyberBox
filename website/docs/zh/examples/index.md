@@ -2,6 +2,8 @@
 
 本节提供使用 CyberBox 在实际场景中的实用示例和集成指南。
 
+> **说明：** 本页中许多示例代码继承自上游 agent-sandbox SDK 文档，目前仍在迁移中。当前规范的 API（方法名、参数与响应类型）请以 SDK README 为准：[`sdk/python/README.md`](https://github.com/ProwlrBot/CyberBox/blob/main/sdk/python/README.md)、[`sdk/js/README.md`](https://github.com/ProwlrBot/CyberBox/blob/main/sdk/js/README.md)，以及可运行的 TypeScript 示例 [`examples/cybersandbox-js-quickstart/`](https://github.com/ProwlrBot/CyberBox/tree/main/examples/cybersandbox-js-quickstart)。
+
 ## 快速示例
 
 ### 终端集成
@@ -96,11 +98,11 @@ pip install agent-sandbox
 导入并配置 Python 客户端：
 
 ```python
-from aio_sandbox import AioClient
+from agent_sandbox import AsyncSandbox
 import asyncio
 
 # 初始化客户端
-client = AioClient(
+client = AsyncSandbox(
     base_url="http://localhost:8080",  # CyberBox URL
     timeout=30.0,  # 请求超时（秒）
     retries=3,     # 重试次数
@@ -312,7 +314,7 @@ asyncio.run(mcp_example())
 async def robust_example():
     try:
         # 始终使用上下文管理器进行资源清理
-        async with AioClient("http://localhost:8080") as client:
+        async with AsyncSandbox("http://localhost:8080") as client:
             # 设置错误处理
             result = await client.shell.exec("potentially-failing-command")
 
@@ -347,9 +349,9 @@ npm install @agent-infra/sandbox
 首先导入 SDK 并配置客户端：
 
 ```typescript
-import { AioClient } from "@agent-infra/sandbox";
+import { SandboxClient } from "@agent-infra/sandbox";
 
-const client = new AioClient({
+const client = new SandboxClient({
   baseUrl: `https://{aio.sandbox.example}`, // URL 和端口应与 CyberBox 一致
   timeout: 30000, // 可选：请求超时（毫秒）
   retries: 3, // 可选：重试次数
