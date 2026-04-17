@@ -32,22 +32,23 @@ jobs:
   publish-js:
     name: Publish JS SDK
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: ${{ inputs.sdk == 'js' || inputs.sdk == 'both' }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 9
 
@@ -64,12 +65,14 @@ jobs:
 
       - name: Bump version
         id: bump
+        env:
+          BUMP: ${{ inputs.bump }}
         run: |
           OLD_VERSION=$(node -p "require('./package.json').version")
-          npm version ${{ inputs.bump }} --no-git-tag-version
+          npm version "$BUMP" --no-git-tag-version
           NEW_VERSION=$(node -p "require('./package.json').version")
-          echo "old_version=$OLD_VERSION" >> $GITHUB_OUTPUT
-          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "old_version=$OLD_VERSION" >> "$GITHUB_OUTPUT"
+          echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
           echo "Bumped JS SDK version: $OLD_VERSION -> $NEW_VERSION"
         working-directory: sdk/js
 
@@ -101,12 +104,13 @@ jobs:
   publish-python:
     name: Publish Python SDK
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [publish-js]
     if: ${{ always() && (inputs.sdk == 'python' || inputs.sdk == 'both') && (needs.publish-js.result == 'success' || needs.publish-js.result == 'skipped') }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -114,7 +118,7 @@ jobs:
         run: git pull origin ${{ github.ref_name }} || true
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.11'
 
@@ -125,12 +129,14 @@ jobs:
 
       - name: Bump version
         id: bump
+        env:
+          BUMP: ${{ inputs.bump }}
         run: |
           OLD_VERSION=$(grep -Po '(?<=version = ")[^"]*' pyproject.toml)
 
           IFS='.' read -r major minor patch <<< "$OLD_VERSION"
 
-          case "${{ inputs.bump }}" in
+          case "$BUMP" in
             major)
               major=$((major + 1))
               minor=0
@@ -143,14 +149,16 @@ jobs:
             patch)
               patch=$((patch + 1))
               ;;
+            *)
+              echo "invalid bump: $BUMP" >&2; exit 2 ;;
           esac
 
           NEW_VERSION="${major}.${minor}.${patch}"
 
           sed -i "s/version = \"$OLD_VERSION\"/version = \"$NEW_VERSION\"/" pyproject.toml
 
-          echo "old_version=$OLD_VERSION" >> $GITHUB_OUTPUT
-          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "old_version=$OLD_VERSION" >> "$GITHUB_OUTPUT"
+          echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
           echo "Bumped Python SDK version: $OLD_VERSION -> $NEW_VERSION"
         working-directory: sdk/python
 
