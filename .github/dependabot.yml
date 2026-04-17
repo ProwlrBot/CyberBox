@@ -14,7 +14,7 @@ updates:
       timezone: "America/Chicago"
     open-pull-requests-limit: 5
     commit-message:
-      prefix: "chore(ci)"
+      prefix: "deps"
       include: "scope"
     labels:
       - "dependencies"
@@ -43,9 +43,9 @@ updates:
       interval: "weekly"
       day: "monday"
       timezone: "America/Chicago"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 5
     commit-message:
-      prefix: "chore(csbx)"
+      prefix: "deps"
       include: "scope"
     labels:
       - "dependencies"
@@ -60,7 +60,7 @@ updates:
       timezone: "America/Chicago"
     open-pull-requests-limit: 5
     commit-message:
-      prefix: "chore(sdk-js)"
+      prefix: "deps"
       include: "scope"
     labels:
       - "dependencies"
@@ -80,7 +80,7 @@ updates:
       timezone: "America/Chicago"
     open-pull-requests-limit: 5
     commit-message:
-      prefix: "chore(sdk-py)"
+      prefix: "deps"
       include: "scope"
     labels:
       - "dependencies"

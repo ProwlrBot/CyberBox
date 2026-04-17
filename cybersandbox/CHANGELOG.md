@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+Release hygiene: sprint2 supply-chain follow-ups.
+
+### Added
+- **Cosign image signing + independent verify job** in `cybersandbox-build.yml`. Every pushed tag is signed by digest via cosign keyless (Fulcio/Rekor). A separate `verify-supply-chain` job re-pulls the image, validates the signature against this workflow's OIDC identity, and asserts the published SBOM is non-empty.
+- **Dependabot config** (`.github/dependabot.yml`) for github-actions (daily), cybersandbox docker base (weekly), and both SDKs (npm + pip, weekly). Timezone `America/Chicago`, grouped updates for docker/*, sigstore/*, actions/*, and security vendors. `open-pull-requests-limit` caps per ecosystem, commit prefixes unified under `deps`.
+- **`# revisit: YYYY-MM-DD` annotations** on every entry in `cybersandbox/.trivyignore` — forces a quarterly re-audit instead of silent rot.
+
+### Changed
+- **Bumped `sigstore/cosign-installer` SHA pin to v3.9.2** (`d58896d6…`) from v3.7.0.
+
 ## 0.2.2 — 2026-04-17
 
 Supply-chain hardening patch. Reproducible builds, pinned toolchain, CI gates, CVE response.
