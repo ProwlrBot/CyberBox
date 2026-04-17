@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.2.2 — 2026-04-17
+
+Supply-chain hardening patch. Reproducible builds, pinned toolchain, CI gates, CVE response.
+
+### Fixed
+- **jwt-hack now actually ships** — was silently missing from v0.2.1 because the cargo stage was broken.
+- **Every Go tool pinned by tag or commit SHA** — replaced `@latest` across the board for reproducible builds.
+- **Base image pinned by sha256 digest** — no more mutable tag drift.
+
+### Changed
+- **go-builder bumped 1.23 → 1.25** — addresses stdlib CVE-2025-68121.
+
+### Added
+- **Trivy CRITICAL gate in CI** — build fails on any CRITICAL CVE.
+- **Smoke test at build time** — verifies 13 core binaries are present and executable.
+- **HEALTHCHECK directive** in the Dockerfile.
+
+### Security
+- **SHA-pinned all GitHub Actions** across workflows, capped job timeouts.
+- **Fixed 2× GHA004 run-injection** in `sdk-publish.yml`.
+
 ## 0.2.1 — 2026-04-12
 
 Security hardening pass + customization. No more hardcoded values anywhere — 15+ settings exposed in the Prowlr UI, env vars for every CLI knob.
