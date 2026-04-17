@@ -28,6 +28,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      security-events: write   # trivy SARIF upload
 
     steps:
       - uses: actions/checkout@v4
@@ -55,15 +56,71 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Build (and push on main/tags)
+      # Build locally first so we can smoke-test and scan before pushing.
+      - name: Build (local)
         uses: docker/build-push-action@v5
         with:
           context: cybersandbox
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
+          load: true
+          push: false
+          tags: cybersandbox:ci
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Smoke test image
+        run: |
+          set -euo pipefail
+          echo "::group::version pin audit"
+          docker run --rm --entrypoint sh cybersandbox:ci -c '
+            set -e
+            for bin in nuclei subfinder httpx katana dalfox ffuf gitleaks trufflehog \
+                      harbinger csbx invoke-claude invoke-ollama; do
+              command -v "$bin" >/dev/null || { echo "MISSING: $bin"; exit 1; }
+              echo "  [ok] $bin"
+            done
+            csbx --help >/dev/null
+            harbinger status >/dev/null
+          '
+          echo "::endgroup::"
+
+      - name: Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: cybersandbox:ci
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '0'   # report, never block (see trivy-gate for blocking)
+          vuln-type: os,library
+
+      - name: Upload Trivy SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-container
+
+      - name: Trivy gate (fail on CRITICAL fixed)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: cybersandbox:ci
+          format: table
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          vuln-type: os,library
+
+      - name: Push image
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v5
+        with:
+          context: cybersandbox
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
           provenance: true
           sbom: true
 

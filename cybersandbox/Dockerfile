@@ -1,73 +1,85 @@
-FROM ghcr.io/agent-infra/sandbox:latest AS base
+# syntax=docker/dockerfile:1.7
+# ══════════════════════════════════════════════════════════════
+# CyberSandbox — pinned by digest/tag for reproducibility.
+# Update digests via scripts/refresh-pins.sh (see SECURITY.md).
+# ══════════════════════════════════════════════════════════════
+FROM ghcr.io/agent-infra/sandbox@sha256:e0d7cfed24b373850f5f3df64439e9fcaa17e6810ab3234222e901a5fa08397e AS base
 
 # ══════════════════════════════════════════════════════════════
 # Stage 1: Go tools builder
 # ══════════════════════════════════════════════════════════════
-FROM golang:1-bookworm AS go-builder
+FROM golang@sha256:167053a2bb901972bf2c1611f8f52c44d5fe7e762e5cab213708d82c421614db AS go-builder
 
-# naabu needs libpcap-dev to compile
 RUN apt-get update && apt-get install -y --no-install-recommends libpcap-dev && rm -rf /var/lib/apt/lists/*
 
-# Allow Go to auto-download newer toolchain if deps require it
-ENV GOTOOLCHAIN=auto
+ENV GOTOOLCHAIN=auto \
+    CGO_ENABLED=1
 
-# ProjectDiscovery suite
-RUN go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest \
- && go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest \
- && go install github.com/projectdiscovery/httpx/cmd/httpx@latest \
- && go install github.com/projectdiscovery/katana/cmd/katana@latest \
- && go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest \
- && go install github.com/projectdiscovery/naabu/v2/cmd/naabu@latest \
- && go install github.com/projectdiscovery/notify/cmd/notify@latest \
- && go install github.com/projectdiscovery/uncover/cmd/uncover@latest \
- && go install github.com/projectdiscovery/tlsx/cmd/tlsx@latest \
- && go install github.com/projectdiscovery/asnmap/cmd/asnmap@latest \
- && go install github.com/projectdiscovery/mapcidr/cmd/mapcidr@latest \
- && go install github.com/projectdiscovery/cdncheck/cmd/cdncheck@latest \
- && go install github.com/projectdiscovery/alterx/cmd/alterx@latest \
- && go install github.com/projectdiscovery/urlfinder/cmd/urlfinder@latest \
- && go install github.com/projectdiscovery/chaos-client/cmd/chaos@latest \
- && go install github.com/projectdiscovery/interactsh/cmd/interactsh-client@latest
+# ProjectDiscovery suite (pinned)
+RUN go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@v3.7.1 \
+ && go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@v2.13.0 \
+ && go install github.com/projectdiscovery/httpx/cmd/httpx@v1.9.0 \
+ && go install github.com/projectdiscovery/katana/cmd/katana@v1.5.0 \
+ && go install github.com/projectdiscovery/dnsx/cmd/dnsx@v1.2.3 \
+ && go install github.com/projectdiscovery/naabu/v2/cmd/naabu@v2.5.0 \
+ && go install github.com/projectdiscovery/notify/cmd/notify@v1.0.7 \
+ && go install github.com/projectdiscovery/uncover/cmd/uncover@v1.2.0 \
+ && go install github.com/projectdiscovery/tlsx/cmd/tlsx@v1.2.2 \
+ && go install github.com/projectdiscovery/asnmap/cmd/asnmap@v1.1.1 \
+ && go install github.com/projectdiscovery/mapcidr/cmd/mapcidr@v1.1.97 \
+ && go install github.com/projectdiscovery/cdncheck/cmd/cdncheck@v1.2.31 \
+ && go install github.com/projectdiscovery/alterx/cmd/alterx@v0.1.0 \
+ && go install github.com/projectdiscovery/urlfinder/cmd/urlfinder@v0.0.3 \
+ && go install github.com/projectdiscovery/chaos-client/cmd/chaos@v0.5.2 \
+ && go install github.com/projectdiscovery/interactsh/cmd/interactsh-client@v1.3.1
 
-# Community Go tools (each in own command so one failure doesn't block all)
-RUN go install github.com/tomnomnom/waybackurls@latest \
- && go install github.com/tomnomnom/gf@latest \
- && go install github.com/tomnomnom/anew@latest \
- && go install github.com/tomnomnom/unfurl@latest \
- && go install github.com/tomnomnom/qsreplace@latest \
- && go install github.com/tomnomnom/httprobe@latest
+# Community tools — tomnomnom (pinned)
+RUN go install github.com/tomnomnom/waybackurls@v0.1.0 \
+ && go install github.com/tomnomnom/gf@dcd4c361f9f5 \
+ && go install github.com/tomnomnom/anew@v0.1.1 \
+ && go install github.com/tomnomnom/unfurl@v0.4.3 \
+ && go install github.com/tomnomnom/qsreplace@v0.0.3 \
+ && go install github.com/tomnomnom/httprobe@v0.2
 
-RUN go install github.com/hahwul/dalfox/v2@latest \
- && go install github.com/hahwul/authz0@latest \
- && go install github.com/hahwul/gitls@latest
+# Community tools — hahwul (pinned)
+RUN go install github.com/hahwul/dalfox/v2@v2.12.0 \
+ && go install github.com/hahwul/authz0@v1.1.2 \
+ && go install github.com/hahwul/gitls@v1.0.4
 
-RUN go install github.com/lc/gau/v2/cmd/gau@latest \
- && go install github.com/hakluke/hakrawler@latest \
- && go install github.com/BishopFox/jsluice/cmd/jsluice@latest \
- && go install github.com/ferreiraklet/airixss@latest \
- && go install github.com/dwisiswant0/crlfuzz/cmd/crlfuzz@latest \
- && go install github.com/ffuf/ffuf/v2@latest
+# Community tools — misc (pinned; gf/jsluice/airixss have no releases → pin by commit)
+RUN go install github.com/lc/gau/v2/cmd/gau@v2.2.4 \
+ && go install github.com/hakluke/hakrawler@76152559a809 \
+ && go install github.com/BishopFox/jsluice/cmd/jsluice@0ddfab153e06 \
+ && go install github.com/ferreiraklet/airixss@4c36e01b78fd \
+ && go install github.com/dwisiswant0/crlfuzz/cmd/crlfuzz@v1.4.1 \
+ && go install github.com/ffuf/ffuf/v2@v2.1.0
 
-# Secrets scanners (installed from release binaries — trufflehog has replace directives blocking go install)
-RUN curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /go/bin
-RUN GITLEAKS_VER=$(curl -s https://api.github.com/repos/gitleaks/gitleaks/releases/latest | grep tag_name | cut -d '"' -f4) \
+# Secrets scanners — release binaries, pinned versions
+ARG TRUFFLEHOG_VER=v3.94.3
+ARG GITLEAKS_VER=v8.30.1
+RUN curl -sSfL "https://github.com/trufflesecurity/trufflehog/releases/download/${TRUFFLEHOG_VER}/trufflehog_${TRUFFLEHOG_VER#v}_linux_amd64.tar.gz" \
+      | tar -xz -C /go/bin trufflehog \
  && curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/${GITLEAKS_VER}/gitleaks_${GITLEAKS_VER#v}_linux_x64.tar.gz" \
-    | tar -xz -C /go/bin gitleaks
+      | tar -xz -C /go/bin gitleaks
 
 # ══════════════════════════════════════════════════════════════
 # Stage 2: Rust tools builder
 # ══════════════════════════════════════════════════════════════
-FROM rust:1-bookworm AS rust-builder
+FROM rust@sha256:225aa827d55fae9816a0492284592827e794a5247c6c6a961c3b471b344295ec AS rust-builder
 
-RUN cargo install jwt-hack 2>/dev/null || echo "WARN: jwt-hack failed to compile, skipping"
+RUN cargo install --locked jwt-hack --version 1.3.1 2>/dev/null || echo "WARN: jwt-hack failed to compile, skipping"
 
 # ══════════════════════════════════════════════════════════════
 # Stage 3: Final image
 # ══════════════════════════════════════════════════════════════
 FROM base
 
-LABEL maintainer="kdairatchi <prowlr@proton.me>"
-LABEL description="CyberSandbox — AI-agent-native cybersecurity workspace"
+LABEL maintainer="kdairatchi <prowlr@proton.me>" \
+      description="CyberSandbox — AI-agent-native cybersecurity workspace" \
+      org.opencontainers.image.source="https://github.com/ProwlrBot/CyberBox" \
+      org.opencontainers.image.description="CyberSandbox: hardened sandbox for bug-bounty + offensive security research" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.vendor="ProwlrBot"
 
 USER root
 
@@ -78,7 +90,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zsh tmux socat netcat-openbsd \
     python3-venv \
     mitmproxy tcpdump tshark \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
 # ── Copy Go binaries from builder ────────────────────────────
 COPY --from=go-builder /go/bin/ /usr/local/bin/
@@ -139,10 +151,14 @@ ENV WORKSPACE="/home/hunter"
 # ── Drop to non-root (use UID to avoid passwd lookup issues) ─
 USER 1000
 
-LABEL org.opencontainers.image.source="https://github.com/kdairatchi/cybersandbox"
-LABEL org.opencontainers.image.description="CyberSandbox: AI-agent-native cybersecurity workspace"
-
 EXPOSE 8080
 
-# ── Use entrypoint overlay (was never called before — fixed) ─
+# ── Healthcheck: verify core CLIs resolve ───────────────────
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD command -v nuclei >/dev/null \
+   && command -v harbinger >/dev/null \
+   && command -v csbx >/dev/null \
+   || exit 1
+
+# ── Use entrypoint overlay ──────────────────────────────────
 ENTRYPOINT ["/opt/cybersandbox/entrypoint-cyber.sh"]
