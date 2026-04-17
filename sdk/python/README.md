@@ -83,27 +83,6 @@ generated from the sandbox OpenAPI spec.
 - `client.proxy` — outbound proxy routing
 - `client.auth` / `client.util` — helpers
 
-## Cloud Providers
-
-### Volcengine
-
-See [`examples/volcengine-provider`](https://github.com/ProwlrBot/CyberBox/tree/main/examples/volcengine-provider)
-for the full script.
-
-```python
-import os
-from agent_sandbox.providers import VolcengineProvider
-
-provider = VolcengineProvider(
-    access_key=os.environ["VOLC_ACCESSKEY"],
-    secret_key=os.environ["VOLC_SECRETKEY"],
-    region=os.environ.get("VOLCENGINE_REGION", "cn-beijing"),
-)
-
-sandbox_id = provider.create_sandbox(function_id="yatoczqh")
-print("sandbox:", sandbox_id)
-```
-
 ## Requirements
 
 - Python 3.8+
