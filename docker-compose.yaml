@@ -1,7 +1,7 @@
 services:
   sandbox:
-    container_name: aio-sandbox
-    image: ghcr.io/agent-infra/sandbox:latest
+    container_name: cybersandbox
+    image: ghcr.io/prowlrbot/cybersandbox:latest
     security_opt:
       - seccomp:unconfined
     extra_hosts:

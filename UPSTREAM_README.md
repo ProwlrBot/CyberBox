@@ -1,8 +1,15 @@
+<!--
+UPSTREAM README — preserved for attribution.
+
+This is the original README from agent-infra/sandbox
+(the upstream project that CyberBox forks from). Inline image embeds
+pointing at removed legacy assets have been stripped for a clean build;
+all upstream text, links, and credits are preserved verbatim. See
+README.md for CyberBox-specific documentation.
+-->
+
 # AIO Sandbox - All-in-One Agent Sandbox Environment
 
-<p align="center">
-  <img src="./website/docs/public/aio-icon.png" alt="logo" width="200"/>
-</p>
 
 <p align="center">
   <strong>🌐 Browser | 💻 Terminal | 📁 File | 🔧 VSCode | 📊 Jupyter | 🤖 MCP</strong>
@@ -25,7 +32,6 @@
   <a href="https://www.npmjs.com/package/@agent-infra/sandbox"><img src="https://img.shields.io/npm/v/@agent-infra/sandbox" alt="npm"></a>
 </p>
 
-![](./website/docs/public/images/aio-index.png)
 
 ## 🚀 Quick Start
 
@@ -59,9 +65,6 @@ Once running, access the environment at:
 
 AIO Sandbox is an **all-in-one** agent sandbox environment that combines Browser, Shell, File, MCP operations, and VSCode Server in a single Docker container. Built on cloud-native lightweight sandbox technology, it provides a unified, secure execution environment for AI agents and developers.
 
-<p align="center">
-  <img src="website/docs/public/images/aio-sandbox.png" alt="AIO Sandbox Architecture" width="600"/>
-</p>
 
 ### Why Choose AIO Sandbox?
 
@@ -163,9 +166,6 @@ const screenshot = await sandbox.browser.screenshot();
 ### 🔗 Unified Environment
 All components run in the same container with a shared filesystem, enabling seamless workflows:
 
-<p align="center">
-  <img src="website/docs/public/images/aio-index.png" alt="Unified Environment" width="600"/>
-</p>
 
 ### 🌐 Browser Automation
 Full browser control through multiple interfaces:
@@ -173,9 +173,6 @@ Full browser control through multiple interfaces:
 - **CDP** - Chrome DevTools Protocol for programmatic control
 - **MCP** - High-level browser automation tools
 
-<p align="center">
-  <img src="website/docs/public/images/browser.png" alt="Browser Automation" width="600"/>
-</p>
 
 ### 💻 Development Tools
 Integrated development environment with:
@@ -184,9 +181,6 @@ Integrated development environment with:
 - **Terminal** - WebSocket-based terminal access
 - **Port Forwarding** - Smart preview for web applications
 
-<p align="center">
-  <img src="website/docs/public/images/code-server.png" alt="VSCode Server" width="600"/>
-</p>
 
 ### 🤖 MCP Integration
 Pre-configured Model Context Protocol servers:
@@ -195,9 +189,6 @@ Pre-configured Model Context Protocol servers:
 - **Shell** - Command execution
 - **Markitdown** - Document processing
 
-<p align="center">
-  <img src="website/docs/public/images/mcp.png" alt="MCP Integration" width="600"/>
-</p>
 
 ## 📚 Complete Example
 
@@ -246,9 +237,6 @@ if __name__ == "__main__":
     print(f"Markdown saved successfully!")
 ```
 
-<p align="center">
-  <img src="website/docs/public/images/example.png" alt="Example Output" width="600"/>
-</p>
 
 ## 🏗️ Architecture
 
