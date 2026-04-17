@@ -8,7 +8,8 @@ FROM ghcr.io/agent-infra/sandbox@sha256:e0d7cfed24b373850f5f3df64439e9fcaa17e681
 # ══════════════════════════════════════════════════════════════
 # Stage 1: Go tools builder
 # ══════════════════════════════════════════════════════════════
-FROM golang@sha256:167053a2bb901972bf2c1611f8f52c44d5fe7e762e5cab213708d82c421614db AS go-builder
+# golang 1.25-bookworm — picks up fixed stdlib for CVE-2025-68121 (crypto/tls).
+FROM golang@sha256:29e59af995c51a5bf63d072eca973b918e0e7af4db0e4667aa73f1b8da1a6d8c AS go-builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends libpcap-dev && rm -rf /var/lib/apt/lists/*
 
@@ -39,7 +40,7 @@ RUN go install github.com/tomnomnom/waybackurls@v0.1.0 \
  && go install github.com/tomnomnom/anew@v0.1.1 \
  && go install github.com/tomnomnom/unfurl@v0.4.3 \
  && go install github.com/tomnomnom/qsreplace@v0.0.3 \
- && go install github.com/tomnomnom/httprobe@v0.2
+ && go install github.com/tomnomnom/httprobe@0745f649beb0
 
 # Community tools — hahwul (pinned)
 RUN go install github.com/hahwul/dalfox/v2@v2.12.0 \
@@ -54,23 +55,16 @@ RUN go install github.com/lc/gau/v2/cmd/gau@v2.2.4 \
  && go install github.com/dwisiswant0/crlfuzz/cmd/crlfuzz@v1.4.1 \
  && go install github.com/ffuf/ffuf/v2@v2.1.0
 
-# Secrets scanners — release binaries, pinned versions
+# Secrets scanners — gitleaks built from source (inherits pinned Go toolchain
+# → picks up stdlib CVE fixes). trufflehog from release tarball (replace
+# directives block `go install`).
 ARG TRUFFLEHOG_VER=v3.94.3
-ARG GITLEAKS_VER=v8.30.1
-RUN curl -sSfL "https://github.com/trufflesecurity/trufflehog/releases/download/${TRUFFLEHOG_VER}/trufflehog_${TRUFFLEHOG_VER#v}_linux_amd64.tar.gz" \
-      | tar -xz -C /go/bin trufflehog \
- && curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/${GITLEAKS_VER}/gitleaks_${GITLEAKS_VER#v}_linux_x64.tar.gz" \
-      | tar -xz -C /go/bin gitleaks
+RUN go install github.com/zricethezav/gitleaks/v8@v8.30.1 \
+ && curl -sSfL "https://github.com/trufflesecurity/trufflehog/releases/download/${TRUFFLEHOG_VER}/trufflehog_${TRUFFLEHOG_VER#v}_linux_amd64.tar.gz" \
+      | tar -xz -C /go/bin trufflehog
 
 # ══════════════════════════════════════════════════════════════
-# Stage 2: Rust tools builder
-# ══════════════════════════════════════════════════════════════
-FROM rust@sha256:225aa827d55fae9816a0492284592827e794a5247c6c6a961c3b471b344295ec AS rust-builder
-
-RUN cargo install --locked jwt-hack --version 1.3.1 2>/dev/null || echo "WARN: jwt-hack failed to compile, skipping"
-
-# ══════════════════════════════════════════════════════════════
-# Stage 3: Final image
+# Stage 2: Final image
 # ══════════════════════════════════════════════════════════════
 FROM base
 
@@ -95,8 +89,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ── Copy Go binaries from builder ────────────────────────────
 COPY --from=go-builder /go/bin/ /usr/local/bin/
 
-# ── Copy Rust binaries from builder ──────────────────────────
-COPY --from=rust-builder /usr/local/cargo/bin/jwt-hack /usr/local/bin/jwt-hack
+# ── jwt-hack from pinned GitHub release ──────────────────────
+# v2.5.0 requires glibc 2.38; base image is glibc 2.35 → pin to v2.3.0.
+ARG JWT_HACK_VER=v2.3.0
+RUN curl -sSfL "https://github.com/hahwul/jwt-hack/releases/download/${JWT_HACK_VER}/jwt-hack-${JWT_HACK_VER}-linux-x86_64.tar.gz" \
+      | tar -xz --strip-components=1 -C /usr/local/bin "jwt-hack-${JWT_HACK_VER}-linux-x86_64/jwt-hack" \
+ && chmod +x /usr/local/bin/jwt-hack
 
 # ── Metasploit Framework ─────────────────────────────────────
 RUN curl -fsSL https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb \

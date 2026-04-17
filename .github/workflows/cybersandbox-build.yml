@@ -111,6 +111,7 @@ jobs:
           ignore-unfixed: true
           exit-code: '1'
           vuln-type: os,library
+          trivyignores: cybersandbox/.trivyignore
 
       - name: Push image
         if: github.event_name != 'pull_request'

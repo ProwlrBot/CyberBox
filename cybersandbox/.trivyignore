@@ -1,0 +1,28 @@
+# Known CRITICAL findings we intentionally accept or can't fix without
+# a base-image change. Revisit on each agent-infra/sandbox upstream bump.
+
+# --- base image upstream (enterprise-public-cn-beijing.cr.volces.com) ---
+# linux_amd64_ve is a stripped Go binary shipped in the base image.
+# Multiple stdlib CVEs flow from it. Upstream owns the fix.
+# CVE-2025-68121 listed here because linux_amd64_ve is Go 1.17.13 stdlib;
+# our own binaries are built with Go 1.25.9 and are NOT affected.
+CVE-2023-24538
+CVE-2023-24540
+CVE-2024-24790
+CVE-2025-68121
+
+# --- Node.js (base image; needed for @anthropic-ai/claude-code) ---
+CVE-2019-19919
+CVE-2021-23369
+CVE-2021-23383
+CVE-2022-2216
+CVE-2022-2900
+CVE-2023-26114
+CVE-2025-62718
+CVE-2026-27699
+CVE-2026-40175
+
+# --- golang.org/x/crypto in projectdiscovery tools ---
+# chaos/notify/asnmap depend on x/crypto v0.31; PD has not bumped upstream.
+# Revisit after next PD release bundle; re-pin those three tools.
+CVE-2024-45337
