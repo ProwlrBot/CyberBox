@@ -1,18 +1,20 @@
 # 示例
 
-本节提供使用 CyberBox 在实际场景中的实用示例和集成指南。
-
-> **说明：** 本页中许多示例代码继承自上游 agent-sandbox SDK 文档，目前仍在迁移中。当前规范的 API（方法名、参数与响应类型）请以 SDK README 为准：[`sdk/python/README.md`](https://github.com/ProwlrBot/CyberBox/blob/main/sdk/python/README.md)、[`sdk/js/README.md`](https://github.com/ProwlrBot/CyberBox/blob/main/sdk/js/README.md)，以及可运行的 TypeScript 示例 [`examples/cybersandbox-js-quickstart/`](https://github.com/ProwlrBot/CyberBox/tree/main/examples/cybersandbox-js-quickstart)。
+本节提供使用 CyberBox 在实际场景中的实用集成指南。下方所有片段均与当前
+CyberBox SDK 的 API（PyPI 上的 `agent-sandbox`、npm 上的
+`@agent-infra/sandbox`）保持一致。若发现漂移，SDK 源码为权威来源，参见
+[`sdk/python/README.md`](https://github.com/ProwlrBot/CyberBox/blob/main/sdk/python/README.md)
+与 [`sdk/js/README.md`](https://github.com/ProwlrBot/CyberBox/blob/main/sdk/js/README.md)。
 
 ## 快速示例
 
 ### 终端集成
-了解如何将 WebSocket 终端集成到您的应用程序中：
+了解如何将 WebSocket 终端集成到您的应用中：
 - [基本终端客户端](/examples/terminal) - 简单的终端集成
 - [高级终端功能](/examples/terminal#advanced-features) - 会话管理和重连
 
 ### 浏览器自动化
-探索浏览器自动化功能：
+探索浏览器自动化能力：
 - [Browser Use 集成](/examples/browser) - Python 浏览器自动化
 - [Playwright 集成](/examples/browser#playwright) - 高级浏览器控制
 - [Web 抓取示例](/examples/browser#scraping) - 数据提取模式
@@ -87,342 +89,332 @@ spec:
 
 ### Python SDK
 
-安装 CyberBox 的 Python SDK：
+安装 Python SDK：
 
 ```bash
 pip install agent-sandbox
+# 或者使用 uv：
+uv add agent-sandbox
 ```
 
 #### 基本配置
 
-导入并配置 Python 客户端：
+SDK 提供 `Sandbox`（同步）和 `AsyncSandbox`（异步）两种客户端，均接受
+`base_url`、`timeout`、`headers`、`follow_redirects` 与 `httpx_client`
+参数。没有 `retries` / `retry_delay` 参数 —— 若需自定义传输行为，请传入
+预配置的 `httpx.Client` / `httpx.AsyncClient`。
 
 ```python
-from agent_sandbox import AsyncSandbox
-import asyncio
+from agent_sandbox import Sandbox
 
-# 初始化客户端
-client = AsyncSandbox(
+client = Sandbox(
     base_url="http://localhost:8080",  # CyberBox URL
-    timeout=30.0,  # 请求超时（秒）
-    retries=3,     # 重试次数
-    retry_delay=1.0  # 重试之间的延迟
+    timeout=30.0,                      # 秒
 )
 ```
 
+每个资源方法都返回一个 Pydantic 模型（`Response*`），包含四个字段：
+`success`、`message`、`data`、`hint`。类型化的业务数据在 `.data` 上。
+
 #### Shell 操作
 
-执行 Shell 命令并管理会话：
+通过 `client.shell.exec_command` 执行命令并管理 shell 会话。会话通过
+`id`（可选 —— 省略时会自动创建一个）标识；后续调用传入相同的 `id`
+即可复用状态。
 
 ```python
-async def shell_example():
-    # 执行简单命令
-    result = await client.shell.exec(command="ls -la")
+# 单次执行命令
+result = client.shell.exec_command(command="ls -la")
+if result.success and result.data:
+    print("输出：", result.data.output)
+    print("退出码：", result.data.exit_code)
 
-    if result.success:
-        print(f"输出：{result.data.output}")
-        print(f"退出码：{result.data.exit_code}")
+# 固定 session id 以在多次调用间保留 cwd / env
+session_id = "my-session-1"
+client.shell.exec_command(
+    command="cd /workspace && pwd",
+    id=session_id,
+)
+client.shell.exec_command(command="ls", id=session_id)
 
-    # 使用会话管理执行
-    session_id = "my-session-1"
-    await client.shell.exec(
-        command="cd /workspace && pwd",
-        session_id=session_id
-    )
+# 异步执行长时间运行的命令
+client.shell.exec_command(
+    command="python long_script.py",
+    async_mode=True,
+    id=session_id,
+)
 
-    # 在同一会话中继续
-    result = await client.shell.exec(
-        command="ls",
-        session_id=session_id
-    )
+# 读取缓冲输出
+view = client.shell.view(id=session_id)
+if view.data:
+    print(view.data.output)
+```
 
-    # 长时间运行任务的异步执行
-    await client.shell.exec(
-        command="python long_script.py",
-        async_mode=True,
-        session_id=session_id
-    )
+异步版本 —— 将 `Sandbox` 替换为 `AsyncSandbox`，并 `await` 每次调用：
 
-    # 查看会话输出
-    view_result = await client.shell.view(session_id=session_id)
-    print(view_result.data.output)
+```python
+import asyncio
+from agent_sandbox import AsyncSandbox
 
-# 运行示例
-asyncio.run(shell_example())
+async def main() -> None:
+    client = AsyncSandbox(base_url="http://localhost:8080")
+    result = await client.shell.exec_command(command="uptime")
+    if result.data:
+        print(result.data.output)
+
+asyncio.run(main())
 ```
 
 #### 文件操作
 
-管理文件和目录：
+文件资源使用 `read_file` / `write_file` / `list_path` / `find_files` /
+`search_in_file` / `grep_files` 等方法。不存在 `file.read` 或 `file.list`
+这类别名。
 
 ```python
-async def file_example():
-    # 写入文件
-    await client.file.write(
-        file="/tmp/example.py",
-        content="""
-import matplotlib.pyplot as plt
-import numpy as np
+# 写入文件
+client.file.write_file(
+    file="/tmp/example.py",
+    content=(
+        "import numpy as np\n"
+        "print(np.arange(10))\n"
+    ),
+)
 
-x = np.linspace(0, 10, 100)
-y = np.sin(x)
+# 读取文件
+read = client.file.read_file(file="/tmp/example.py")
+if read.data:
+    print(read.data.content)
 
-plt.plot(x, y)
-plt.savefig('/tmp/plot.png')
-print("图表已保存！")
-        """.strip()
-    )
+# 递归列出目录
+listing = client.file.list_path(path="/tmp", recursive=True)
+if listing.data:
+    for entry in listing.data.files:
+        print(f"{entry.name}: {entry.size} 字节")
 
-    # 读取文件内容
-    content = await client.file.read(file="/tmp/example.py")
-    if content.success:
-        print(f"文件内容：\n{content.data.content}")
+# 在单个文件中进行正则搜索
+search = client.file.search_in_file(
+    file="/tmp/example.py",
+    regex=r"import \w+",
+)
+if search.data:
+    for match in search.data.matches:
+        print(f"第 {match.line} 行：{match.content}")
 
-    # 列出目录内容
-    files = await client.file.list(
-        path="/tmp",
-        recursive=True,
-        include_size=True
-    )
+# 按 glob 模式在目录下查找文件
+found = client.file.find_files(path="/tmp", glob="*.py")
 
-    for file_info in files.data.files:
-        print(f"{file_info.name}: {file_info.size} 字节")
-
-    # 在文件中搜索
-    search_result = await client.file.search(
-        file="/tmp/example.py",
-        regex=r"import \w+"
-    )
-
-    if search_result.success:
-        for match in search_result.data.matches:
-            print(f"第 {match.line} 行：{match.content}")
-
-    # 按模式查找文件
-    found_files = await client.file.find(
-        path="/tmp",
-        glob="*.py"
-    )
-
-asyncio.run(file_example())
+# 在多个文件中 grep
+grepped = client.file.grep_files(path="/tmp", pattern="TODO")
 ```
 
 #### 代码执行
 
-安全地执行 Python 和 JavaScript 代码：
+Jupyter（持久化内核会话，有状态）：
 
 ```python
-async def code_execution_example():
-    # 在 Jupyter 内核中执行 Python 代码
-    jupyter_result = await client.jupyter.execute(
-        code="""
-import pandas as pd
-import numpy as np
+jupyter_result = client.jupyter.execute_code(
+    code=(
+        "import pandas as pd\n"
+        "df = pd.DataFrame({'x': range(5), 'y': range(5, 10)})\n"
+        "print(df)\n"
+    ),
+    timeout=60,
+    session_id="data-analysis-session",   # 跨调用保持内核状态
+)
 
-# 创建示例数据
-df = pd.DataFrame({
-    'x': np.random.randn(100),
-    'y': np.random.randn(100)
-})
+if jupyter_result.data:
+    for output in jupyter_result.data.outputs:
+        if output.output_type == "stream":
+            print(output.text)
+        elif output.output_type == "execute_result":
+            print(output.data.get("text/plain", ""))
+```
 
-print(f"DataFrame 形状：{df.shape}")
-print(df.head())
-        """,
-        timeout=60,
-        session_id="data-analysis-session"
-    )
+Node.js（有状态）：
 
-    if jupyter_result.success:
-        print("Jupyter 输出：")
-        for output in jupyter_result.data.outputs:
-            if output.output_type == "stream":
-                print(output.text)
-            elif output.output_type == "execute_result":
-                print(output.data.get("text/plain", ""))
+```python
+nodejs_result = client.nodejs.execute_code(
+    code="console.log(process.version)",
+    timeout=30,
+)
+if nodejs_result.data:
+    print(nodejs_result.data.stdout)
+```
 
-    # 执行 Node.js 代码
-    nodejs_result = await client.nodejs.execute(
-        code="""
-const fs = require('fs');
-const path = require('path');
+通过 `client.code` 一次性执行多语言代码（无状态）：
 
-// 如果存在则读取 package.json
-try {
-    const packagePath = path.join(process.cwd(), 'package.json');
-    if (fs.existsSync(packagePath)) {
-        const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
-        console.log(`项目：${pkg.name || '未知'}`);
-        console.log(`版本：${pkg.version || '未知'}`);
-    } else {
-        console.log('未找到 package.json');
-    }
-} catch (error) {
-    console.error('错误：', error.message);
-}
-        """,
-        timeout=30
-    )
-
-    if nodejs_result.success:
-        print(f"Node.js 输出：{nodejs_result.data.stdout}")
-
-asyncio.run(code_execution_example())
+```python
+py = client.code.execute_code(language="python", code="print(2 + 2)")
+if py.data:
+    print(py.data)
 ```
 
 #### MCP 集成
 
-使用模型上下文协议服务：
+MCP 方法使用 `mcp_` 前缀命名，参数负载通过单个 `request` 字典传递
+（而非 `arguments=`）：
 
 ```python
-async def mcp_example():
-    # 列出可用的 MCP 服务器
-    servers = await client.mcp.list_servers()
-    print("可用的 MCP 服务器：", servers.data)
+# 列出已配置的 MCP 服务器
+servers = client.mcp.list_mcp_servers()
+print("MCP 服务器：", servers.data)
 
-    # 从特定服务器获取工具
-    browser_tools = await client.mcp.list_tools(server_name="browser")
+# 列出指定服务器的工具
+tools = client.mcp.list_mcp_tools(server_name="browser")
+if tools.data:
+    for tool in tools.data.tools:
+        print(tool.name, "-", tool.description)
 
-    for tool in browser_tools.data.tools:
-        print(f"工具：{tool.name}")
-        print(f"描述：{tool.description}")
-
-    # 执行工具
-    screenshot_result = await client.mcp.execute_tool(
-        server_name="browser",
-        tool_name="screenshot",
-        arguments={
-            "url": "https://example.com",
-            "width": 1920,
-            "height": 1080
-        }
-    )
-
-    if screenshot_result.success:
-        # 保存截图数据
-        await client.file.write(
-            file="/tmp/screenshot.png",
-            content=screenshot_result.data.content[0].data,  # Base64 图像数据
-            append=False
-        )
-
-asyncio.run(mcp_example())
+# 执行工具 —— server_name / tool_name 为位置参数，
+# 参数负载通过 `request=` 传入
+shot = client.mcp.execute_mcp_tool(
+    "browser",
+    "screenshot",
+    request={
+        "url": "https://example.com",
+        "width": 1920,
+        "height": 1080,
+    },
+)
 ```
 
-#### 错误处理和最佳实践
+#### 错误处理
+
+资源方法返回 `Response*` 模型 —— 请检查 `.success` 与 `.data` 而不是
+依赖异常。只有底层 `httpx` 传输错误（超时、DNS、连接拒绝等）会抛出
+异常。
 
 ```python
-async def robust_example():
-    try:
-        # 始终使用上下文管理器进行资源清理
-        async with AsyncSandbox("http://localhost:8080") as client:
-            # 设置错误处理
-            result = await client.shell.exec("potentially-failing-command")
+try:
+    result = client.shell.exec_command(command="potentially-failing-command")
+    if not result.success:
+        print("命令失败：", result.message)
+    elif result.data and result.data.exit_code != 0:
+        print("非零退出码：", result.data.exit_code)
 
-            if not result.success:
-                print(f"命令失败：{result.message}")
-                if hasattr(result, 'error_code'):
-                    print(f"错误代码：{result.error_code}")
-
-            # 检查沙盒状态
-            status = await client.sandbox.get_context()
-            print(f"沙盒运行时间：{status.data.uptime}")
-            print(f"可用包：{len(status.data.packages)}")
-
-    except Exception as e:
-        print(f"连接错误：{e}")
-
-asyncio.run(robust_example())
+    # 沙盒健康 / 环境信息
+    ctx = client.sandbox.get_context()
+    if ctx.data:
+        print("系统环境：", ctx.data)
+except Exception as e:
+    # 传输错误 —— socket / DNS / 超时 等
+    print(f"传输错误：{e}")
 ```
-
 
 ### Node.js SDK
 
-要安装 SDK，请使用以下命令：
-
 ```bash
-npm install @agent-infra/sandbox
+pnpm add @agent-infra/sandbox
+# 或者：npm install @agent-infra/sandbox
 ```
-
 
 #### 基本配置
 
-首先导入 SDK 并配置客户端：
+JS 客户端构造函数接受 `environment`（基础 URL），以及可选的
+`timeoutInSeconds`、`maxRetries` 与 `headers`。不再有 `baseUrl`、
+`timeout`（毫秒）、`retries`、`retryDelay` —— 这些是上游旧版字段名，已
+不存在。
 
 ```typescript
 import { SandboxClient } from "@agent-infra/sandbox";
 
 const client = new SandboxClient({
-  baseUrl: `https://{aio.sandbox.example}`, // URL 和端口应与 CyberBox 一致
-  timeout: 30000, // 可选：请求超时（毫秒）
-  retries: 3, // 可选：重试次数
-  retryDelay: 1000, // 可选：重试之间的延迟（毫秒）
+  environment: process.env.SANDBOX_API_URL ?? "http://localhost:8080",
+  timeoutInSeconds: 30,
+  maxRetries: 3,
 });
+```
+
+每个方法返回 `HttpResponsePromise`，解析为 `APIResponse` 判别联合类型。
+读取 `res.body` 前请先在 `res.ok` 上做收窄：
+
+```typescript
+const res = await client.shell.execCommand({ command: "uname -a" });
+if (res.ok) {
+  console.log(res.body.data?.output);
+} else {
+  console.error("API 错误：", res.error);
+}
 ```
 
 #### Shell 执行
 
-在沙盒内执行 Shell 命令：
-
 ```typescript
-const response = await client.shellExec({
+const res = await client.shell.execCommand({
   command: "ls -la",
 });
-
-if (response.success) {
-  console.log("命令输出：", response.data.output);
-} else {
-  console.error("错误：", response.message);
+if (res.ok) {
+  console.log("输出：", res.body.data?.output);
+  console.log("退出码：", res.body.data?.exit_code);
 }
 
-// 异步轮询训练结果，适用于长期任务
-const response = await client.shellExecWithPolling({
-  command: "ls -la",
-  maxWaitTime: 60 * 1000,
-});
+// 通过固定 session id 在多次调用间保持状态。
+const sessionId = "my-session-1";
+await client.shell.execCommand({ command: "cd /workspace", id: sessionId });
+const listing = await client.shell.execCommand({ command: "ls", id: sessionId });
 ```
 
 #### 文件管理
 
-列出目录中的文件：
-
 ```typescript
-const fileList = await client.fileList({
-  path: "/home/gem",
+const listing = await client.file.listPath({
+  path: "/workspace",
   recursive: true,
 });
-
-if (fileList.success) {
-  console.log("文件：", fileList.data.files);
-} else {
-  console.error("错误：", fileList.message);
+if (listing.ok) {
+  console.log(listing.body.data?.files);
 }
+
+const read = await client.file.readFile({ file: "/workspace/README.md" });
+if (read.ok) {
+  console.log(read.body.data?.content);
+}
+
+await client.file.writeFile({
+  file: "/tmp/hello.txt",
+  content: "hello, sandbox",
+});
 ```
 
 #### Jupyter 代码执行
 
-运行 Jupyter notebook 代码：
-
 ```typescript
-const jupyterResponse = await client.jupyterExecute({
+const res = await client.jupyter.executeCode({
   code: "print('你好，Jupyter！')",
-  kernel_name: "python3",
+  kernelName: "python3",
 });
-
-if (jupyterResponse.success) {
-  console.log("输出：", jupyterResponse.data);
-} else {
-  console.error("错误：", jupyterResponse.message);
+if (res.ok) {
+  console.log(res.body.data?.outputs);
 }
 ```
 
-## 下一步
+#### MCP 工具调用
 
-准备好实施这些模式了吗？选择您的路径：
+```typescript
+// 列出已配置的服务器
+const servers = await client.mcp.listMcpServers();
+if (servers.ok) console.log(servers.body.data);
+
+// 列出服务器的工具
+const tools = await client.mcp.listMcpTools("browser");
+if (tools.ok) console.log(tools.body.data?.tools);
+
+// 执行工具。serverName、toolName 与参数记录均为位置参数。
+const shot = await client.mcp.executeMcpTool(
+  "browser",
+  "screenshot",
+  { url: "https://example.com", width: 1920, height: 1080 },
+);
+if (shot.ok) console.log(shot.body.data);
+```
+
+## 下一步
 
 - **[终端示例](/examples/terminal)** - 从终端集成开始
 - **[浏览器示例](/examples/browser)** - 探索浏览器自动化
 - **[Agent 集成](/examples/agent)** - 构建 AI 驱动的工作流
 
-如需其他支持：
+如需更多帮助：
 - 查看 [API 文档](/api/) 了解详细规范
-- 探索 [GitHub 仓库](https://github.com/ProwlrBot/CyberBox) 获取最新更新
+- 访问 [GitHub 仓库](https://github.com/ProwlrBot/CyberBox) 获取最新更新
