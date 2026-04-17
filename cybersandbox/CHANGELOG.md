@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.3 — 2026-04-17
 
 Release hygiene: sprint2 supply-chain follow-ups.
 
