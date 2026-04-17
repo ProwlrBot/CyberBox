@@ -35,6 +35,11 @@ updates:
           - "aquasecurity/*"
           - "gitleaks/*"
           - "trufflesecurity/*"
+    ignore:
+      # pnpm/action-setup v6 drops `version:` input and requires pnpm 10+.
+      # Revisit when we migrate to pnpm 11. See #7.
+      - dependency-name: "pnpm/action-setup"
+        update-types: ["version-update:semver-major"]
 
   # CyberSandbox base image (FROM pin in cybersandbox/Dockerfile).
   - package-ecosystem: "docker"
@@ -65,11 +70,21 @@ updates:
     labels:
       - "dependencies"
       - "javascript"
+    # Split groups by update-type so a single major bump (e.g. vitest 1→4)
+    # doesn't lock the whole group into one atomic-and-unmergeable PR.
     groups:
       js-dev:
         dependency-type: "development"
+        update-types: ["minor", "patch"]
+      js-dev-major:
+        dependency-type: "development"
+        update-types: ["major"]
       js-prod:
         dependency-type: "production"
+        update-types: ["minor", "patch"]
+      js-prod-major:
+        dependency-type: "production"
+        update-types: ["major"]
 
   # Python SDK (sdk/python).
   - package-ecosystem: "pip"
