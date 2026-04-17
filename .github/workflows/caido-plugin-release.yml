@@ -1,0 +1,92 @@
+name: Caido Plugin Release
+
+on:
+  push:
+    tags:
+      - 'caido-v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g. 0.2.1). Used as prowlr-caido-v<version>.zip.'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build and upload Caido plugin
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Resolve version
+        id: ver
+        env:
+          REF: ${{ github.ref }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ -n "$INPUT_VERSION" ]; then
+            VERSION="$INPUT_VERSION"
+            TAG="caido-v$INPUT_VERSION"
+          else
+            TAG="${REF#refs/tags/}"
+            VERSION="${TAG#caido-v}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Resolved Caido plugin version: $VERSION (tag: $TAG)"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 9
+
+      - name: Install plugin dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: caido-plugin
+
+      - name: Build plugin
+        run: pnpm build
+        working-directory: caido-plugin
+
+      - name: Package plugin zip
+        id: pkg
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          OUT="prowlr-caido-v${VERSION}.zip"
+          rm -rf release
+          mkdir -p release
+          cp manifest.json release/
+          cp -r dist/backend release/backend
+          cp -r dist/frontend release/frontend
+          (cd release && zip -r "../${OUT}" .)
+          echo "zip=${OUT}" >> "$GITHUB_OUTPUT"
+          ls -la "${OUT}"
+        working-directory: caido-plugin
+
+      - name: Upload zip to matching GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.ver.outputs.tag }}
+          ZIP: ${{ steps.pkg.outputs.zip }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Prowlr Caido plugin $TAG" \
+              --notes "Automated release of the Prowlr Caido plugin."
+          fi
+          gh release upload "$TAG" "caido-plugin/${ZIP}" --repo "$GITHUB_REPOSITORY" --clobber
