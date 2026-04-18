@@ -26,13 +26,15 @@ CyberBox pairs a hardened sandbox container with **Prowlr** (a Caido proxy plugi
 
 ## Quick start
 
-**Container:**
+**Container** (pulls the published image from GHCR):
 ```bash
 docker pull ghcr.io/prowlrbot/cybersandbox:latest
-cd cybersandbox && docker compose up -d
-# Seed wordlists volume (one-time):
-./scripts/seed-wordlists.sh
+docker compose up -d          # uses ./docker-compose.yaml in the repo root
 ```
+
+If `docker compose` fails with `docker-credential-desktop.exe not found` on WSL, drop the stale credsStore: `sed -i 's/"credsStore": "desktop.exe",\?//' ~/.docker/config.json` (public images need no auth).
+
+Building from source (contributors, custom mounts, Obsidian vault) uses `cybersandbox/docker-compose.dev.yml` — see [`cybersandbox/SETUP.md`](cybersandbox/SETUP.md).
 
 **Caido plugins:**
 - [`prowlr-v0.2.1.zip`](https://github.com/ProwlrBot/CyberBox/releases/latest) (this repo) — scope, AI analysis, Obsidian export, guardrails

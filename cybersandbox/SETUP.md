@@ -1,6 +1,8 @@
-# CyberSandbox Setup
+# CyberSandbox Setup (build from source)
 
 Docker-based cybersecurity workspace with 160+ tools, dual AI (Ollama + Claude), Caido proxy, Metasploit, and a plugin marketplace.
+
+> This guide builds the image locally from `cybersandbox/Dockerfile` and mounts a personal Obsidian vault + nuclei templates. If you just want to run the published image, use the root `docker-compose.yaml` instead — see the top-level [`README.md`](../README.md#quick-start).
 
 ## Prerequisites
 
@@ -23,10 +25,10 @@ cp .env.example .env
 # Edit .env — at minimum set GIT_NAME and GIT_EMAIL
 
 # 2. Build (first build takes 15-20 min)
-docker compose build
+docker compose -f docker-compose.dev.yml build
 
 # 3. Run
-docker compose up -d
+docker compose -f docker-compose.dev.yml up -d
 
 # 4. Access
 # Browser UI:  http://localhost:8082
@@ -158,9 +160,9 @@ docker run --rm -v cybersandbox-exports:/data -v /your/vault:/vault alpine \
 ## Rebuilding
 
 ```bash
-docker compose build --no-cache      # Full rebuild
-docker compose up -d --build          # Rebuild + restart
-docker compose down -v                # Wipe all data (workspace + exports)
+docker compose -f docker-compose.dev.yml build --no-cache   # Full rebuild
+docker compose -f docker-compose.dev.yml up -d --build       # Rebuild + restart
+docker compose -f docker-compose.dev.yml down -v             # Wipe all data (workspace + exports)
 ```
 
 ## Troubleshooting
@@ -171,4 +173,4 @@ docker compose down -v                # Wipe all data (workspace + exports)
 
 **Ollama not connecting:** Make sure Ollama is running on the host and accessible at the configured `OLLAMA_HOST`. The default uses Docker's `host.docker.internal`.
 
-**Out of memory:** The container is limited to 8GB by default. Increase `mem_limit` in docker-compose.yml if running heavy scans + Metasploit simultaneously.
+**Out of memory:** The container is limited to 8GB by default. Increase `mem_limit` in `docker-compose.dev.yml` if running heavy scans + Metasploit simultaneously.
