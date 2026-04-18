@@ -2,6 +2,12 @@ services:
   sandbox:
     container_name: cybersandbox
     image: ghcr.io/prowlrbot/cybersandbox:latest
+    # Upstream /opt/gem/run.sh expects root entry so it can useradd +
+    # chown /opt/jupyter, then self-drops to $USER via `su -` before
+    # exec'ing supervisord. The image's Dockerfile prematurely sets
+    # USER 1000, which breaks that contract. Override to root here;
+    # the actual services still run as hunter at the app layer.
+    user: "0:0"
     security_opt:
       - seccomp:unconfined
     extra_hosts:
@@ -13,6 +19,12 @@ services:
     ports:
       - "${HOST_PORT:-8080}:8080"
     environment:
+      # Align runtime user with the image's build-time user (UID/GID 1000).
+      # Upstream /opt/gem/run.sh defaults to USER=gem, which collides with
+      # the hunter user baked into cybersandbox and crashes the container.
+      USER: hunter
+      USER_UID: "1000"
+      USER_GID: "1000"
       PROXY_SERVER: ${PROXY_SERVER:-}
       JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
       DNS_OVER_HTTPS_TEMPLATES: ${DNS_OVER_HTTPS_TEMPLATES:-"https://cloudflare-dns.com/dns-query{?dns}"}
