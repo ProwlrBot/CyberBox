@@ -8,5 +8,10 @@
     "type": "dir",
     "label": "Features",
     "name": "basic"
+  },
+  {
+    "type": "file",
+    "label": "Plugins",
+    "name": "plugins"
   }
 ]
