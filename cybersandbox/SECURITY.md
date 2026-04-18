@@ -18,7 +18,7 @@ Do NOT open a public issue for security vulnerabilities.
 
 ## Out of Scope
 
-- Upstream AIO Sandbox vulnerabilities (report to [agent-infra/sandbox](https://github.com/agent-infra/sandbox))
+- Vulnerabilities in the upstream sandbox runtime (report to [agent-infra/sandbox](https://github.com/agent-infra/sandbox), from which CyberSandbox was forked)
 - Vulnerabilities in bundled third-party tools (nuclei, nmap, etc.) — report to their maintainers
 - Intentional offensive tool behavior (this is a security research platform)
 
