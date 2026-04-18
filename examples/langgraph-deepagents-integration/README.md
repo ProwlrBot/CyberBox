@@ -1,6 +1,8 @@
-# aio-deepagents
+# LangGraph + DeepAgents (integration example)
 
-A LangGraph-based deep agent implementation that uses AIO Sandbox as a native DeepAgents sandbox backend, implementing the `BaseSandbox` protocol (`execute`, `upload_files`, `download_files`).
+> **Inherited from upstream [agent-infra/sandbox](https://github.com/agent-infra/sandbox).** This example still targets the upstream image and wording; CyberSandbox is API-compatible and works as a drop-in replacement by substituting `ghcr.io/prowlrbot/cybersandbox:latest`. The canonical CyberSandbox SDK surface is documented in [`sdk/python/README.md`](../../sdk/python/README.md).
+
+A LangGraph-based deep agent implementation that uses the sandbox as a native DeepAgents backend, implementing the `BaseSandbox` protocol (`execute`, `upload_files`, `download_files`).
 
 ## Features
 

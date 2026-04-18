@@ -1,4 +1,7 @@
-"""AG2 Multi-Agent Code Execution with AIO Sandbox
+"""AG2 Multi-Agent Code Execution with CyberSandbox
+
+Inherited from upstream agent-infra/sandbox; API-compatible with
+ghcr.io/prowlrbot/cybersandbox:latest.
 
 A multi-agent system where a Coder agent writes and executes Python code inside
 a sandboxed environment, and a Reviewer agent validates results. All code runs
