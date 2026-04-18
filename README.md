@@ -100,6 +100,10 @@ Reference sources (patterns extracted, not cloned in bulk):
 - [wshobson/agents](https://github.com/wshobson/agents) — Claude Code security subagents
 - [NVIDIA NemoClaw](https://github.com/NVIDIA) — AI guardrail patterns
 
+## Security
+
+Report suspected vulnerabilities privately — see [SECURITY.md](SECURITY.md). Scope, hardening notes, and the disclosure window are in [`cybersandbox/SECURITY.md`](cybersandbox/SECURITY.md).
+
 ## License
 
 See [`LICENSE`](LICENSE).
