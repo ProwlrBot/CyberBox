@@ -49,7 +49,7 @@
   "author": "kdairatchi <prowlr@proton.me>",
   "license": "Apache-2.0",
   "devDependencies": {
-    "@rslib/core": "^0.17.1",
+    "@rslib/core": "^0.21.2",
     "@types/node": "^20.19.24",
     "@vitest/coverage-v8": "^1.0.0",
     "@vitest/ui": "^1.0.0",
