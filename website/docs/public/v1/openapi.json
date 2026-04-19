@@ -9094,7 +9094,7 @@
         "type": "object",
         "required": [ "category", "tools" ],
         "title": "ToolCategory",
-        "description": "将可用工具按功能分类"
+        "description": "Group available tools by category"
       },
       "ToolExecution": {
         "properties": {
