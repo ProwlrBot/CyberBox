@@ -8,6 +8,11 @@ node_modules
 dist/
 doc_build/
 
+# Python build artifacts
+*.egg-info/
+__pycache__/
+*.pyc
+
 # Caido plugin release artifacts (belong on a GitHub Release, not in the repo)
 caido-plugin/*.zip
 

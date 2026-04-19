@@ -1,3 +1,3 @@
 # Go SDK
 
-Please refer to [https://github.com/agent-infra/sandbox-sdk-go](https://github.com/agent-infra/sandbox-sdk-go).
+Please refer to [https://github.com/ProwlrBot/cybersandbox-sdk-go](https://github.com/ProwlrBot/cybersandbox-sdk-go).

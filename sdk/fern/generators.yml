@@ -45,4 +45,4 @@ groups:
           path: ../../sandbox-sdk-go
         config:
           module:
-            path: github.com/agent-infra/sandbox-sdk-go
+            path: github.com/ProwlrBot/cybersandbox-sdk-go
