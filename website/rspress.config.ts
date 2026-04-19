@@ -72,10 +72,10 @@ export default defineConfig({
       pluginGoogleAnalytics({ id: 'G-VDPJE6PYSN' }),
       pluginOpenGraph({
         url: siteUrl,
-        image: 'https://rspress.rs/og-image.png',
-        description: 'Rsbuild based static site generator',
+        image: `${siteUrl}/og-image.png`,
+        description:
+          'All-in-One Docker security workspace with 160+ tools, dual AI, Caido proxy, and a plugin marketplace — for hunters and agents.',
         twitter: {
-          site: '@rspack_dev',
           card: 'summary_large_image',
         },
       }),

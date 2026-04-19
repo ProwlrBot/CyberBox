@@ -53,8 +53,20 @@ Primary palette — violet / carbon, inspired by the Prowlr lineage:
 ## Social / meta
 
 Social preview image (`.github/brand/social-preview.png`, 1280×640) and Open
-Graph image (`og-image.png`, 1200×630) are generated from these sources when
-real artwork lands — do not commit rasterized versions until then.
+Graph image (`.github/brand/og-image.png`, 1200×630) are composited from
+`banner.png` via ImageMagick center-crop + 256-color quantize. Regenerate
+via:
+
+```bash
+magick website/docs/public/brand/banner.png -resize 1280x640^ \
+  -gravity center -extent 1280x640 -strip -colors 256 \
+  -define png:compression-level=9 .github/brand/social-preview.png
+magick website/docs/public/brand/banner.png -resize 1200x630^ \
+  -gravity center -extent 1200x630 -strip -colors 256 \
+  -define png:compression-level=9 .github/brand/og-image.png
+```
+
+Replace when the four placeholder SVGs land with real artwork.
 
 ## Replacing placeholders
 
