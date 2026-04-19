@@ -1,6 +1,6 @@
 # Sandbox SDK Examples
 
-TypeScript examples demonstrating usage of the `@agent-infra/sandbox` SDK.
+TypeScript examples demonstrating usage of the `@prowlrbot/cybersandbox` SDK.
 
 ## Examples
 

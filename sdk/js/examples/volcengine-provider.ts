@@ -1,4 +1,4 @@
-import { providers } from '@agent-infra/sandbox';
+import { providers } from '@prowlrbot/cybersandbox';
 
 // Initialize Volcengine provider with credentials from environment
 const volcengine = new providers.VolcengineProvider({

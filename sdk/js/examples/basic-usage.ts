@@ -1,4 +1,4 @@
-import { SandboxClient } from '@agent-infra/sandbox';
+import { SandboxClient } from '@prowlrbot/cybersandbox';
 
 // Initialize the client
 const client = new SandboxClient({

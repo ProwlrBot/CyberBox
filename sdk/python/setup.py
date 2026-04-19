@@ -7,11 +7,11 @@ long_description = (this_directory / "README.md").read_text()
 
 setup(
     name="agent-sandbox",
-    description="Python SDK for the All-in-One Sandbox API",
+    description="Python SDK for the CyberSandbox API",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    author="Agent Infra Team",
-    author_email="team@agent-infra.com",
+    author="kdairatchi",
+    author_email="prowlr@proton.me",
     packages=find_packages(),
     package_data={
         "agent_sandbox": ["py.typed"],

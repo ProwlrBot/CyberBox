@@ -1,4 +1,4 @@
-import { SandboxClient } from '@agent-infra/sandbox';
+import { SandboxClient } from '@prowlrbot/cybersandbox';
 
 const client = new SandboxClient({
   environment: process.env.SANDBOX_API_URL || 'http://localhost:8080',

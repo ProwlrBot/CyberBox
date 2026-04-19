@@ -1,4 +1,4 @@
-import { SandboxClient, providers } from '@agent-infra/sandbox';
+import { SandboxClient, providers } from '@prowlrbot/cybersandbox';
 
 /**
  * Advanced usage examples demonstrating:

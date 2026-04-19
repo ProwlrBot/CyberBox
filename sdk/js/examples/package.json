@@ -1,5 +1,5 @@
 {
-  "name": "@agent-infra/sandbox-examples",
+  "name": "@prowlrbot/cybersandbox-examples",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -13,7 +13,7 @@
     "all": "npm run simple && npm run basic && npm run error && npm run advanced"
   },
   "dependencies": {
-    "@agent-infra/sandbox": "file:.."
+    "@prowlrbot/cybersandbox": "file:.."
   },
   "devDependencies": {
     "@types/node": "^20.19.24",

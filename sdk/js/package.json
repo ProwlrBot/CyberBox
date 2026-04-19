@@ -1,5 +1,5 @@
 {
-  "name": "@agent-infra/sandbox",
+  "name": "@prowlrbot/cybersandbox",
   "version": "1.0.13",
   "description": "Node.js SDK for the CyberSandbox HTTP API — shell, file, code, browser, Jupyter, Node.js, MCP, skills, and cloud provider operations.",
   "main": "./dist/cjs/index.js",
@@ -37,7 +37,6 @@
     "package.json"
   ],
   "keywords": [
-    "aio",
     "sandbox",
     "cybersandbox",
     "cyberbox",

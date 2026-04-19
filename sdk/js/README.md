@@ -1,4 +1,4 @@
-# @agent-infra/sandbox
+# @prowlrbot/cybersandbox
 
 Node.js/TypeScript SDK for the CyberSandbox HTTP API — shipped as part of
 [ProwlrBot/CyberBox](https://github.com/ProwlrBot/CyberBox). It talks to the
@@ -13,9 +13,9 @@ artifact is maintained out of the CyberBox monorepo.
 ## Installation
 
 ```bash
-pnpm add @agent-infra/sandbox
-# or: npm install @agent-infra/sandbox
-# or: yarn add @agent-infra/sandbox
+pnpm add @prowlrbot/cybersandbox
+# or: npm install @prowlrbot/cybersandbox
+# or: yarn add @prowlrbot/cybersandbox
 ```
 
 Start the sandbox container the SDK talks to:
@@ -42,7 +42,7 @@ Always narrow on `res.ok` before reading `res.body`.
 ## 30-second Quick Start
 
 ```typescript
-import { SandboxClient } from '@agent-infra/sandbox';
+import { SandboxClient } from '@prowlrbot/cybersandbox';
 
 const client = new SandboxClient({
   environment: process.env.SANDBOX_API_URL || 'http://localhost:8080',
@@ -85,7 +85,7 @@ The SDK includes provider implementations for managing sandboxes on different cl
 #### Volcengine Provider
 
 ```typescript
-import { providers } from '@agent-infra/sandbox';
+import { providers } from '@prowlrbot/cybersandbox';
 
 // Initialize Volcengine provider
 const volcengineProvider = new providers.VolcengineProvider({
@@ -162,7 +162,7 @@ console.log('Available domains:', domains);
 Create custom providers by extending the `BaseProvider` class:
 
 ```typescript
-import { providers } from '@agent-infra/sandbox';
+import { providers } from '@prowlrbot/cybersandbox';
 
 class MyCustomProvider extends providers.BaseProvider {
   async createSandbox(functionId: string, ...kwargs: any[]): Promise<any> {
@@ -275,7 +275,7 @@ import type {
   SandboxApi,
   BaseClientOptions,
   BaseRequestOptions,
-} from '@agent-infra/sandbox';
+} from '@prowlrbot/cybersandbox';
 ```
 
 ## Error handling

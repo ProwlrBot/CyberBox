@@ -1,4 +1,4 @@
-import { SandboxClient } from '@agent-infra/sandbox';
+import { SandboxClient } from '@prowlrbot/cybersandbox';
 
 /**
  * Simple, working examples that demonstrate the actual SDK API

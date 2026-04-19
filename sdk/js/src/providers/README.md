@@ -8,16 +8,16 @@ The Volcengine provider integrates with Volcengine VEFAAS (Volcengine Function a
 
 ### Installation
 
-The provider is included in the `@agent-infra/sandbox` package. Install it via npm:
+The provider is included in the `@prowlrbot/cybersandbox` package. Install it via npm:
 
 ```bash
-npm install @agent-infra/sandbox
+npm install @prowlrbot/cybersandbox
 ```
 
 ### Usage
 
 ```typescript
-import { providers } from '@agent-infra/sandbox';
+import { providers } from '@prowlrbot/cybersandbox';
 
 // Initialize the Volcengine provider
 const provider = new providers.VolcengineProvider({
@@ -63,7 +63,7 @@ const domains = await provider.getApigDomains('function-id');
 To create a custom provider, extend the `BaseProvider` class:
 
 ```typescript
-import { providers } from '@agent-infra/sandbox';
+import { providers } from '@prowlrbot/cybersandbox';
 
 class MyCustomProvider extends providers.BaseProvider {
   async createSandbox(functionId: string, ...kwargs: any[]): Promise<any> {
