@@ -1,7 +1,7 @@
 [project]
 name = "aio-deepagents"
 version = "0.1.0"
-description = "An example project integrating LangGraph and DeepAgents with aio-sandbox."
+description = "An example project integrating LangGraph and DeepAgents with cybersandbox."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

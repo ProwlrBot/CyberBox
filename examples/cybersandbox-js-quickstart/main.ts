@@ -1,7 +1,7 @@
-// Minimal JS/TS quickstart for the CyberSandbox HTTP API.
+// Minimal JS/TS quickstart for the CyberBox HTTP API.
 // Requires: docker run --rm -p 8080:8080 ghcr.io/prowlrbot/cybersandbox:latest
 
-import { SandboxClient } from '@agent-infra/sandbox';
+import { SandboxClient } from '@prowlrbot/cybersandbox';
 
 async function main() {
   const client = new SandboxClient({

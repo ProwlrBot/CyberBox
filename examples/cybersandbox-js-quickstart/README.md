@@ -1,7 +1,7 @@
 # cybersandbox-js-quickstart
 
-Minimal JS/TS example that hits the CyberSandbox HTTP API via the
-`@agent-infra/sandbox` client. Calls three endpoints: `sandbox.getContext`,
+Minimal JS/TS example that hits the CyberBox HTTP API via the
+`@prowlrbot/cybersandbox` client. Calls three endpoints: `sandbox.getContext`,
 `shell.execCommand`, and `code.executeCode`.
 
 ## Run

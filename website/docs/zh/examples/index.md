@@ -2,7 +2,7 @@
 
 本节提供使用 CyberBox 在实际场景中的实用集成指南。下方所有片段均与当前
 CyberBox SDK 的 API（PyPI 上的 `agent-sandbox`、npm 上的
-`@agent-infra/sandbox`）保持一致。若发现漂移，SDK 源码为权威来源，参见
+`@prowlrbot/cybersandbox`）保持一致。若发现漂移，SDK 源码为权威来源，参见
 [`sdk/python/README.md`](https://github.com/ProwlrBot/CyberBox/blob/main/sdk/python/README.md)
 与 [`sdk/js/README.md`](https://github.com/ProwlrBot/CyberBox/blob/main/sdk/js/README.md)。
 
@@ -305,8 +305,8 @@ except Exception as e:
 ### Node.js SDK
 
 ```bash
-pnpm add @agent-infra/sandbox
-# 或者：npm install @agent-infra/sandbox
+pnpm add @prowlrbot/cybersandbox
+# 或者：npm install @prowlrbot/cybersandbox
 ```
 
 #### 基本配置
@@ -317,7 +317,7 @@ JS 客户端构造函数接受 `environment`（基础 URL），以及可选的
 不存在。
 
 ```typescript
-import { SandboxClient } from "@agent-infra/sandbox";
+import { SandboxClient } from "@prowlrbot/cybersandbox";
 
 const client = new SandboxClient({
   environment: process.env.SANDBOX_API_URL ?? "http://localhost:8080",

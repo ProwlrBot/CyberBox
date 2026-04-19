@@ -1,4 +1,4 @@
-"""AIO Sandbox backend for LangChain DeepAgents.
+"""CyberBox backend for LangChain DeepAgents.
 
 Implements the DeepAgents BaseSandbox protocol using the agent-sandbox SDK.
 All operations call the SDK APIs directly (file API for file ops, shell API
@@ -24,7 +24,7 @@ from deepagents.backends.sandbox import BaseSandbox
 
 
 class AIOSandboxBackend(BaseSandbox):
-    """DeepAgents sandbox backend powered by AIO Sandbox.
+    """DeepAgents sandbox backend powered by CyberBox.
 
     All methods call the sandbox SDK APIs directly:
     - File ops (read/write/edit/ls/glob) → file API

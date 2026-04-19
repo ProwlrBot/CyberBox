@@ -2,7 +2,7 @@
 
 Practical integration guides for using CyberBox in real-world scenarios. All
 snippets below match the current CyberBox SDK surface (`agent-sandbox` on
-PyPI, `@agent-infra/sandbox` on npm). If you spot drift, the SDK source is
+PyPI, `@prowlrbot/cybersandbox` on npm). If you spot drift, the SDK source is
 authoritative — see [`sdk/python/README.md`](https://github.com/ProwlrBot/CyberBox/blob/main/sdk/python/README.md)
 and [`sdk/js/README.md`](https://github.com/ProwlrBot/CyberBox/blob/main/sdk/js/README.md).
 
@@ -306,8 +306,8 @@ except Exception as e:
 ### Node.js SDK
 
 ```bash
-pnpm add @agent-infra/sandbox
-# or: npm install @agent-infra/sandbox
+pnpm add @prowlrbot/cybersandbox
+# or: npm install @prowlrbot/cybersandbox
 ```
 
 #### Basic Configuration
@@ -318,7 +318,7 @@ The JS client constructor takes `environment` (base URL), plus optional
 upstream names that no longer exist.
 
 ```typescript
-import { SandboxClient } from "@agent-infra/sandbox";
+import { SandboxClient } from "@prowlrbot/cybersandbox";
 
 const client = new SandboxClient({
   environment: process.env.SANDBOX_API_URL ?? "http://localhost:8080",

@@ -1,4 +1,4 @@
-# AIO Sandbox MCP工具改进建议
+# CyberBox MCP工具改进建议
 
 > "理论和实践有时会冲突。每次都是理论输。" - Linus Torvalds
 

@@ -18,14 +18,6 @@ import { Tab, Tabs } from '@rspress/core/theme';
 docker run --security-opt seccomp=unconfined --rm -it -p 8080:8080 ghcr.io/prowlrbot/cybersandbox:latest
 ```
 
-### 选项 2：中国大陆用户
-
-使用我们的中国镜像以获得更快的下载速度：
-
-```bash
-docker run --security-opt seccomp=unconfined --rm -it -p 8080:8080 enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest
-```
-
 > 如果端口 8080 被占用，映射到不同的端口：
 
 ```bash
@@ -45,7 +37,7 @@ docker run --security-opt seccomp=unconfined --rm -it -p 3000:8080 ghcr.io/prowl
 ██║  ██║██║╚██████╔╝    ███████║██║  ██║██║ ╚████║██████╔╝██████╔╝╚██████╔╝██╔╝ ██╗
 ╚═╝  ╚═╝╚═╝ ╚═════╝     ╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═════╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝
 
-🚀 AIO(All-in-One) 代理沙盒环境
+🚀 CyberBox 代理沙盒环境
 📦 镜像版本：1.0.0.93
 🌈 仪表板：http://localhost:8080/index.html
 🔌 MCP：http://localhost:8080/mcp
@@ -65,7 +57,7 @@ pip install agent-sandbox
   <Tab label="TypeScript">
 
 ```ts
-npm install @agent-infra/sandbox
+npm install @prowlrbot/cybersandbox
 ```
 
   </Tab>
@@ -250,7 +242,7 @@ async def site_to_markdown():
                 "height": browser_info.viewport.height,
             }
         )
-        await page.goto("https://sandbox.agent-infra.com/", wait_until="networkidle")
+        await page.goto("https://example.com/", wait_until="networkidle")
         html = await page.content()
         screenshot_b64 = base64.b64encode(
             await page.screenshot(full_page=False, type='png')

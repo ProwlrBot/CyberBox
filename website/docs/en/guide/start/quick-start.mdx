@@ -18,23 +18,12 @@ Get up and running with CyberBox in just a few minutes.
 docker run --security-opt seccomp=unconfined --rm -it -p 8080:8080 ghcr.io/prowlrbot/cybersandbox:latest
 ```
 
-### Option 2: For Users in Mainland China
-
-Use our China mirror for faster downloads:
-
-```bash
-docker run --security-opt seccomp=unconfined --rm -it -p 8080:8080 enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest
-```
-
-### Option 3: Use a specific version
+### Option 2: Use a specific version
 
 Format `prowlrbot/cybersandbox:${version}`, for example, to use version 1.0.0.150:
 
 ```bash
 docker run --security-opt seccomp=unconfined --rm -it -p 8080:8080 ghcr.io/prowlrbot/cybersandbox:1.0.0.150
-
-# or users in mainland China
-docker run --security-opt seccomp=unconfined --rm -it -p 8080:8080 enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:1.0.0.150
 ```
 
 > If port 8080 is occupied, map to a different port:
@@ -56,7 +45,7 @@ After running the Docker command, you'll see the CyberBox ASCII logo:
 ██║  ██║██║╚██████╔╝    ███████║██║  ██║██║ ╚████║██████╔╝██████╔╝╚██████╔╝██╔╝ ██╗
 ╚═╝  ╚═╝╚═╝ ╚═════╝     ╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═════╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝
 
-🚀 AIO(All-in-One) Agent Sandbox Environment
+🚀 CyberBox Agent Sandbox Environment
 📦 Image Version: 1.0.0.93
 🌈 Dashboard: http://localhost:8080/index.html
 🔌 MCP: http://localhost:8080/mcp
@@ -76,7 +65,7 @@ pip install agent-sandbox
   <Tab label="TypeScript">
 
 ```ts
-npm install @agent-infra/sandbox
+npm install @prowlrbot/cybersandbox
 ```
 
   </Tab>
@@ -261,7 +250,7 @@ async def site_to_markdown():
                 "height": browser_info.viewport.height,
             }
         )
-        await page.goto("https://sandbox.agent-infra.com/", wait_until="networkidle")
+        await page.goto("https://example.com/", wait_until="networkidle")
         html = await page.content()
         screenshot_b64 = base64.b64encode(
             await page.screenshot(full_page=False, type='png')

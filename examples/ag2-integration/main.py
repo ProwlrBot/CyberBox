@@ -1,6 +1,6 @@
-"""AG2 Multi-Agent Code Execution with CyberSandbox
+"""AG2 Multi-Agent Code Execution with CyberBox
 
-Inherited from upstream agent-infra/sandbox; API-compatible with
+Inherited from upstream ProwlrBot/CyberBox; API-compatible with
 ghcr.io/prowlrbot/cybersandbox:latest.
 
 A multi-agent system where a Coder agent writes and executes Python code inside

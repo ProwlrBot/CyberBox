@@ -1,8 +1,8 @@
-# AIO Sandbox 工具评测
+# CyberBox 工具评测
 
 [English](./README.md) | 简体中文
 
-> 一个基于 aio-sandbox 的 MCP（模型上下文协议）工具和 AI 智能体能力的综合评测框架。
+> 一个基于 cybersandbox 的 MCP（模型上下文协议）工具和 AI 智能体能力的综合评测框架。
 
 来源：[Anthropic 的《为智能体编写工具》](https://www.anthropic.com/engineering/writing-tools-for-agents)
 

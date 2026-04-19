@@ -2,13 +2,13 @@
   "name": "cybersandbox-js-quickstart",
   "private": true,
   "version": "0.0.1",
-  "description": "Minimal JS/TS example that drives the CyberSandbox HTTP API via @agent-infra/sandbox.",
+  "description": "Minimal JS/TS example that drives the CyberBox HTTP API via @prowlrbot/cybersandbox.",
   "type": "module",
   "scripts": {
     "start": "tsx main.ts"
   },
   "dependencies": {
-    "@agent-infra/sandbox": "^1.0.13"
+    "@prowlrbot/cybersandbox": "^1.0.13"
   },
   "devDependencies": {
     "tsx": "^4.19.0",
