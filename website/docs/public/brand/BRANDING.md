@@ -73,4 +73,4 @@ When finalized artwork is ready:
 - **Palette**: orange / blue (accent hero art — sits alongside the violet/carbon core palette above; do not treat its hexes as brand tokens)
 - **Subject**: fortified chest with biohazard seal + "CyberBox" wordmark
 - **Chips shown**: Prowlr, Harbinger, LLM, Caido
-- **Used in**: `README.md` (top hero), `website/docs/en/index.md` + `website/docs/zh/index.md` (rspress home hero `image.src`)
+- **Used in**: `README.md` (top hero), `website/docs/en/index.md` (rspress home hero `image.src`)

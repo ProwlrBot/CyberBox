@@ -30,12 +30,12 @@ interface Feature {
 }
 
 const CAP_TAGS = [
-  { key: 'browser', labelEn: 'Browser', labelZh: '浏览器', Icon: BrowserIcon },
-  { key: 'terminal', labelEn: 'Terminal', labelZh: '终端', Icon: TerminalIcon },
-  { key: 'files', labelEn: 'Files', labelZh: '文件', Icon: FilesIcon },
-  { key: 'vscode', labelEn: 'VSCode', labelZh: 'VSCode', Icon: VscodeIcon },
-  { key: 'jupyter', labelEn: 'Jupyter', labelZh: 'Jupyter', Icon: JupyterIcon },
-  { key: 'mcp', labelEn: 'MCP', labelZh: 'MCP', Icon: McpIcon },
+  { key: 'browser', label: 'Browser', Icon: BrowserIcon },
+  { key: 'terminal', label: 'Terminal', Icon: TerminalIcon },
+  { key: 'files', label: 'Files', Icon: FilesIcon },
+  { key: 'vscode', label: 'VSCode', Icon: VscodeIcon },
+  { key: 'jupyter', label: 'Jupyter', Icon: JupyterIcon },
+  { key: 'mcp', label: 'MCP', Icon: McpIcon },
 ];
 
 const FEATURE_ICONS = [
@@ -140,20 +140,13 @@ function CodeLine({ n, children }: { n: number; children: React.ReactNode }) {
   );
 }
 
-const SUBTITLE = {
-  en: 'One Docker container with browser, terminal, filesystem, VSCode, Jupyter, and MCP Server — accessible via a single API/SDK.',
-  zh: '单一 Docker 容器，集成浏览器、终端、文件系统、VSCode、Jupyter 和 MCP 服务器 —— 通过单一 API/SDK 即可访问。',
-};
+const SUBTITLE =
+  'One Docker container with browser, terminal, filesystem, VSCode, Jupyter, and MCP Server — accessible via a single API/SDK.';
 
-const SECTION_TITLE = {
-  en: 'Everything your agent needs,\nout of the box',
-  zh: 'AI Agent 所需一切，开箱即用',
-};
+const SECTION_TITLE = 'Everything your agent needs,\nout of the box';
 
-const SECTION_DESC = {
-  en: 'No more juggling multiple services. CyberBox ships a complete, pre-wired security workspace in a single Docker container.',
-  zh: '无需管理多个服务。CyberBox 在单个 Docker 容器中提供完整的预配置安全工作空间。',
-};
+const SECTION_DESC =
+  'No more juggling multiple services. CyberBox ships a complete, pre-wired security workspace in a single Docker container.';
 
 export default function HomeLayout() {
   const { page } = usePageData();
@@ -166,10 +159,9 @@ export default function HomeLayout() {
     actions?: HeroAction[];
   };
   const features = (fm?.features || []) as Feature[];
-  const isZh = page.lang === 'zh';
 
   const titleLines = (hero.text || '').trim().split('\n').filter(Boolean);
-  const subtitle = isZh ? SUBTITLE.zh : SUBTITLE.en;
+  const subtitle = SUBTITLE;
   const footerMessage = t('footerMessage');
 
   return (
@@ -194,11 +186,11 @@ export default function HomeLayout() {
             </h1>
             <p className="ch-hero-subtitle">{subtitle}</p>
             <div className="ch-hero-caps">
-              {CAP_TAGS.map(({ key, labelEn, labelZh, Icon }, i) => (
+              {CAP_TAGS.map(({ key, label, Icon }, i) => (
                 <span key={key}>
                   <span className="ch-cap-tag">
                     <Icon />
-                    {isZh ? labelZh : labelEn}
+                    {label}
                   </span>
                   {i < CAP_TAGS.length - 1 && (
                     <span className="ch-cap-sep">/</span>
@@ -251,19 +243,15 @@ export default function HomeLayout() {
           {/* biome-ignore lint/suspicious/noCommentText: <explanation> */}
           <span className="ch-section-label">// capabilities</span>
           <h2 className="ch-section-title">
-            {(isZh ? SECTION_TITLE.zh : SECTION_TITLE.en)
-              .split('\n')
-              .map((line, i, arr) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: static content
-                <span key={i}>
-                  {line}
-                  {i < arr.length - 1 && <br />}
-                </span>
-              ))}
+            {SECTION_TITLE.split('\n').map((line, i, arr) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: static content
+              <span key={i}>
+                {line}
+                {i < arr.length - 1 && <br />}
+              </span>
+            ))}
           </h2>
-          <p className="ch-section-desc">
-            {isZh ? SECTION_DESC.zh : SECTION_DESC.en}
-          </p>
+          <p className="ch-section-desc">{SECTION_DESC}</p>
           <div className="ch-feature-grid">
             {features.map((feature, i) => {
               const IconComp = FEATURE_ICONS[i];

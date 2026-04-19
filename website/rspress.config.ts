@@ -88,12 +88,6 @@ export default defineConfig({
       title: 'CyberBox',
       description: 'All-in-One Docker security workspace for hunters and agents',
     },
-    {
-      lang: 'zh',
-      label: '简体中文',
-      title: 'CyberBox',
-      description: '面向安全研究与 AI Agent 的一体化 Docker 沙盒',
-    },
   ],
   themeConfig: {
     // hideNavbar: 'auto',
@@ -120,24 +114,6 @@ export default defineConfig({
         searchPanelCancelText: 'Cancel',
         searchNoResultsText: 'No matching results',
         searchSuggestedQueryText: 'Try searching for different keywords',
-      },
-      {
-        lang: 'zh',
-        label: '简体中文',
-        editLink: {
-          docRepoBaseUrl:
-            'https://github.com/ProwlrBot/CyberBox/tree/main/website/docs',
-          text: '📝 在 GitHub 上编辑此页',
-        },
-        searchPlaceholderText: '搜索',
-        searchPanelCancelText: '取消',
-        searchNoResultsText: '未找到匹配的结果',
-        searchSuggestedQueryText: '尝试搜索其他关键词',
-        overview: {
-          filterNameText: '过滤',
-          filterPlaceholderText: '输入关键词',
-          filterNoResultText: '未找到匹配的 API',
-        },
       },
     ],
   },
