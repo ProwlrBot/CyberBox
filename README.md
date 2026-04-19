@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="website/docs/public/brand/banner.png" alt="CyberBox — fortified chest with biohazard seal, Prowlr / Harbinger / LLM / Caido chips" width="720">
+</p>
+
 <h1 align="center">CyberBox</h1>
 
 <p align="center">

@@ -18,7 +18,7 @@ hero:
       text: GitHub
       link: https://github.com/ProwlrBot/CyberBox
   image:
-    src: /brand/icon.svg
+    src: /brand/banner.png
     alt: CyberBox Logo
 
 features:

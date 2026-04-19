@@ -64,3 +64,13 @@ When finalized artwork is ready:
 2. Verify color contrast against backgrounds used in `website/` (Lighthouse a11y check).
 3. Regenerate social/og rasters (manually or via a Playwright screenshot script).
 4. Update this document if any token values change.
+
+## Banner
+
+- **File**: `website/docs/public/brand/banner.png` (served at `/brand/banner.png`)
+- **Dimensions**: 600x400
+- **Source**: AI-generated (ChatGPT image, 2026-04-18)
+- **Palette**: orange / blue (accent hero art — sits alongside the violet/carbon core palette above; do not treat its hexes as brand tokens)
+- **Subject**: fortified chest with biohazard seal + "CyberBox" wordmark
+- **Chips shown**: Prowlr, Harbinger, LLM, Caido
+- **Used in**: `README.md` (top hero), `website/docs/en/index.md` + `website/docs/zh/index.md` (rspress home hero `image.src`)
