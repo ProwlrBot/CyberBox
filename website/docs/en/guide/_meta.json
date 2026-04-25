@@ -28,5 +28,10 @@
     "type": "file",
     "label": "harbinger Pattern Catalog",
     "name": "harbinger-patterns"
+  },
+  {
+    "type": "file",
+    "label": "harbinger doctor",
+    "name": "harbinger-doctor"
   }
 ]
