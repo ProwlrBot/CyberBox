@@ -11,7 +11,7 @@ files becoming thin shims once a Go implementation exists.
 |------------|--------|-------|
 | `cyberbox invoke-claude` | ✅ Ported (Phase 1) | Behavioral parity with `harbinger/bin/invoke-claude` |
 | `cyberbox invoke-ollama` | ✅ Ported (Phase 2) | Behavioral parity with `harbinger/bin/invoke-ollama`; supports `-m/-s/-j/-r/-l` flags + OLLAMA_HOST/OLLAMA_MODEL env precedence |
-| `cyberbox csbx` | 🟢 PARTIAL (Phase 3-2a) | `search`, `info`, `list`, `doctor` ported; `verify` pending phase 3-2c; `install`/`remove`/`update`/`sync`/`pdtm` pending phase 3-3 |
+| `cyberbox csbx` | 🟢 PARTIAL (Phases 3-2a + 3-2c) | `search`, `info`, `list`, `doctor`, `verify` ported; `install`/`remove`/`update`/`sync`/`pdtm` pending phase 3-3 |
 | `cyberbox harbinger` | 🟡 Stub | Prints redirect to bash file |
 
 Stubs exit with code **2** so callers can distinguish "not yet ported"
@@ -100,12 +100,13 @@ cli/
 │   ├── invoke_claude_test.go        # table-driven tests via httptest
 │   ├── invoke_ollama.go             # Phase 2: local Ollama daemon
 │   ├── invoke_ollama_test.go        # table-driven tests via httptest
-│   ├── csbx/                        # Phase 3-2a: csbx subtree (read-only)
+│   ├── csbx/                        # Phases 3-2a + 3-2c: csbx subtree (read-only + verify)
 │   │   ├── csbx.go                  # cobra subtree root
 │   │   ├── search.go / _test.go     # registry search by name/desc/tag
 │   │   ├── info.go / _test.go       # registry detail + install status
 │   │   ├── list.go / _test.go       # installed (default) or --available
-│   │   └── doctor.go / _test.go     # health check
+│   │   ├── doctor.go / _test.go     # health check
+│   │   └── verify.go / _test.go     # cosign keyless + SBOM + Rekor URL
 │   └── stubs.go                     # remaining harbinger stub
 ├── internal/
 │   ├── anthropic/
@@ -114,9 +115,11 @@ cli/
 │   ├── ollama/
 │   │   ├── client.go                # minimal /api/generate + /api/tags client
 │   │   └── client_test.go
-│   └── csbx/                        # Phase 3-2a: typed state layer
+│   └── csbx/                        # Phases 3-2a + 3-2c: typed state + supply-chain verifier
 │       ├── state.go                 # Registry, Installed, Manifest types + Paths + I/O
-│       └── state_test.go
+│       ├── state_test.go
+│       ├── verify.go                # Verifier interface, ExecVerifier (cosign+docker), Rekor/Fulcio JSON parsers
+│       └── verify_test.go
 ├── Makefile
 ├── .goreleaser.yaml                 # cosign-signed, SBOM-attached release config
 ├── go.mod / go.sum

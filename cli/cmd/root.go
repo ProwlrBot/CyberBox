@@ -19,7 +19,7 @@ func newRootCmd() *cobra.Command {
 Subcommands:
   invoke-claude    Send prompts to the Anthropic Messages API (PORTED)
   invoke-ollama    Send prompts to a local Ollama instance    (PORTED)
-  csbx             Plugin manager for CyberSandbox             (PARTIAL — read-only ported)
+  csbx             Plugin manager for CyberSandbox             (PARTIAL — read-only + verify ported)
   harbinger        Phase-driven security testing CLI           (stub)
 
 Stubs print a redirect to the equivalent bash script. csbx PARTIAL
