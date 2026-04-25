@@ -37,5 +37,6 @@ subcommand-not-found redirect until phase 3-3 lands them in Go too.`,
 	cmd.AddCommand(newListCmd())
 	cmd.AddCommand(newDoctorCmd())
 	cmd.AddCommand(newVerifyCmd()) // phase 3-2c: cosign + docker subprocess
+	cmd.AddCommand(newSyncCmd())   // phase 3-3a: HTTP + atomic rename
 	return cmd
 }
