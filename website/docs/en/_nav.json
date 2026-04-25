@@ -5,6 +5,11 @@
     "activeMatch": "/guide/"
   },
   {
+    "text": "Submit a plugin",
+    "link": "/guide/submit-plugin",
+    "activeMatch": "/guide/submit-plugin"
+  },
+  {
     "text": "API",
     "link": "/api",
     "activeMatch": "/api/"

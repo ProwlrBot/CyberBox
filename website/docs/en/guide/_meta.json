@@ -5,6 +5,11 @@
     "name": "start"
   },
   {
+    "type": "file",
+    "label": "Submit a plugin",
+    "name": "submit-plugin"
+  },
+  {
     "type": "dir",
     "label": "Features",
     "name": "basic"
