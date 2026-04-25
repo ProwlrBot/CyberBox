@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"github.com/spf13/cobra"
+
+	csbxcmd "github.com/ProwlrBot/CyberBox/cli/cmd/csbx"
 )
 
 // Version is set at link time via -ldflags. Defaults to "dev" for unreleased
@@ -17,11 +19,14 @@ func newRootCmd() *cobra.Command {
 Subcommands:
   invoke-claude    Send prompts to the Anthropic Messages API (PORTED)
   invoke-ollama    Send prompts to a local Ollama instance     (stub)
-  csbx             Plugin manager for CyberSandbox             (stub)
+  csbx             Plugin manager for CyberSandbox             (PARTIAL — read-only ported)
   harbinger        Phase-driven security testing CLI           (stub)
 
-Stubs print a redirect to the equivalent bash script. The full port
-lands incrementally. See cli/README.md for the migration plan.`,
+Stubs print a redirect to the equivalent bash script. csbx PARTIAL
+means search/info/list/doctor are real Go implementations; install/
+remove/update/sync/pdtm/verify still resolve to bash via the
+not-yet-ported message. The full port lands incrementally — see
+cli/README.md for the migration plan.`,
 		Version:       Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -29,7 +34,7 @@ lands incrementally. See cli/README.md for the migration plan.`,
 
 	root.AddCommand(newInvokeClaudeCmd())
 	root.AddCommand(newInvokeOllamaCmd())
-	root.AddCommand(newCsbxCmd())
+	root.AddCommand(csbxcmd.NewCmd()) // search/info/list/doctor are real; mutating subcommands fall through to the legacy bash csbx
 	root.AddCommand(newHarbingerCmd())
 	return root
 }
