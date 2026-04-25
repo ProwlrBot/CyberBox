@@ -1,0 +1,9 @@
+# Build output
+dist/
+
+# Local test caches
+.cache/
+*.test
+*.out
+coverage.out
+coverage.html
