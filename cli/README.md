@@ -10,7 +10,7 @@ files becoming thin shims once a Go implementation exists.
 | Subcommand | Status | Notes |
 |------------|--------|-------|
 | `cyberbox invoke-claude` | ✅ Ported (Phase 1) | Behavioral parity with `harbinger/bin/invoke-claude` |
-| `cyberbox invoke-ollama` | 🟡 Stub | Prints redirect to bash file |
+| `cyberbox invoke-ollama` | ✅ Ported (Phase 2) | Behavioral parity with `harbinger/bin/invoke-ollama`; supports `-m/-s/-j/-r/-l` flags + OLLAMA_HOST/OLLAMA_MODEL env precedence |
 | `cyberbox csbx` | 🟡 Stub | Prints redirect to bash file |
 | `cyberbox harbinger` | 🟡 Stub | Prints redirect to bash file |
 
@@ -37,22 +37,28 @@ make cross        # smoke-build for all 5 release targets
 make install      # go install into $GOPATH/bin
 ```
 
-## Use it (Phase 1)
+## Use it (Phases 1 + 2)
 
 ```bash
+# invoke-claude (Phase 1) — needs ANTHROPIC_API_KEY or CLAUDE_API_KEY
 export ANTHROPIC_API_KEY=sk-ant-...
-
-# Args + stdin both supported, same as bash:
 ./dist/cyberbox invoke-claude "explain this vuln"
 cat finding.txt | ./dist/cyberbox invoke-claude "summarise"
 ./dist/cyberbox invoke-claude -m opus -s "You are a pentest expert" "review this"
 curl -s target.com | ./dist/cyberbox invoke-claude -j "extract endpoints"
+
+# invoke-ollama (Phase 2) — needs a local Ollama daemon (`ollama serve`)
+./dist/cyberbox invoke-ollama "explain this HTTP response"
+cat response.txt | ./dist/cyberbox invoke-ollama "find security issues"
+./dist/cyberbox invoke-ollama -m deepseek-r1 "complex analysis"
+./dist/cyberbox invoke-ollama -l                            # list installed models
+nuclei -jsonl -u target.com | ./dist/cyberbox invoke-ollama "triage these findings"
 ```
 
-Flags match the bash invoke-claude exactly: `-m/--model`, `-s/--system`,
-`-t/--tokens`, `-j/--json`, `-r/--raw`, `-h/--help`. Model aliases
-(`sonnet`/`opus`/`haiku`) and the `ANTHROPIC_API_KEY`/`CLAUDE_API_KEY`
-env-var precedence are preserved.
+Flag parity with the bash scripts:
+
+- **invoke-claude**: `-m/--model`, `-s/--system`, `-t/--tokens`, `-j/--json`, `-r/--raw`, `-h/--help`. Model aliases (`sonnet`/`opus`/`haiku`) + `ANTHROPIC_API_KEY`/`CLAUDE_API_KEY` env-var precedence preserved.
+- **invoke-ollama**: `-m/--model`, `-s/--system`, `-j/--json`, `-r/--raw`, `-l/--list`, `-h/--help`. `OLLAMA_HOST`/`OLLAMA_MODEL` env-var precedence preserved (flag > env > default `llama3.1`).
 
 ## Migration plan
 
@@ -90,12 +96,17 @@ cli/
 ├── main.go                          # tiny entrypoint
 ├── cmd/
 │   ├── root.go                      # cobra root + version
-│   ├── invoke_claude.go             # the only fully ported command
+│   ├── invoke_claude.go             # Phase 1: Anthropic Messages API
 │   ├── invoke_claude_test.go        # table-driven tests via httptest
-│   └── stubs.go                     # csbx/harbinger/invoke-ollama redirect stubs
+│   ├── invoke_ollama.go             # Phase 2: local Ollama daemon
+│   ├── invoke_ollama_test.go        # table-driven tests via httptest
+│   └── stubs.go                     # csbx/harbinger redirect stubs (Phase 3+)
 ├── internal/
-│   └── anthropic/
-│       ├── client.go                # minimal Messages API client
+│   ├── anthropic/
+│   │   ├── client.go                # minimal Messages API client
+│   │   └── client_test.go
+│   └── ollama/
+│       ├── client.go                # minimal /api/generate + /api/tags client
 │       └── client_test.go
 ├── Makefile
 ├── .goreleaser.yaml                 # cosign-signed, SBOM-attached release config
