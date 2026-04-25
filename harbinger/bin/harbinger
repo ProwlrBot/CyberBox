@@ -566,6 +566,49 @@ show_status() {
 
 # ── Patterns (Fabric-style prompt library) ───────────────────
 HARBINGER_PATTERNS_DIR="${HARBINGER_PATTERNS_DIR:-$(cd "$HARBINGER_BIN/.." && pwd)/patterns}"
+HARBINGER_RUNS_DIR="${HARBINGER_RUNS_DIR:-${HARBINGER_DIR}/runs}"
+
+# Validate raw AI output against a pattern's schema.json. On failure, append
+# a structured entry to the run's suppression.jsonl. Always returns 0 — in
+# Phase 1 of harbinger doctor we observe but don't suppress; the raw output
+# still flows to stdout so existing pipelines are unaffected. Strict mode
+# (suppress on schema failure) is a Phase 2 follow-up.
+#
+# Args: <pattern_name> <schema_path> <raw_output> <run_id>
+validate_and_log_suppression() {
+  local pattern="$1" schema="$2" raw="$3" run_id="$4"
+  local run_dir="${HARBINGER_RUNS_DIR}/${run_id}"
+  mkdir -p "$run_dir"
+  local sup_log="${run_dir}/suppression.jsonl"
+  local meta="${run_dir}/meta.json"
+
+  if [[ ! -f "$meta" ]]; then
+    jq -n --arg p "$pattern" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      '{pattern:$p, started_at:$ts}' > "$meta"
+  fi
+
+  # Capture stderr (where validate-schema emits the diagnostic JSON) while
+  # discarding stdout (validate-schema is silent on stdout). Order matters:
+  # `2>&1 >/dev/null` first dups stderr to current stdout (captured by $()),
+  # then redirects stdout to /dev/null.
+  local err
+  err=$(printf '%s' "$raw" | "$HARBINGER_BIN/validate-schema" "$schema" 2>&1 >/dev/null) && return 0
+
+  jq -n \
+    --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg pattern "$pattern" \
+    --arg raw "$raw" \
+    --argjson detail "$err" \
+    '{ts:$ts, pattern:$pattern, raw_output:$raw, detail:$detail}' \
+    >> "$sup_log"
+  return 0
+}
+
+# Generate a run-id of the form <UTC ISO compact>-<pattern>. Stable across a
+# single run_pattern invocation.
+mk_run_id() {
+  printf '%s-%s' "$(date -u +%Y%m%dT%H%M%SZ)" "$1"
+}
 
 list_patterns() {
   if [[ ! -d "$HARBINGER_PATTERNS_DIR" ]]; then
@@ -622,7 +665,102 @@ run_pattern() {
     extract_endpoints|triage_nuclei) tier="fast" ;;
     write_report) tier="best" ;;
   esac
-  ai "$tier" -s "$system_prompt" "$user_input"
+
+  # If the pattern declares a schema, validate the AI output against it and
+  # log any rejection to the run's suppression log so `harbinger doctor` can
+  # explain it. Output is still passed through to stdout — Phase 1 observes
+  # but does not suppress. Patterns without schema.json bypass entirely.
+  local schema_path="$HARBINGER_PATTERNS_DIR/$name/schema.json"
+  if [[ -f "$schema_path" ]]; then
+    local raw_output run_id
+    raw_output=$(ai "$tier" -s "$system_prompt" "$user_input")
+    run_id=$(mk_run_id "$name")
+    validate_and_log_suppression "$name" "$schema_path" "$raw_output" "$run_id"
+    printf '%s\n' "$raw_output"
+  else
+    ai "$tier" -s "$system_prompt" "$user_input"
+  fi
+}
+
+# ── harbinger doctor — explain schema validation suppressions ────
+#
+# Without args: lists recent runs with suppression counts.
+# With <run-id> or 'latest': prints all suppressions for that run with the
+# raw output and the validator error class so a hunter can decide whether
+# to retune the pattern, the schema, or the model.
+cmd_doctor() {
+  local arg="${1:-}"
+
+  if [[ ! -d "$HARBINGER_RUNS_DIR" ]]; then
+    info "No runs found under $HARBINGER_RUNS_DIR"
+    return 0
+  fi
+
+  if [[ -z "$arg" ]]; then
+    echo
+    echo "Recent harbinger runs (most recent first):"
+    echo
+    local found=0
+    while IFS= read -r run_id; do
+      [[ -z "$run_id" ]] && continue
+      found=1
+      local sup="${HARBINGER_RUNS_DIR}/${run_id}/suppression.jsonl"
+      local count=0
+      [[ -f "$sup" ]] && count=$(wc -l < "$sup" | tr -d ' ')
+      printf "  %-44s  %s suppression(s)\n" "$run_id" "$count"
+    done < <(ls -1t "$HARBINGER_RUNS_DIR" 2>/dev/null | head -20)
+    [[ "$found" -eq 0 ]] && echo "  (no runs yet — run a pattern with a schema to populate)"
+    echo
+    echo "View details with: harbinger doctor <run-id>   (or 'latest')"
+    return 0
+  fi
+
+  local target_run="$arg"
+  if [[ "$arg" == "latest" ]]; then
+    target_run=$(ls -1t "$HARBINGER_RUNS_DIR" 2>/dev/null | head -1)
+    if [[ -z "$target_run" ]]; then
+      err "no runs found"
+      return 1
+    fi
+  fi
+
+  local run_dir="${HARBINGER_RUNS_DIR}/${target_run}"
+  if [[ ! -d "$run_dir" ]]; then
+    err "run not found: $target_run"
+    echo "  expected at: $run_dir" >&2
+    return 1
+  fi
+
+  local sup="${run_dir}/suppression.jsonl"
+  if [[ ! -s "$sup" ]]; then
+    info "Run ${target_run}: 0 suppressions (everything passed validation)"
+    return 0
+  fi
+
+  local total
+  total=$(wc -l < "$sup" | tr -d ' ')
+  echo
+  echo "=== harbinger doctor — run ${target_run} ==="
+  echo "Suppressions: ${total}"
+  echo
+  echo "Grouped by error class:"
+  jq -r '.detail.error_class' "$sup" | sort | uniq -c | sort -rn | sed 's/^/  /'
+  echo
+  echo "Details:"
+  echo "--------"
+  jq -r '
+    "[\(.ts)] pattern=\(.pattern)\n" +
+    "  error_class : \(.detail.error_class)\n" +
+    "  message     : \(.detail.message)\n" +
+    "  json_path   : \(.detail.path | tostring)\n" +
+    "  validator   : \(.detail.validator // "n/a")\n" +
+    (if (.detail.additional_error_count // 0) > 0
+       then "  (\(.detail.additional_error_count) more errors in same output)\n"
+       else "" end) +
+    "  raw output  :\n" +
+    (.raw_output | gsub("(?m)^"; "    "))
+  ' "$sup"
+  return 0
 }
 
 # ── Main ─────────────────────────────────────────────────────
@@ -637,6 +775,7 @@ Commands:
   analyze <file>     AI-analyze a request/response file
   validate <target>  Generate PoC payloads + screenshots for nuclei findings
   report <target>    Generate report from findings
+  doctor [run-id]    Explain schema-suppressed AI outputs (use 'latest' for last)
   pattern <name>     Run a Fabric-style prompt pattern on stdin/args
   pattern list       List available patterns
   patterns list      List available patterns (alias; -v for schema/example status)
@@ -664,6 +803,7 @@ case "${1:-}" in
   analyze)  phase_analyze "${2:?Usage: harbinger analyze <file|text>}" ;;
   validate|phase_validate) phase_validate "${2:?Usage: harbinger validate <target>}" ;;
   report)   phase_report "${2:?Usage: harbinger report <target>}" ;;
+  doctor)   cmd_doctor "${@:2}" ;;
   status)   show_status ;;
   pattern)
     case "${2:-}" in

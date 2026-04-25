@@ -17,6 +17,10 @@ classifiers = [
 ]
 dependencies = [
   "playwright>=1.45,<2.0",
+  # Draft 2020-12 JSON Schema validation for pattern output suppression.
+  # The 8 patterns under harbinger/patterns/*/schema.json declare the shape
+  # of valid AI output; harbinger doctor explains what got rejected.
+  "jsonschema>=4.18,<5.0",
 ]
 
 [project.optional-dependencies]

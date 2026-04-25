@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+"""
+validate-schema — Validate JSON on stdin against a JSON Schema file.
+
+Usage:
+    validate-schema <schema_path>           # reads JSON from stdin
+    echo '{"x":1}' | validate-schema /path/to/schema.json
+
+Exit:
+    0 — valid
+    1 — invalid (structured error JSON written to stderr)
+    2 — usage / file-not-found / non-JSON input
+
+Stderr output on failure (one JSON object, single line):
+    {
+      "error_class": "missing_field" | "wrong_type" | "regex_mismatch" | ...,
+      "message":     "human-readable jsonschema error message",
+      "path":        ["claims", "exp"],   // JSON pointer to the offending value
+      "validator":   "required",          // jsonschema validator that fired
+      "schema_id":   "jwt_audit",         // schema $id or title
+    }
+
+Designed to be called from harbinger's run_pattern bash function. Output is
+always one structured line so the bash side can `jq` it without parsing
+free-form text.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+try:
+    from jsonschema import Draft202012Validator
+    from jsonschema.exceptions import ValidationError
+except ImportError as e:  # pragma: no cover - dep is required in pyproject
+    sys.stderr.write(json.dumps({
+        "error_class": "internal",
+        "message": f"jsonschema not installed: {e}",
+    }) + "\n")
+    sys.exit(2)
+
+
+# Map of jsonschema validator keyword → human "error class". The class is
+# what `harbinger doctor` groups by, so the names should be
+# self-explanatory to a hunter who just ran the command.
+ERROR_CLASS = {
+    "required":         "missing_field",
+    "type":             "wrong_type",
+    "pattern":          "regex_mismatch",
+    "enum":             "enum_violation",
+    "minLength":        "too_short",
+    "maxLength":        "too_long",
+    "minProperties":    "too_few_properties",
+    "maxProperties":    "too_many_properties",
+    "minItems":         "too_few_items",
+    "maxItems":         "too_many_items",
+    "minimum":          "below_minimum",
+    "maximum":          "above_maximum",
+    "additionalProperties": "extra_field",
+    "format":           "format_violation",
+    "const":            "wrong_const",
+}
+
+
+def emit(payload: dict) -> None:
+    sys.stderr.write(json.dumps(payload, default=str) + "\n")
+
+
+def main() -> int:
+    if len(sys.argv) != 2:
+        emit({"error_class": "usage", "message": "Usage: validate-schema <schema_path>"})
+        return 2
+
+    schema_path = Path(sys.argv[1])
+    if not schema_path.is_file():
+        emit({"error_class": "schema_not_found", "message": f"schema not found: {schema_path}"})
+        return 2
+
+    try:
+        schema = json.loads(schema_path.read_text())
+    except json.JSONDecodeError as e:
+        emit({"error_class": "schema_malformed", "message": f"schema is not valid JSON: {e}"})
+        return 2
+
+    raw = sys.stdin.read()
+    if not raw.strip():
+        emit({"error_class": "empty_input", "message": "no JSON received on stdin"})
+        return 1
+
+    try:
+        instance = json.loads(raw)
+    except json.JSONDecodeError as e:
+        emit({
+            "error_class": "non_json",
+            "message": f"input is not valid JSON: {e.msg}",
+            "line": e.lineno,
+            "col": e.colno,
+        })
+        return 1
+
+    validator = Draft202012Validator(schema)
+    errors = sorted(validator.iter_errors(instance), key=lambda err: err.path)
+    if not errors:
+        return 0
+
+    schema_id = schema.get("$id") or schema.get("title") or schema_path.stem
+
+    # Surface the FIRST error in detail; include a count of trailing errors so
+    # the doctor can tell the user "and 3 more". Reporting every error here
+    # would make the suppression log ungainly, and most often the first error
+    # is the high-signal one (a missing required field cascades into many
+    # secondary type errors).
+    first = errors[0]
+    emit({
+        "error_class": ERROR_CLASS.get(first.validator, first.validator or "unknown"),
+        "message":     first.message,
+        "path":        list(first.absolute_path),
+        "validator":   first.validator,
+        "schema_id":   schema_id,
+        "additional_error_count": max(0, len(errors) - 1),
+    })
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
