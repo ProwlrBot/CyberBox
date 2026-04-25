@@ -10,7 +10,7 @@ files becoming thin shims once a Go implementation exists.
 | Subcommand | Status | Notes |
 |------------|--------|-------|
 | `cyberbox invoke-claude` | ✅ Ported (Phase 1) | Behavioral parity with `harbinger/bin/invoke-claude` |
-| `cyberbox invoke-ollama` | 🟡 Stub | Prints redirect to bash file (port pending merge of feat/spec-018-phase-2-ollama) |
+| `cyberbox invoke-ollama` | ✅ Ported (Phase 2) | Behavioral parity with `harbinger/bin/invoke-ollama`; supports `-m/-s/-j/-r/-l` flags + OLLAMA_HOST/OLLAMA_MODEL env precedence |
 | `cyberbox csbx` | 🟢 PARTIAL (Phase 3-2a) | `search`, `info`, `list`, `doctor` ported; `verify` pending phase 3-2c; `install`/`remove`/`update`/`sync`/`pdtm` pending phase 3-3 |
 | `cyberbox harbinger` | 🟡 Stub | Prints redirect to bash file |
 
@@ -37,22 +37,28 @@ make cross        # smoke-build for all 5 release targets
 make install      # go install into $GOPATH/bin
 ```
 
-## Use it (Phase 1)
+## Use it (Phases 1 + 2)
 
 ```bash
+# invoke-claude (Phase 1) — needs ANTHROPIC_API_KEY or CLAUDE_API_KEY
 export ANTHROPIC_API_KEY=sk-ant-...
-
-# Args + stdin both supported, same as bash:
 ./dist/cyberbox invoke-claude "explain this vuln"
 cat finding.txt | ./dist/cyberbox invoke-claude "summarise"
 ./dist/cyberbox invoke-claude -m opus -s "You are a pentest expert" "review this"
 curl -s target.com | ./dist/cyberbox invoke-claude -j "extract endpoints"
+
+# invoke-ollama (Phase 2) — needs a local Ollama daemon (`ollama serve`)
+./dist/cyberbox invoke-ollama "explain this HTTP response"
+cat response.txt | ./dist/cyberbox invoke-ollama "find security issues"
+./dist/cyberbox invoke-ollama -m deepseek-r1 "complex analysis"
+./dist/cyberbox invoke-ollama -l                            # list installed models
+nuclei -jsonl -u target.com | ./dist/cyberbox invoke-ollama "triage these findings"
 ```
 
-Flags match the bash invoke-claude exactly: `-m/--model`, `-s/--system`,
-`-t/--tokens`, `-j/--json`, `-r/--raw`, `-h/--help`. Model aliases
-(`sonnet`/`opus`/`haiku`) and the `ANTHROPIC_API_KEY`/`CLAUDE_API_KEY`
-env-var precedence are preserved.
+Flag parity with the bash scripts:
+
+- **invoke-claude**: `-m/--model`, `-s/--system`, `-t/--tokens`, `-j/--json`, `-r/--raw`, `-h/--help`. Model aliases (`sonnet`/`opus`/`haiku`) + `ANTHROPIC_API_KEY`/`CLAUDE_API_KEY` env-var precedence preserved.
+- **invoke-ollama**: `-m/--model`, `-s/--system`, `-j/--json`, `-r/--raw`, `-l/--list`, `-h/--help`. `OLLAMA_HOST`/`OLLAMA_MODEL` env-var precedence preserved (flag > env > default `llama3.1`).
 
 ## Migration plan
 
@@ -92,16 +98,21 @@ cli/
 │   ├── root.go                      # cobra root + version
 │   ├── invoke_claude.go             # Phase 1: Anthropic Messages API
 │   ├── invoke_claude_test.go        # table-driven tests via httptest
+│   ├── invoke_ollama.go             # Phase 2: local Ollama daemon
+│   ├── invoke_ollama_test.go        # table-driven tests via httptest
 │   ├── csbx/                        # Phase 3-2a: csbx subtree (read-only)
 │   │   ├── csbx.go                  # cobra subtree root
 │   │   ├── search.go / _test.go     # registry search by name/desc/tag
 │   │   ├── info.go / _test.go       # registry detail + install status
 │   │   ├── list.go / _test.go       # installed (default) or --available
 │   │   └── doctor.go / _test.go     # health check
-│   └── stubs.go                     # remaining stub redirects (invoke-ollama, harbinger)
+│   └── stubs.go                     # remaining harbinger stub
 ├── internal/
 │   ├── anthropic/
 │   │   ├── client.go                # minimal Messages API client
+│   │   └── client_test.go
+│   ├── ollama/
+│   │   ├── client.go                # minimal /api/generate + /api/tags client
 │   │   └── client_test.go
 │   └── csbx/                        # Phase 3-2a: typed state layer
 │       ├── state.go                 # Registry, Installed, Manifest types + Paths + I/O
@@ -114,11 +125,13 @@ cli/
 
 ## Testing strategy
 
-- **No live API calls in tests.** The Anthropic client is exercised against
-  `httptest.Server` so tests stay deterministic and offline.
-- **`runInvokeClaude`** is split out from the cobra wrapper so tests can
-  pass `bytes.Buffer` for stdout/stderr and `strings.Reader` for stdin —
-  no `os.Pipe` plumbing or t.Setenv with real fds.
+- **No live API calls in tests.** The Anthropic and Ollama clients are
+  exercised against `httptest.Server` so tests stay deterministic and
+  offline.
+- **`runInvokeClaude`/`runInvokeOllama`** are split out from the cobra
+  wrappers so tests can pass `bytes.Buffer` for stdout/stderr and
+  `strings.Reader` for stdin — no `os.Pipe` plumbing or t.Setenv with
+  real fds.
 - **TTY detection** uses `golang.org/x/term`; `bytes.Buffer` and
   `strings.Reader` are not `*os.File`, so `isTerminal` always returns
   false in tests, matching the "treat tests as non-interactive" policy.
