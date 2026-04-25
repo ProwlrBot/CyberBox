@@ -266,8 +266,42 @@ ${findings_data}" > "${workspace}/reports/report-$(date +%Y%m%d).md"
 # Reads findings/nuclei.jsonl, generates exploit payloads via Claude Opus,
 # captures screenshots via the capture-screenshot helper, and emits an
 # evidence/manifest.json that phase_report consumes.
+phase_validate_help() {
+  cat <<'EOF'
+harbinger validate — generate PoC evidence for nuclei findings
+
+Usage:
+  harbinger validate <target>
+  harbinger phase_validate <target>      (alias)
+
+Reads ${HARBINGER_DIR}/targets/<target>/findings/nuclei.jsonl, filters by severity
+(NUCLEI_SEVERITY, default medium,high,critical), and for each finding:
+  1. Asks Claude Opus for a minimal proof-of-concept JSON (curl + steps + confidence).
+     Falls back to nuclei's own curl-command if the AI call fails.
+  2. Captures a full-page Chromium screenshot of the matched URL via the
+     capture-screenshot helper. Retries once at 60s on transient timeouts.
+  3. Appends a manifest entry under evidence/manifest.json.
+
+Outputs (under ${HARBINGER_DIR}/targets/<target>/evidence/):
+  manifest.json         per-finding metadata for phase_report consumption
+  payloads/<id>.json    AI-generated or fallback PoC payloads
+  screenshots/<id>.png  full-page browser screenshots
+  ../logs/validate.log  execution log
+
+Tunables:
+  HARBINGER_VALIDATE_LIMIT     max findings to process (default 10)
+  HARBINGER_VALIDATE_TIMEOUT   per-screenshot timeout seconds (default 30)
+  NUCLEI_SEVERITY              comma list of severities to keep
+  HARBINGER_BEST_MODEL         Claude model for payload generation (default opus)
+EOF
+}
+
 phase_validate() {
   local target="$1"
+  if [[ "$target" == "-h" || "$target" == "--help" || "$target" == "help" ]]; then
+    phase_validate_help
+    exit 0
+  fi
   local workspace="${HARBINGER_DIR}/targets/${target}"
 
   if [[ ! -d "$workspace" ]]; then
@@ -628,7 +662,7 @@ case "${1:-}" in
   recon)    phase_recon "${2:?Usage: harbinger recon <target>}" ;;
   scan)     phase_scan "${2:?Usage: harbinger scan <target>}" ;;
   analyze)  phase_analyze "${2:?Usage: harbinger analyze <file|text>}" ;;
-  validate) phase_validate "${2:?Usage: harbinger validate <target>}" ;;
+  validate|phase_validate) phase_validate "${2:?Usage: harbinger validate <target>}" ;;
   report)   phase_report "${2:?Usage: harbinger report <target>}" ;;
   status)   show_status ;;
   pattern)

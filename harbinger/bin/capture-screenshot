@@ -1,0 +1,231 @@
+#!/usr/bin/env python3
+# capture-screenshot — headless full-page screenshot via Playwright
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+import tempfile
+import time
+from pathlib import Path
+from urllib.parse import urlparse
+
+USAGE = """capture-screenshot — full-page headless Chromium screenshot
+
+Usage:
+  capture-screenshot URL OUTPUT_PATH [--timeout SECONDS]
+  capture-screenshot -h | --help
+
+Arguments:
+  URL                 http:// or https:// URL to capture
+  OUTPUT_PATH         Destination file path (parent dir must exist)
+
+Options:
+  --timeout SECONDS   Page-load timeout in seconds (default: 30)
+  -h, --help          Show this help
+
+Output:
+  stdout: JSON {"status":"ok",...} on success
+  stderr: JSON {"status":"error","reason":...} on failure
+
+Exit codes:
+  0  success
+  2  invalid input (bad args, URL, or scheme)
+  3  environment problem (Playwright not installed, browser missing)
+  4  runtime failure (timeout, navigation, screenshot)
+  1  other
+"""
+
+EXIT_OK = 0
+EXIT_OTHER = 1
+EXIT_INVALID = 2
+EXIT_ENV = 3
+EXIT_RUNTIME = 4
+
+
+def emit_error(url, message, reason, exit_code):
+    payload = {
+        "status": "error",
+        "url": url,
+        "error": message,
+        "reason": reason,
+    }
+    sys.stderr.write(json.dumps(payload, separators=(",", ":")))
+    sys.stderr.write("\n")
+    sys.exit(exit_code)
+
+
+def parse_args(argv):
+    if any(a in ("-h", "--help") for a in argv):
+        sys.stdout.write(USAGE)
+        sys.exit(EXIT_OK)
+
+    positional = []
+    timeout = 30
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "--timeout":
+            if i + 1 >= len(argv):
+                emit_error(None, "--timeout requires a value", "invalid_url", EXIT_INVALID)
+            try:
+                timeout = int(argv[i + 1])
+            except ValueError:
+                emit_error(None, f"invalid --timeout value: {argv[i + 1]}", "invalid_url", EXIT_INVALID)
+            if timeout <= 0:
+                emit_error(None, "--timeout must be positive", "invalid_url", EXIT_INVALID)
+            if timeout > 55:
+                timeout = 55
+            i += 2
+        elif a.startswith("--"):
+            emit_error(None, f"unknown option: {a}", "invalid_url", EXIT_INVALID)
+        else:
+            positional.append(a)
+            i += 1
+
+    if len(positional) != 2:
+        emit_error(
+            None,
+            "expected 2 positional args: URL OUTPUT_PATH",
+            "invalid_url",
+            EXIT_INVALID,
+        )
+
+    return positional[0], positional[1], timeout
+
+
+def validate_url(url):
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        emit_error(url, "URL parse failed", "invalid_url", EXIT_INVALID)
+        return None
+    if not parsed.netloc:
+        emit_error(url, "URL missing host", "invalid_url", EXIT_INVALID)
+    if parsed.scheme not in ("http", "https"):
+        emit_error(
+            url,
+            f"only http/https schemes allowed, got: {parsed.scheme or '<none>'}",
+            "invalid_scheme",
+            EXIT_INVALID,
+        )
+
+
+def resolve_output(path_str, url):
+    out = Path(path_str).resolve()
+    if not out.parent.exists() or not out.parent.is_dir():
+        emit_error(
+            url,
+            f"output parent dir does not exist: {out.parent}",
+            "output_dir_missing",
+            EXIT_INVALID,
+        )
+    return out
+
+
+def main():
+    url, out_str, timeout = parse_args(sys.argv[1:])
+    validate_url(url)
+    out_path = resolve_output(out_str, url)
+
+    try:
+        from playwright.sync_api import (
+            Error as PWError,
+            TimeoutError as PWTimeoutError,
+            sync_playwright,
+        )
+    except ImportError as e:
+        emit_error(url, f"playwright not installed: {e}", "playwright_missing", EXIT_ENV)
+        return
+
+    started = time.monotonic()
+    tmp_fd, tmp_path = tempfile.mkstemp(
+        prefix=f".{out_path.name}.",
+        suffix=".part",
+        dir=str(out_path.parent),
+    )
+    os.close(tmp_fd)
+
+    def _cleanup_tmp():
+        try:
+            os.unlink(tmp_path)
+        except FileNotFoundError:
+            pass
+
+    try:
+        with sync_playwright() as pw:
+            try:
+                browser = pw.chromium.launch(headless=True)
+            except PWError as e:
+                _cleanup_tmp()
+                msg = str(e)
+                # Distinguish "browser binaries missing" from generic launch failure.
+                if "Executable doesn't exist" in msg or "playwright install" in msg.lower() or "browser was not installed" in msg.lower():
+                    emit_error(
+                        url,
+                        "Playwright Chromium binaries not found. Run: playwright install chromium",
+                        "browser_missing",
+                        EXIT_ENV,
+                    )
+                else:
+                    emit_error(url, f"browser launch failed: {e}", "browser_launch_failed", EXIT_ENV)
+                return
+
+            try:
+                context = browser.new_context()
+                page = context.new_page()
+                page.set_default_timeout(timeout * 1000)
+
+                try:
+                    page.goto(url, wait_until="networkidle", timeout=timeout * 1000)
+                except PWTimeoutError:
+                    _cleanup_tmp()
+                    emit_error(url, f"page load timed out after {timeout}s", "page_timeout", EXIT_RUNTIME)
+                    return
+                except PWError as e:
+                    _cleanup_tmp()
+                    emit_error(url, f"navigation failed: {e}", "navigation_failed", EXIT_RUNTIME)
+                    return
+
+                try:
+                    # Pass type='png' explicitly: Playwright otherwise infers from
+                    # the path suffix, but our atomic temp path ends in `.part`
+                    # which it rejects. Output is always PNG by spec FR-3.
+                    page.screenshot(path=tmp_path, full_page=True, type="png")
+                except PWError as e:
+                    _cleanup_tmp()
+                    emit_error(url, f"screenshot failed: {e}", "screenshot_failed", EXIT_RUNTIME)
+                    return
+            finally:
+                browser.close()
+    except PWError as e:
+        _cleanup_tmp()
+        emit_error(url, f"playwright error: {e}", "unknown", EXIT_OTHER)
+        return
+
+    os.replace(tmp_path, out_path)
+    size = out_path.stat().st_size
+    duration_ms = int((time.monotonic() - started) * 1000)
+
+    payload = {
+        "status": "ok",
+        "url": url,
+        "output": str(out_path),
+        "bytes": size,
+        "duration_ms": duration_ms,
+    }
+    sys.stdout.write(json.dumps(payload, separators=(",", ":")))
+    sys.stdout.write("\n")
+    sys.exit(EXIT_OK)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except SystemExit:
+        raise
+    except KeyboardInterrupt:
+        sys.exit(130)
+    except BaseException as e:
+        emit_error(None, f"unexpected: {type(e).__name__}: {e}", "unknown", EXIT_OTHER)

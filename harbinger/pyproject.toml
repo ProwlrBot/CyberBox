@@ -1,0 +1,42 @@
+[project]
+name = "harbinger"
+version = "0.1.0"
+description = "AI-augmented offensive-security CLI for the CyberBox sandbox: recon, scan, validate, report."
+readme = "../README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "CyberBox" },
+]
+keywords = ["security", "bug-bounty", "playwright", "ai", "harbinger"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Operating System :: POSIX :: Linux",
+  "Topic :: Security",
+]
+dependencies = [
+  "playwright>=1.45,<2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.5",
+]
+
+# Helpers under bin/ (capture-screenshot, harbinger, invoke-claude, invoke-ollama) are
+# distributed as plain executables on PATH rather than Python entrypoints. We therefore
+# do not declare [project.scripts] — the bash orchestrator invokes them by absolute path.
+
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+# No Python package layout yet; this project ships scripts via Docker/PATH.
+bypass-selection = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
