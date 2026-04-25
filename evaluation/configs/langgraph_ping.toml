@@ -1,0 +1,37 @@
+# Sample LangGraph evaluation config.
+#
+# Runs the LangGraph agent loop against the sandbox MCP server using the
+# `evaluation_ping.xml` dataset (single connectivity check). The output
+# benchmark file lands under `result/<date>/` like all other harness runs.
+#
+# Usage:
+#   cd evaluation
+#   uv run main.py --config configs/langgraph_ping.toml
+#
+# Override anything via env vars (`MCP_SERVER_URL`, `OPENAI_API_KEY`, ...);
+# this file is the documented baseline.
+
+[harness]
+agent = "langgraph"
+eval = "ping"
+output_subdir = "langgraph"
+
+[harness.langgraph]
+# Pinned to the OpenAI Chat Completions API (use any compatible provider
+# by pointing `base_url` at it). The harness reads OPENAI_* env vars when
+# these fields are blank.
+model = "gpt-4o-mini"
+base_url = ""
+temperature = 0.0
+max_iterations = 25
+
+# MemorySaver is the right default for benchmark runs because each task
+# spins up a fresh thread_id; for long-lived agent sessions, swap to
+# SqliteSaver by setting `checkpointer = "sqlite"` below.
+checkpointer = "memory"
+sqlite_path = "result/langgraph_checkpoints.sqlite"
+
+[harness.mcp]
+# The sandbox API endpoint. Defaults to localhost; CI overrides with the
+# upstream sandbox URL via MCP_SERVER_URL.
+server_url = "http://localhost:8080/mcp"

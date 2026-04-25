@@ -7,15 +7,16 @@ Follows the strategy pattern for easy runtime switching.
 Supported backends:
 - Azure OpenAI (AzureOpenAIAgentLoop)
 - OpenAI and compatible APIs such as MiniMax (OpenAIAgentLoop)
-- LangGraph (LangGraphAgentLoop) — placeholder
+- LangGraph (LangGraphAgentLoop) — backed by a StateGraph runtime
 """
 
+import asyncio
 import json
 import os
 import re
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Tuple
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, TypedDict
 
 from mcp import ClientSession
 from openai import AzureOpenAI, OpenAI
@@ -557,58 +558,379 @@ class OpenAIAgentLoop(BaseAgentLoop):
 # ============================================================================
 
 
-class LangGraphAgentLoop(BaseAgentLoop):
-    """
-    Agent loop implementation using LangGraph runtime.
+# --- LangGraph state schema --------------------------------------------------
 
-    TODO: Implement LangGraph integration.
-    This is a placeholder for future implementation.
+
+class LangGraphAgentState(TypedDict, total=False):
+    """State schema driven through the LangGraph StateGraph.
+
+    - ``messages`` is a chat-completions-style transcript
+    - ``tool_metrics`` aggregates per-tool execution counts and durations
+    - ``iterations`` guards against runaway loops
+    - ``final_response`` is populated when the agent emits a no-tool-call reply
+      that contains all of <summary>, <feedback>, and <response>
+    """
+
+    messages: List[Dict[str, Any]]
+    tool_metrics: Dict[str, Any]
+    iterations: int
+    final_response: Optional[str]
+
+
+# Type alias for the LLM-call hook used by the agent node. Tests inject a
+# fake to avoid hitting a real model. The signature mirrors the bits of
+# the OpenAI SDK we actually consume: a list of messages and an optional
+# list of OpenAI-format tool schemas, returning the assistant message.
+LLMCallable = Callable[[List[Dict[str, Any]], Optional[List[Dict[str, Any]]]], Any]
+
+
+class LangGraphAgentLoop(BaseAgentLoop):
+    """Agent loop backed by a LangGraph ``StateGraph`` runtime.
+
+    The graph has two nodes:
+
+    1. ``agent``   — calls the underlying LLM (OpenAI-compatible by default)
+    2. ``tools``   — invokes MCP tools chosen by the LLM and feeds the
+                     results back as ``role="tool"`` messages
+
+    A conditional edge from ``agent`` routes to ``tools`` while the model
+    keeps calling tools, and to ``END`` once the model emits a final
+    response with the required ``<summary>/<feedback>/<response>`` tags
+    (matching the contract of the other agent loops). A ``MemorySaver``
+    checkpointer is wired in by default so each task run is replayable;
+    callers can swap in a ``SqliteSaver`` (or any LangGraph checkpointer)
+    via the ``checkpointer`` argument.
     """
 
     def __init__(
         self,
         mcp_session: ClientSession,
         system_prompt: str = DEFAULT_SYSTEM_PROMPT,
-        langgraph_url: str = None,
-        **kwargs,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        model: Optional[str] = None,
+        max_iterations: int = 25,
+        temperature: Optional[float] = None,
+        checkpointer: Any = None,
+        llm_callable: Optional[LLMCallable] = None,
+        thread_id: str = "evaluation",
     ):
-        """
-        Initialize LangGraph agent loop.
+        """Initialize the LangGraph agent loop.
 
         Args:
-            mcp_session: MCP client session for tool execution
-            system_prompt: System prompt for the agent
-            langgraph_url: LangGraph runtime URL
-            **kwargs: Additional LangGraph configuration
+            mcp_session: MCP client session used to execute tools.
+            system_prompt: System prompt for the agent.
+            api_key: API key (default: ``OPENAI_API_KEY`` env var).
+            base_url: Base URL for the LLM provider (OpenAI-compatible).
+            model: Model name (default: ``OPENAI_MODEL`` env var or ``gpt-4``).
+            max_iterations: Hard cap on agent <-> tool round-trips.
+            temperature: Optional sampling temperature.
+            checkpointer: LangGraph checkpointer. Defaults to ``MemorySaver``
+                so the graph is replayable in tests; production configs
+                may pass a ``SqliteSaver``.
+            llm_callable: Optional injection point for tests. When provided,
+                this callable is used in place of the real OpenAI client so
+                the graph can be exercised without network calls.
+            thread_id: Thread identifier used by the checkpointer.
         """
         super().__init__(mcp_session, system_prompt)
-        self.langgraph_url = langgraph_url or os.getenv("LANGGRAPH_URL")
-        self.config = kwargs
+
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self.base_url = base_url or os.getenv("OPENAI_BASE_URL")
+        self.model = model or os.getenv("OPENAI_MODEL", "gpt-4")
+        self.max_iterations = max_iterations
+        self.temperature = temperature
+        self.thread_id = thread_id
+
+        # Lazy-import LangGraph so the package is only required when this
+        # backend is actually instantiated. This keeps the existing Azure
+        # / OpenAI paths usable even if a downstream user hasn't installed
+        # the optional langgraph extra yet.
+        from langgraph.checkpoint.memory import MemorySaver
+        from langgraph.graph import END, StateGraph
+
+        self._END = END
+        self.checkpointer = checkpointer if checkpointer is not None else MemorySaver()
+
+        # Build the OpenAI client only if the caller didn't inject a fake.
+        # Tests pass ``llm_callable`` to keep the graph hermetic.
+        if llm_callable is not None:
+            self._llm_callable: LLMCallable = llm_callable
+        else:
+            client_kwargs: Dict[str, Any] = {}
+            if self.api_key:
+                client_kwargs["api_key"] = self.api_key
+            if self.base_url:
+                client_kwargs["base_url"] = self.base_url
+            self._client = OpenAI(**client_kwargs)
+            self._llm_callable = self._default_llm_callable
+
+        # Compile the graph once per loop instance.
+        graph = StateGraph(LangGraphAgentState)
+        graph.add_node("agent", self._agent_node)
+        graph.add_node("tools", self._tool_node)
+        graph.set_entry_point("agent")
+        graph.add_conditional_edges(
+            "agent",
+            self._route_after_agent,
+            {"tools": "tools", "agent": "agent", "end": END},
+        )
+        graph.add_edge("tools", "agent")
+        self._graph = graph.compile(checkpointer=self.checkpointer)
+
+        # ``_pending_tools`` is set per-run so the graph nodes can see the
+        # tool schema list without threading it through the state dict.
+        self._pending_tools: Optional[List[Dict[str, Any]]] = None
+
+    # ------------------------------------------------------------------
+    # LLM dispatch
+    # ------------------------------------------------------------------
+
+    def _default_llm_callable(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]],
+    ) -> Any:
+        """Production LLM call — hits the configured OpenAI-compatible endpoint."""
+        kwargs: Dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": 4096,
+        }
+        if self.temperature is not None:
+            kwargs["temperature"] = self.temperature
+        if tools:
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = "auto"
+        response = self._client.chat.completions.create(**kwargs)
+        return response.choices[0].message
+
+    # ------------------------------------------------------------------
+    # Graph nodes
+    # ------------------------------------------------------------------
+
+    def _agent_node(self, state: LangGraphAgentState) -> Dict[str, Any]:
+        """LLM call node. Appends the assistant message to the transcript."""
+        iterations = state.get("iterations", 0) + 1
+        message = self._llm_callable(state["messages"], self._pending_tools)
+
+        content = getattr(message, "content", None) or ""
+        raw_tool_calls = getattr(message, "tool_calls", None)
+        # Normalize tool_calls to plain dicts so the checkpointer can
+        # serialize them. SDK objects (SimpleNamespace, OpenAI ChoiceMessage)
+        # aren't msgpack-friendly.
+        tool_calls = _normalize_tool_calls(raw_tool_calls) if raw_tool_calls else None
+
+        assistant_msg: Dict[str, Any] = {"role": "assistant", "content": content}
+        if tool_calls:
+            assistant_msg["tool_calls"] = tool_calls
+
+        new_messages = list(state["messages"]) + [assistant_msg]
+
+        update: Dict[str, Any] = {
+            "messages": new_messages,
+            "iterations": iterations,
+        }
+
+        # If the assistant produced no tool calls and the response carries
+        # all of <summary>/<feedback>/<response>, mark it final so the
+        # router can terminate the graph.
+        if not tool_calls:
+            missing = [
+                tag
+                for tag in ("<summary>", "<feedback>", "<response>")
+                if tag not in content
+            ]
+            if not missing:
+                update["final_response"] = content
+            else:
+                # Nudge the model with a corrective user message and let
+                # the conditional edge loop us back through ``agent``.
+                new_messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "ERROR: Your response is missing required tags: "
+                            f"{', '.join(missing)}. You MUST provide ALL THREE "
+                            "tags: <summary>, <feedback>, and <response>."
+                        ),
+                    }
+                )
+                update["messages"] = new_messages
+
+        return update
+
+    def _tool_node(self, state: LangGraphAgentState) -> Dict[str, Any]:
+        """Tool execution node. Runs each pending tool call against MCP."""
+        last = state["messages"][-1]
+        tool_calls = last.get("tool_calls") or []
+        tool_metrics = dict(state.get("tool_metrics", {}))
+        new_messages = list(state["messages"])
+
+        for tool_call in tool_calls:
+            # tool_calls are stored as plain dicts (see _normalize_tool_calls)
+            # so they survive the checkpointer's msgpack serializer.
+            tool_name = tool_call["name"]
+            arguments = tool_call.get("arguments", "{}")
+            try:
+                tool_args = json.loads(arguments) if isinstance(arguments, str) else dict(arguments)
+            except (json.JSONDecodeError, TypeError):
+                tool_args = {}
+
+            tool_start_ts = time.time()
+            try:
+                # ``call_tool`` is async; bridge to it from this sync node.
+                tool_result = _run_coro_sync(
+                    self.mcp_session.call_tool(tool_name, tool_args)
+                )
+                tool_duration = time.time() - tool_start_ts
+            except Exception as exc:  # noqa: BLE001 — surface any tool error
+                tool_duration = time.time() - tool_start_ts
+                tool_result = {
+                    "isError": True,
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": (
+                                f"ERROR: Tool execution failed\n"
+                                f"Type: {type(exc).__name__}\nMessage: {exc}"
+                            ),
+                        }
+                    ],
+                }
+
+            metrics = tool_metrics.setdefault(
+                tool_name, {"count": 0, "durations": [], "calls": []}
+            )
+            metrics["count"] += 1
+            metrics["durations"].append(tool_duration)
+            metrics["calls"].append(
+                {
+                    "args": tool_args,
+                    "duration": tool_duration,
+                    "timestamp": tool_start_ts,
+                }
+            )
+
+            new_messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tool_call.get("id", ""),
+                    "content": str(tool_result),
+                }
+            )
+
+        return {"messages": new_messages, "tool_metrics": tool_metrics}
+
+    def _route_after_agent(self, state: LangGraphAgentState) -> str:
+        """Conditional edge: continue to tools, terminate, or loop back."""
+        if state.get("final_response"):
+            return "end"
+        if state.get("iterations", 0) >= self.max_iterations:
+            return "end"
+        # Find the most recent assistant message to see if it requested tools.
+        for msg in reversed(state["messages"]):
+            if msg.get("role") == "assistant":
+                if msg.get("tool_calls"):
+                    return "tools"
+                # Assistant emitted a no-tool-call response that was missing
+                # tags (otherwise final_response would be set); the agent
+                # node already appended a corrective user message, so loop
+                # back through ``agent`` for another attempt.
+                return "agent"
+        return "end"
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
     async def run(
         self,
         prompt: str,
         tools: List[Dict[str, Any]] = None,
     ) -> Tuple[str, Dict[str, Any]]:
-        """
-        Execute LangGraph agent loop.
+        """Execute the LangGraph agent loop end-to-end."""
+        self._pending_tools = tools or None
+        initial_state: LangGraphAgentState = {
+            "messages": [
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": prompt},
+            ],
+            "tool_metrics": {},
+            "iterations": 0,
+            "final_response": None,
+        }
+        config = {"configurable": {"thread_id": self.thread_id}}
 
-        Args:
-            prompt: User prompt/task
-            tools: List of tool definitions
+        try:
+            final_state = await self._graph.ainvoke(initial_state, config=config)
+        finally:
+            self._pending_tools = None
 
-        Returns:
-            Tuple of (response_text, tool_metrics)
-        """
-        # TODO: Implement LangGraph runtime integration
-        # This should:
-        # 1. Convert tools to LangGraph format
-        # 2. Create a LangGraph agent with the tools
-        # 3. Execute the agent with the prompt
-        # 4. Track tool execution metrics
-        # 5. Return response and metrics in the same format as AzureOpenAIAgentLoop
-
-        raise NotImplementedError(
-            "LangGraph agent loop is not yet implemented. "
-            "Please use AzureOpenAIAgentLoop for now."
+        response_text = final_state.get("final_response") or (
+            final_state["messages"][-1].get("content", "") if final_state.get("messages") else ""
         )
+        return response_text, final_state.get("tool_metrics", {})
+
+
+def _normalize_tool_calls(raw: Any) -> List[Dict[str, Any]]:
+    """Coerce SDK tool_call objects into msgpack-friendly dicts.
+
+    The OpenAI SDK returns tool calls as objects with ``.id`` and a nested
+    ``.function`` namespace. Our test fakes use ``SimpleNamespace`` with
+    the same shape. The LangGraph checkpointer stores state via
+    ``ormsgpack`` which can't serialize either form, so we flatten both
+    into ``{"id", "name", "arguments"}`` dicts before they enter state.
+    """
+    out: List[Dict[str, Any]] = []
+    for tc in raw or []:
+        if isinstance(tc, dict):
+            # Either already-flat or {"id", "function": {...}} shape.
+            if "function" in tc and isinstance(tc["function"], dict):
+                fn = tc["function"]
+                out.append(
+                    {
+                        "id": tc.get("id", ""),
+                        "name": fn.get("name", ""),
+                        "arguments": fn.get("arguments", "{}"),
+                    }
+                )
+            else:
+                out.append(
+                    {
+                        "id": tc.get("id", ""),
+                        "name": tc.get("name", ""),
+                        "arguments": tc.get("arguments", "{}"),
+                    }
+                )
+            continue
+        # Object form (OpenAI SDK / SimpleNamespace).
+        fn = getattr(tc, "function", None)
+        out.append(
+            {
+                "id": getattr(tc, "id", "") or "",
+                "name": getattr(fn, "name", "") if fn is not None else "",
+                "arguments": getattr(fn, "arguments", "{}") if fn is not None else "{}",
+            }
+        )
+    return out
+
+
+def _run_coro_sync(coro: Awaitable[Any]) -> Any:
+    """Run an awaitable from inside a sync graph node.
+
+    LangGraph executes node callables synchronously by default. Our MCP
+    ``call_tool`` is async, so we bridge with a small helper. We try the
+    running loop first (the common case when the graph is invoked via
+    ``ainvoke``), and fall back to ``asyncio.run`` for sync callers.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    # If we're inside a running loop, execute the coroutine on a fresh
+    # thread-local loop so we don't deadlock the parent.
+    import concurrent.futures
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result()

@@ -21,6 +21,7 @@ import json
 import os
 import re
 import time
+import tomllib
 import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -29,7 +30,12 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 from dotenv import load_dotenv
 
-from agent_loop import AzureOpenAIAgentLoop, OpenAIAgentLoop, BaseAgentLoop
+from agent_loop import (
+    AzureOpenAIAgentLoop,
+    BaseAgentLoop,
+    LangGraphAgentLoop,
+    OpenAIAgentLoop,
+)
 from dataset_parser import XMLDatasetParser
 
 load_dotenv()
@@ -478,6 +484,7 @@ async def run_evaluation(
     agent_type: str = "azure",
     openai_base_url: str = None,
     openai_model: str = None,
+    langgraph_config: Dict[str, Any] = None,
 ) -> str:
     """
     Run evaluation with tools from MCP server.
@@ -521,6 +528,28 @@ async def run_evaluation(
         if openai_model:
             agent_kwargs["model"] = openai_model
         agent = OpenAIAgentLoop(**agent_kwargs)
+    elif agent_type == "langgraph":
+        lg_kwargs: Dict[str, Any] = {"mcp_session": _mcp_session}
+        cfg = langgraph_config or {}
+        for key in ("api_key", "base_url", "model", "max_iterations", "temperature"):
+            if cfg.get(key) not in (None, ""):
+                lg_kwargs[key] = cfg[key]
+        # Optional checkpointer choice (memory|sqlite). SqliteSaver is the
+        # production default for replayable, durable runs.
+        checkpointer_kind = (cfg.get("checkpointer") or "memory").lower()
+        if checkpointer_kind == "sqlite":
+            try:
+                from langgraph.checkpoint.sqlite import SqliteSaver
+
+                sqlite_path = cfg.get("sqlite_path") or "result/langgraph_checkpoints.sqlite"
+                Path(sqlite_path).parent.mkdir(parents=True, exist_ok=True)
+                lg_kwargs["checkpointer"] = SqliteSaver.from_conn_string(sqlite_path)
+            except ImportError:
+                print(
+                    "⚠️  langgraph-checkpoint-sqlite not installed; "
+                    "falling back to MemorySaver"
+                )
+        agent = LangGraphAgentLoop(**lg_kwargs)
     else:
         agent = AzureOpenAIAgentLoop(mcp_session=_mcp_session)
     print(f"🤖 Using agent: {agent.__class__.__name__}")
@@ -665,9 +694,15 @@ async def main():
     parser.add_argument(
         "--agent",
         type=str,
-        choices=["azure", "openai"],
+        choices=["azure", "openai", "langgraph"],
         default="azure",
-        help="Agent backend to use: 'azure' for Azure OpenAI (default), 'openai' for standard OpenAI / compatible APIs (e.g. MiniMax).",
+        help="Agent backend: 'azure' for Azure OpenAI (default), 'openai' for OpenAI/compatible APIs (e.g. MiniMax), 'langgraph' for the LangGraph runtime.",
+    )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Path to a TOML config file (e.g. configs/langgraph_ping.toml). When provided, fields under [harness] override the matching CLI flags.",
     )
     parser.add_argument(
         "--openai-base-url",
@@ -682,6 +717,28 @@ async def main():
         help="Model name for OpenAI-compatible API (e.g. MiniMax-M2.7). Only used with --agent openai.",
     )
     args = parser.parse_args()
+
+    # Optionally fold a TOML config in. Anything explicitly set on the CLI
+    # wins; otherwise we pull defaults from the config file.
+    config_data: Dict[str, Any] = {}
+    langgraph_config: Dict[str, Any] = {}
+    output_subdir: str = ""
+    if args.config:
+        config_path = Path(args.config)
+        if not config_path.is_absolute():
+            config_path = Path(__file__).parent / config_path
+        with open(config_path, "rb") as fh:
+            config_data = tomllib.load(fh)
+        harness = config_data.get("harness", {})
+        if args.eval is None and harness.get("eval"):
+            args.eval = harness["eval"]
+        if harness.get("agent") and args.agent == "azure":
+            args.agent = harness["agent"]
+        langgraph_config = harness.get("langgraph", {}) or {}
+        output_subdir = harness.get("output_subdir", "") or ""
+        mcp_cfg = harness.get("mcp", {}) or {}
+        if mcp_cfg.get("server_url") and not os.getenv("MCP_SERVER_URL"):
+            os.environ["MCP_SERVER_URL"] = mcp_cfg["server_url"]
 
     # Determine which files to run
     if args.eval is None:
@@ -712,6 +769,8 @@ async def main():
     utc_plus_8 = timezone(timedelta(hours=8))
     date_str = datetime.now(utc_plus_8).strftime("%Y%m%d")
     output_dir = Path(__file__).parent / "result" / date_str
+    if output_subdir:
+        output_dir = output_dir / output_subdir
     output_dir.mkdir(parents=True, exist_ok=True)
 
     successful = 0
@@ -731,6 +790,7 @@ async def main():
                 agent_type=args.agent,
                 openai_base_url=args.openai_base_url,
                 openai_model=args.openai_model,
+                langgraph_config=langgraph_config,
             )
 
             # Generate output filename (will overwrite if exists)

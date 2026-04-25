@@ -6,4 +6,29 @@ requires-python = ">=3.13"
 dependencies = [
     "openai>=1.54.0",
     "mcp>=1.12.3",
+    # LangGraph is pinned to an exact version. The 1.x line is API-stable
+    # but minor releases routinely tweak checkpointer / interrupt semantics,
+    # so we want changes to land via an explicit bump rather than a passive
+    # `>=` drift.
+    #
+    # Re-audit quarterly (next: 2026-07-24). When auditing:
+    #   1. Diff the upstream CHANGELOG between the pinned version and
+    #      the latest release.
+    #   2. Re-run `cd evaluation && uv sync && pytest tests/ -v` after
+    #      bumping to confirm the StateGraph + MemorySaver wiring still
+    #      passes.
+    "langgraph==1.1.9",
+    # tomllib is in stdlib since 3.11 and the project pins >=3.13, so we
+    # don't need a backport for the config loader.
+    "python-dotenv>=1.0.0",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
