@@ -1,0 +1,26 @@
+{
+  "rows": [
+    {
+      "id": "20260425-evaluation_ping",
+      "config_ref": "evaluation/configs/langgraph_ping.toml",
+      "eval_file": "evaluation/dataset/evaluation_ping.xml",
+      "release_tag": null,
+      "run_timestamp_utc": "2026-04-25T05:30:00Z",
+      "harness_version": "0.1.0",
+      "runtime": "langgraph",
+      "cyberbox": {
+        "pass_rate": 1.0,
+        "total_tasks": 1,
+        "passed_tasks": 1,
+        "latency_ms_p50": 3430.0,
+        "latency_ms_p95": null,
+        "latency_ms_mean": 3430.0,
+        "tool_calls": 5,
+        "cost_usd": null,
+        "token_input": null,
+        "token_output": null
+      },
+      "upstream": null
+    }
+  ]
+}

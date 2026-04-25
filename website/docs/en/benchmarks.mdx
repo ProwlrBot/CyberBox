@@ -1,0 +1,62 @@
+---
+title: Benchmarks
+description: Public leaderboard for the CyberBox evaluation harness, with side-by-side comparison against upstream agent-infra/sandbox.
+---
+
+import LeaderboardTable from '../../theme/components/LeaderboardTable';
+import data from '../../data/leaderboard.json';
+
+# Benchmarks
+
+Per-release results from the CyberBox evaluation harness, side-by-side with the upstream `agent-infra/sandbox` image. Each row corresponds to one config in [`evaluation/configs/`](https://github.com/ProwlrBot/CyberBox/tree/main/evaluation/configs) — click the **Config** cell to jump to the file. Sort columns by clicking the headers.
+
+> **Why publish benchmarks?** The "CyberBox is better than upstream for offensive workflows" claim is only credible when it's measurable. This page is the citable artifact.
+
+<LeaderboardTable rows={data.rows} />
+
+## Reading a row
+
+- **CyberBox pass% / Upstream pass%** — fraction of tasks in the config that completed with a response matching the ground-truth regex. Range 0–100%.
+- **Δ pass%** — `cyberbox.pass_rate − upstream.pass_rate`. Positive (green) = CyberBox wins on this task suite. A `—` means the upstream column wasn't populated for that row (single-target run).
+- **CyberBox p50 / Upstream p50** — median wall-clock duration per task in milliseconds. p95 is collected when at least 20 tasks ran.
+- **Config** — link to the harness invocation surface (a TOML in `evaluation/configs/` if `--config` was used; the eval XML in `evaluation/dataset/` otherwise).
+
+## How rows get here
+
+1. The release CI runs the eval harness twice — once against CyberSandbox (the inherited `cybersandbox/Dockerfile` image) and once against upstream (`ghcr.io/agent-infra/sandbox`) — using the same config and the same MCP tool surface. See [`evaluation/UPSTREAM_COMPARISON.md`](https://github.com/ProwlrBot/CyberBox/blob/main/evaluation/UPSTREAM_COMPARISON.md) for why side-by-side is feasible (`verdict: compatible`).
+2. Each run emits a JSON sidecar conforming to [`evaluation/leaderboard_schema.json`](https://github.com/ProwlrBot/CyberBox/blob/main/evaluation/leaderboard_schema.json) (Draft 2020-12). The schema gates the write — invalid sidecars abort the run.
+3. [`evaluation/merge_leaderboard.py`](https://github.com/ProwlrBot/CyberBox/blob/main/evaluation/merge_leaderboard.py) pairs the two runs by `config_ref` and writes the merged rows to [`website/data/leaderboard.json`](https://github.com/ProwlrBot/CyberBox/blob/main/website/data/leaderboard.json), which this page imports at build time.
+
+## Reproducing a row locally
+
+Every row is reproducible from its `config_ref`. Run the harness against CyberSandbox:
+
+```bash
+cd evaluation
+uv sync
+uv run main.py --config configs/langgraph_ping.toml
+# → result/<YYYYMMDD>/<eval_name>.{md,json}
+```
+
+Then against upstream via the local-debug helper (Docker required):
+
+```bash
+evaluation/run_upstream.sh --config configs/langgraph_ping.toml
+# → result/<YYYYMMDD>/upstream/<eval_name>.{md,json}
+```
+
+Merge the pair into a leaderboard row:
+
+```bash
+python3 evaluation/merge_leaderboard.py \
+  --in evaluation/result \
+  --out website/data/leaderboard.json
+```
+
+A reproducing-rows walkthrough with worked examples lives in the [reproducibility guide](./benchmarks/reproducing) (when phase 6 of [spec 014](https://github.com/ProwlrBot/CyberBox/blob/main/.auto-claude/specs/014-public-benchmarking-leaderboard/spec.md) lands).
+
+## Source of truth
+
+- **Schema:** [`evaluation/leaderboard_schema.json`](https://github.com/ProwlrBot/CyberBox/blob/main/evaluation/leaderboard_schema.json) — the contract every row must satisfy.
+- **Data:** [`website/data/leaderboard.json`](https://github.com/ProwlrBot/CyberBox/blob/main/website/data/leaderboard.json) — what this page renders.
+- **Refresh workflow:** [`leaderboard-refresh.yml`](https://github.com/ProwlrBot/CyberBox/blob/main/.github/workflows/leaderboard-refresh.yml) (when phase 5 lands) — what writes new rows per release.

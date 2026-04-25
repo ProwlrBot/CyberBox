@@ -1,0 +1,221 @@
+name: Leaderboard Refresh
+
+# Re-runs the evaluation harness against both CyberSandbox and the upstream
+# agent-infra/sandbox image, merges the resulting JSON sidecars by config_ref,
+# and commits the refreshed website/data/leaderboard.json so the public
+# benchmarks page (website/docs/en/benchmarks.mdx) shows current numbers.
+#
+# Spec 014, phase 5. The mechanism choice ('ci-matrix') is documented in
+# evaluation/UPSTREAM_COMPARISON.md.
+#
+# Security: every external input (workflow_dispatch inputs, secrets) is
+# routed through env: mappings and consumed via quoted shell variables,
+# never spliced directly into `run:` strings. This avoids the workflow
+# injection patterns flagged at
+# https://github.blog/security/vulnerability-research/how-to-catch-github-actions-workflow-injections-before-attackers-do/
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      cybersandbox_image:
+        description: 'CyberSandbox image to benchmark'
+        type: string
+        default: 'ghcr.io/prowlrbot/cybersandbox:latest'
+      upstream_image:
+        description: 'Upstream image to compare against'
+        type: string
+        default: 'ghcr.io/agent-infra/sandbox:latest'
+      eval_config:
+        description: 'TOML config under evaluation/configs/'
+        type: string
+        default: 'configs/langgraph_ping.toml'
+
+env:
+  CYBERSANDBOX_IMAGE: ${{ inputs.cybersandbox_image || 'ghcr.io/prowlrbot/cybersandbox:latest' }}
+  UPSTREAM_IMAGE: ${{ inputs.upstream_image || 'ghcr.io/agent-infra/sandbox:latest' }}
+  EVAL_CONFIG: ${{ inputs.eval_config || 'configs/langgraph_ping.toml' }}
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      run: ${{ steps.gate.outputs.run }}
+    steps:
+      - name: Gate on required secrets
+        id: gate
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [[ -z "$ANTHROPIC_API_KEY" ]]; then
+            echo "::warning::ANTHROPIC_API_KEY secret not set — leaderboard refresh requires a model key. Skipping."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  run-eval:
+    needs: preflight
+    if: needs.preflight.outputs.run == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [cybersandbox, upstream]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13'
+
+      - name: Resolve image for matrix target
+        id: image
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          if [[ "$TARGET" == "upstream" ]]; then
+            echo "image=${UPSTREAM_IMAGE}" >> "$GITHUB_OUTPUT"
+          else
+            echo "image=${CYBERSANDBOX_IMAGE}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Boot sandbox
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+        run: |
+          set -euo pipefail
+          docker pull "$IMAGE"
+          docker run -d --rm --name sandbox -p 8080:8080 "$IMAGE"
+          # The MCP HTTP endpoint returns 405 on GET (it's POST-only) — that's
+          # the readiness signal. 4xx counts as up; only connection refused
+          # means not ready.
+          echo "Waiting up to 60s for MCP at http://localhost:8080/mcp ..."
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:8080/mcp 2>/dev/null || echo "000")
+            if [[ "$code" =~ ^[2-4] ]]; then
+              echo "ready (HTTP $code)"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::MCP did not become ready within 60s"
+          docker logs sandbox || true
+          exit 1
+
+      - name: Install harness deps
+        working-directory: evaluation
+        run: |
+          pip install --upgrade pip uv
+          uv sync
+
+      - name: Run eval against target
+        working-directory: evaluation
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          MCP_SERVER_URL: http://localhost:8080/mcp
+        run: |
+          uv run main.py --config "$EVAL_CONFIG"
+
+      - name: Relocate upstream sidecars to upstream/ subdir
+        if: matrix.target == 'upstream'
+        run: |
+          set -euo pipefail
+          # Match the harness's UTC+8 dating
+          date_str=$(date -u -d '+8 hours' +%Y%m%d)
+          result_dir="evaluation/result/${date_str}"
+          if [[ ! -d "$result_dir" ]]; then
+            echo "::warning::No result dir at $result_dir — harness may have written elsewhere (output_subdir set?)"
+            ls -la evaluation/result/ || true
+            exit 0
+          fi
+          mkdir -p "${result_dir}/upstream"
+          # Move only top-level files (don't recurse into existing subdirs)
+          find "$result_dir" -maxdepth 1 -type f \( -name '*.json' -o -name '*.md' \) \
+            -exec mv {} "${result_dir}/upstream/" \;
+          echo "Relocated to ${result_dir}/upstream:"
+          ls "${result_dir}/upstream"
+
+      - name: Upload sidecars
+        uses: actions/upload-artifact@de65e23aa2b7e23d713bb51fbfcb6d502f8667d8 # v5.0.0
+        with:
+          name: sidecars-${{ matrix.target }}
+          path: evaluation/result/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Stop sandbox
+        if: always()
+        run: docker stop sandbox >/dev/null 2>&1 || true
+
+  merge-and-publish:
+    needs: [preflight, run-eval]
+    if: needs.preflight.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write   # commit refreshed leaderboard back to main
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13'
+
+      - name: Install merge deps
+        run: pip install 'jsonschema>=4.18,<5.0'
+
+      # Both artifacts unpack into evaluation/result/ — cybersandbox sidecars
+      # at the top of <date>/, upstream sidecars under <date>/upstream/ per
+      # the relocation step above. evaluation/merge_leaderboard.py uses the
+      # 'upstream' path component as the classification signal, so the layout
+      # round-trips end-to-end.
+      - name: Download cybersandbox sidecars
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: sidecars-cybersandbox
+          path: evaluation/result/
+
+      - name: Download upstream sidecars
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: sidecars-upstream
+          path: evaluation/result/
+
+      # Spec 014 risk #1 mitigation: validate every merged row against the
+      # schema before write. merge_leaderboard.py raises SystemExit on
+      # validation failure, which fails the workflow before the commit
+      # step — silent corruption of the public leaderboard is the failure
+      # mode this gate exists to prevent.
+      - name: Merge sidecars + schema-validate
+        run: |
+          python3 evaluation/merge_leaderboard.py \
+            --in evaluation/result \
+            --out website/data/leaderboard.json
+
+      - name: Show diff
+        run: git --no-pager diff website/data/leaderboard.json || true
+
+      - name: Commit refreshed leaderboard
+        if: github.event_name == 'release'
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add website/data/leaderboard.json
+          if git diff --staged --quiet; then
+            echo "No leaderboard changes vs main; nothing to commit."
+            exit 0
+          fi
+          git commit -m "data(leaderboard): refresh after ${REF_NAME:-manual} (spec 014)"
+          git push origin HEAD:main

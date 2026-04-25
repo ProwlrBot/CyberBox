@@ -20,12 +20,15 @@ from datetime import datetime, timezone, timedelta
 import json
 import os
 import re
+import statistics
+import subprocess
 import time
 import tomllib
 import traceback
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
+import jsonschema
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 from dotenv import load_dotenv
@@ -57,6 +60,11 @@ MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8080/mcp")
 
 # Concurrency Configuration
 MAX_CONCURRENT_TASKS = int(os.getenv("MAX_CONCURRENT_TASKS", "5"))
+
+# Leaderboard sidecar schema (spec 014). Pinned next to main.py so the
+# emitter and validator never drift apart.
+HARNESS_VERSION = "0.1.0"
+LEADERBOARD_SCHEMA_PATH = Path(__file__).parent / "leaderboard_schema.json"
 
 # Global MCP Session
 _mcp_session: ClientSession = None
@@ -478,6 +486,157 @@ async def upload_test_files_to_sandbox(eval_file: Path) -> bool:
     return success
 
 
+# ============================================================================
+# Leaderboard sidecar emitter (spec 014)
+# ============================================================================
+
+
+def _resolve_release_tag() -> Optional[str]:
+    """$GITHUB_REF_NAME if set (CI), else `git describe --tags --always`, else None."""
+    env = os.getenv("GITHUB_REF_NAME")
+    if env:
+        return env
+    try:
+        out = subprocess.run(
+            ["git", "describe", "--tags", "--always"],
+            cwd=Path(__file__).parent.parent,
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        if out.returncode == 0 and out.stdout.strip():
+            return out.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
+def _compute_metrics_block(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Aggregate per-task results into the leaderboard schema's metrics_block shape."""
+    total = len(results)
+    passed = sum(int(r.get("score", 0)) for r in results)
+    durations_s = [float(r.get("total_duration", 0.0)) for r in results]
+    durations_ms = [d * 1000.0 for d in durations_s]
+    tool_calls = sum(int(r.get("num_tool_calls", 0)) for r in results)
+
+    # statistics.median on an empty list raises; guard it. p95 needs >=20
+    # samples to be stable — leave null otherwise so the schema's
+    # `latency_ms_p95: null` branch is hit honestly.
+    p50 = statistics.median(durations_ms) if durations_ms else 0.0
+    p95: Optional[float] = None
+    if len(durations_ms) >= 20:
+        # statistics.quantiles(n=20) gives the 19 cut points; index 18 is the
+        # 95th percentile boundary.
+        try:
+            p95 = statistics.quantiles(durations_ms, n=20)[18]
+        except statistics.StatisticsError:
+            p95 = None
+    mean: Optional[float] = (
+        sum(durations_ms) / len(durations_ms) if durations_ms else None
+    )
+
+    return {
+        "pass_rate": (passed / total) if total else 0.0,
+        "total_tasks": total,
+        "passed_tasks": passed,
+        "latency_ms_p50": p50,
+        "latency_ms_p95": p95,
+        "latency_ms_mean": mean,
+        "tool_calls": tool_calls,
+        # The next three are intentionally null until the agent loops emit
+        # usage data (subtask 7-2 of the spec 014 plan tracks token/cost
+        # instrumentation as follow-up work).
+        "cost_usd": None,
+        "token_input": None,
+        "token_output": None,
+    }
+
+
+def _build_leaderboard_row(
+    *,
+    eval_file: Path,
+    config_ref: str,
+    results: List[Dict[str, Any]],
+    runtime: str,
+    include_per_task: bool = True,
+) -> Dict[str, Any]:
+    """Construct one leaderboard row from a completed run's results.
+
+    The schema requires repo-root-relative paths for `config_ref` and
+    `eval_file` so a leaderboard reader can fetch them deterministically.
+    """
+    repo_root = Path(__file__).parent.parent
+    eval_rel = str(eval_file.resolve().relative_to(repo_root.resolve()))
+    # config_ref may already be repo-relative; normalize the same way.
+    config_path = Path(config_ref)
+    if not config_path.is_absolute():
+        config_path = (Path(__file__).parent / config_path).resolve()
+    try:
+        config_rel = str(config_path.resolve().relative_to(repo_root.resolve()))
+    except ValueError:
+        # If the caller passed an absolute path outside the repo, fall back
+        # to the eval file as the canonical reference.
+        config_rel = eval_rel
+
+    date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
+    row_id = f"{date_str}-{eval_file.stem}"
+
+    row: Dict[str, Any] = {
+        "id": row_id,
+        "config_ref": config_rel,
+        "eval_file": eval_rel,
+        "release_tag": _resolve_release_tag(),
+        "run_timestamp_utc": datetime.now(timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        ),
+        "harness_version": HARNESS_VERSION,
+        "runtime": runtime,
+        "cyberbox": _compute_metrics_block(results),
+        # Upstream is null until the spec-014 phase-3 runner populates it.
+        # The leaderboard merger (evaluation/merge_leaderboard.py, future
+        # work) joins paired sidecars by config_ref into the unified row.
+        "upstream": None,
+    }
+
+    if include_per_task:
+        row["per_task"] = [
+            {
+                "prompt": r.get("prompt", ""),
+                "expected": r.get("expected", ""),
+                "actual": r.get("actual"),
+                "score": int(r.get("score", 0)),
+                "duration_ms": float(r.get("total_duration", 0.0)) * 1000.0,
+                "num_tool_calls": int(r.get("num_tool_calls", 0)),
+            }
+            for r in results
+        ]
+
+    return row
+
+
+def write_leaderboard_sidecar(row: Dict[str, Any], output_path: Path) -> None:
+    """Validate against leaderboard_schema.json and write JSON to disk.
+
+    Fail-fast on schema mismatch — the sidecar is the contract the
+    leaderboard reader depends on, so silently writing a malformed row
+    would be worse than crashing the run.
+    """
+    with open(LEADERBOARD_SCHEMA_PATH, "r", encoding="utf-8") as fh:
+        schema = json.load(fh)
+    jsonschema.validate(instance=row, schema=schema)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as fh:
+        json.dump(row, fh, indent=2, ensure_ascii=False)
+        fh.write("\n")
+
+
+# ============================================================================
+# Run evaluation
+# ============================================================================
+
+
 async def run_evaluation(
     eval_path: str,
     mcp_server_url: str = None,
@@ -485,7 +644,7 @@ async def run_evaluation(
     openai_base_url: str = None,
     openai_model: str = None,
     langgraph_config: Dict[str, Any] = None,
-) -> str:
+) -> Tuple[str, List[Dict[str, Any]], str]:
     """
     Run evaluation with tools from MCP server.
 
@@ -497,7 +656,9 @@ async def run_evaluation(
         openai_model: Model name override for OpenAI-compatible providers
 
     Returns:
-        Markdown evaluation report
+        Tuple of (markdown_report, per_task_results, runtime_label).
+        ``runtime_label`` is one of ``"azure"``, ``"openai"``, ``"langgraph"`` —
+        what the leaderboard schema's ``runtime`` enum expects.
     """
     print("🚀 Starting Evaluation")
 
@@ -624,7 +785,7 @@ async def run_evaluation(
                 failure_reason=failure_reason,
             )
 
-        return report
+        return report, results, agent_type
     finally:
         # Cleanup global MCP session
         if mcp_server_url:
@@ -784,7 +945,7 @@ async def main():
         try:
             mcp_url = os.getenv("MCP_SERVER_URL")
             print(f"🔍 DEBUG: MCP_SERVER_URL = {mcp_url}")
-            report = await run_evaluation(
+            report, results, runtime_label = await run_evaluation(
                 eval_path=str(eval_file),
                 mcp_server_url=mcp_url,
                 agent_type=args.agent,
@@ -801,6 +962,22 @@ async def main():
                 f.write(report)
 
             print(f"✅ Evaluation report saved to: {output_path}")
+
+            # Spec 014: emit a JSON sidecar next to the .md so the public
+            # leaderboard has machine-readable rows. The schema gate is
+            # fail-fast — a sidecar that violates leaderboard_schema.json
+            # crashes the run rather than silently corrupting downstream
+            # consumers.
+            sidecar_path = output_dir / f"{eval_file.stem}.json"
+            config_ref_value = args.config or str(eval_file)
+            row = _build_leaderboard_row(
+                eval_file=eval_file,
+                config_ref=config_ref_value,
+                results=results,
+                runtime=runtime_label,
+            )
+            write_leaderboard_sidecar(row, sidecar_path)
+            print(f"📊 Leaderboard sidecar saved to: {sidecar_path}")
             successful += 1
 
         except Exception as e:

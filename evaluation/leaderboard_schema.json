@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cyberbox.prowlr.com/schemas/leaderboard_row.json",
+  "title": "Leaderboard row",
+  "description": "One row in the public benchmarking leaderboard. Emitted as a JSON sidecar by evaluation/main.py alongside the existing Markdown report. Spec 014.",
+  "type": "object",
+  "required": [
+    "id",
+    "config_ref",
+    "eval_file",
+    "run_timestamp_utc",
+    "harness_version",
+    "runtime",
+    "cyberbox"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique row id, format: <YYYYMMDD>-<config-stem>. Stable across re-runs of the same config on the same day.",
+      "pattern": "^[0-9]{8}-[a-zA-Z0-9_.-]+$"
+    },
+    "config_ref": {
+      "type": "string",
+      "description": "Path (repo-root-relative) to the harness invocation surface — TOML config if --config was used, else the eval XML.",
+      "pattern": "^evaluation/(configs|dataset)/[a-zA-Z0-9_./-]+$"
+    },
+    "eval_file": {
+      "type": "string",
+      "description": "Path (repo-root-relative) to the underlying eval XML that supplied the tasks.",
+      "pattern": "^evaluation/dataset/[a-zA-Z0-9_./-]+\\.xml$"
+    },
+    "release_tag": {
+      "type": ["string", "null"],
+      "description": "Git tag or `git describe` output at the time of the run. Null for ad-hoc runs."
+    },
+    "run_timestamp_utc": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp of when the run started."
+    },
+    "harness_version": {
+      "type": "string",
+      "description": "evaluation/pyproject.toml [project].version at run time."
+    },
+    "runtime": {
+      "type": "string",
+      "enum": ["azure", "openai", "langgraph"],
+      "description": "Which agent backend ran. Mirrors the --agent CLI flag."
+    },
+    "cyberbox": {
+      "$ref": "#/$defs/metrics_block",
+      "description": "Metrics from running the eval suite against the cybersandbox MCP server."
+    },
+    "upstream": {
+      "oneOf": [
+        { "$ref": "#/$defs/metrics_block" },
+        { "type": "null" }
+      ],
+      "description": "Metrics from running the same eval suite against agent-infra/sandbox. Null until phase-3 (upstream comparison runner) lands or for runs where MCP_SERVER_URL pointed at a non-upstream target."
+    },
+    "per_task": {
+      "type": "array",
+      "description": "Optional per-task drill-down. The leaderboard page does not require this column but it is the breadcrumb a hunter follows from a leaderboard row to the failing task.",
+      "items": { "$ref": "#/$defs/task_result" }
+    }
+  },
+  "$defs": {
+    "metrics_block": {
+      "type": "object",
+      "required": [
+        "pass_rate",
+        "total_tasks",
+        "passed_tasks",
+        "latency_ms_p50",
+        "tool_calls"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "pass_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "passed_tasks / total_tasks. Range [0, 1]."
+        },
+        "total_tasks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "passed_tasks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "latency_ms_p50": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Median per-task wall-clock duration in milliseconds."
+        },
+        "latency_ms_p95": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "description": "95th percentile per-task duration in ms. Null if total_tasks < 20 (insufficient samples for a stable p95)."
+        },
+        "latency_ms_mean": {
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "tool_calls": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total MCP tool calls across all tasks in the run."
+        },
+        "cost_usd": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "description": "Estimated USD cost for the run. Null until model-cost instrumentation lands."
+        },
+        "token_input": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "Total input tokens consumed. Null until LangGraph/Azure usage tracking is wired into agent_loop.py."
+        },
+        "token_output": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "Total output tokens produced. Null until LangGraph/Azure usage tracking is wired into agent_loop.py."
+        }
+      }
+    },
+    "task_result": {
+      "type": "object",
+      "required": ["prompt", "score", "duration_ms", "num_tool_calls"],
+      "additionalProperties": false,
+      "properties": {
+        "prompt": { "type": "string" },
+        "expected": { "type": "string" },
+        "actual": { "type": ["string", "null"] },
+        "score": { "type": "integer", "enum": [0, 1] },
+        "duration_ms": { "type": "number", "minimum": 0 },
+        "num_tool_calls": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}
