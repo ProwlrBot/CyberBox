@@ -1,4 +1,5 @@
 import type { SDK, DefineAPI, DefineEvents } from "caido:plugin";
+import { inRange, isIP, isV4, isV6 } from "range_check";
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -60,18 +61,138 @@ function sanitizeError(msg: string): string {
   return msg.replace(/sk-ant-[a-zA-Z0-9_-]+/g, "sk-ant-***");
 }
 
-function validateEndpoint(url: string, type: "claude" | "ollama"): boolean {
+// ── SSRF Hardening: Ollama Endpoint Allowlist ───────────────
+// OWASP A10:2021 — Server-Side Request Forgery (SSRF)
+// Allowlist-only model: explicit hostnames + RFC1918 ranges.
+// Blocks 8 known bypass vectors (IPv6 loopback, IPv4-mapped IPv6,
+// decimal/hex/octal IP encoding, link-local cloud metadata, public IPs,
+// arbitrary hostnames). DO NOT use the `ip` package — CVE-2023-42282.
+const OLLAMA_HOSTNAME_ALLOWLIST: ReadonlySet<string> = new Set([
+  "localhost",
+  "127.0.0.1",
+  "host.docker.internal",
+]);
+
+// RFC1918 private IPv4 ranges that may run an internal Ollama deployment.
+// Loopback (127/8) and link-local (169.254/16) are intentionally excluded —
+// loopback is handled by the explicit `127.0.0.1` allowlist entry, and
+// link-local must be blocked (cloud metadata endpoints live at 169.254.169.254).
+const RFC1918_RANGES: readonly string[] = [
+  "10.0.0.0/8",
+  "172.16.0.0/12",
+  "192.168.0.0/16",
+];
+
+// Octets like "0177" (octal), "0x7f" (hex), or anything non-decimal is
+// rejected. Node's WHATWG URL parser silently rewrites these to
+// dotted-decimal (e.g. "2130706433" -> "127.0.0.1"), so we have to
+// inspect the RAW URL string before parsing, not just the parsed hostname.
+function isStrictDecimalIPv4(hostname: string): boolean {
+  const parts = hostname.split(".");
+  if (parts.length !== 4) return false;
+  for (const part of parts) {
+    if (part.length === 0 || part.length > 3) return false;
+    if (!/^[0-9]+$/.test(part)) return false;
+    if (part.length > 1 && part.startsWith("0")) return false; // octal guard
+    const n = Number(part);
+    if (n < 0 || n > 255) return false;
+  }
+  return true;
+}
+
+// Pull the raw host token out of a URL string before WHATWG normalization
+// rewrites encoded forms. Returns null if we cannot isolate it cleanly.
+function extractRawHost(url: string): string | null {
+  // Match scheme://[userinfo@]host[:port]/...
+  const m = /^[a-z][a-z0-9+.-]*:\/\/(?:[^/@]*@)?(\[[^\]]+\]|[^/:?#]+)/i.exec(url);
+  return m && m[1] ? m[1] : null;
+}
+
+export function validateEndpoint(url: string, type: "claude" | "ollama"): boolean {
+  let parsed: URL;
   try {
-    const parsed = new URL(url);
-    if (type === "claude") {
-      return parsed.protocol === "https:" && parsed.hostname.endsWith("anthropic.com");
-    }
-    // Ollama: allow localhost, 127.0.0.1, host.docker.internal, or any custom host
-    const allowed = ["localhost", "127.0.0.1", "host.docker.internal"];
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
+    parsed = new URL(url);
   } catch {
     return false;
   }
+
+  if (type === "claude") {
+    // Claude must hit api.anthropic.com over TLS — unchanged behavior.
+    return parsed.protocol === "https:" && parsed.hostname.endsWith("anthropic.com");
+  }
+
+  // ── Ollama path: SSRF-hardened allowlist ─────────────────
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return false;
+  }
+
+  // Reject userinfo (e.g. http://evil@127.0.0.1) — prevents auth-style
+  // confusion attacks that some HTTP clients mishandle.
+  if (parsed.username !== "" || parsed.password !== "") return false;
+
+  // Inspect the RAW host token before Node normalizes encoded IPs to
+  // dotted-decimal. This is the only reliable way to reject decimal /
+  // hex / octal IP literals on modern Node, which silently rewrites
+  // them (2130706433 -> 127.0.0.1, 0x7f000001 -> 127.0.0.1, 0177.0.0.1 -> 127.0.0.1).
+  const rawHost = extractRawHost(url);
+  if (rawHost !== null) {
+    const lowerRaw = rawHost.toLowerCase();
+    // Pure decimal integer ("2130706433")
+    if (/^[0-9]+$/.test(lowerRaw)) return false;
+    // Hex IP literal ("0x7f000001")
+    if (/^0x[0-9a-f]+$/.test(lowerRaw)) return false;
+    // Dotted form: any octet with a leading zero or "0x" prefix is octal/hex.
+    if (lowerRaw.includes(".") && !lowerRaw.startsWith("[")) {
+      const rawParts = lowerRaw.split(".");
+      // 4-part dotted form: enforce strict decimal octets.
+      if (rawParts.length === 4 && rawParts.every((p) => /^[0-9a-fx]+$/.test(p))) {
+        for (const p of rawParts) {
+          if (p.length === 0) return false;
+          if (p.startsWith("0x")) return false; // hex octet
+          if (p.length > 1 && p.startsWith("0")) return false; // octal octet
+          if (!/^[0-9]+$/.test(p)) return false;
+        }
+      }
+    }
+  }
+
+  // Strip IPv6 brackets (Node 22+ leaves them on, older versions strip them)
+  // and normalize case so "LocalHost" === "localhost".
+  let hostname = parsed.hostname.toLowerCase();
+  if (hostname.startsWith("[") && hostname.endsWith("]")) {
+    hostname = hostname.slice(1, -1);
+  }
+  if (hostname.length === 0) return false;
+
+  // 1. Explicit hostname allowlist (case-normalized).
+  if (OLLAMA_HOSTNAME_ALLOWLIST.has(hostname)) return true;
+
+  // 2. IPv6 — block ALL of it. ::1, ::ffff:127.0.0.1, fe80::, fc00::, etc.
+  //    are all SSRF risks (loopback, IPv4-mapped, link-local, ULA). The
+  //    allowlist above covers the only legitimate local IPv6 case via
+  //    "localhost" (which most stacks resolve to ::1 themselves).
+  if (isV6(hostname)) return false;
+
+  // 3. IPv4 — must be strict dotted-decimal AND fall inside an RFC1918 range.
+  if (isV4(hostname)) {
+    if (!isStrictDecimalIPv4(hostname)) return false;
+    for (const range of RFC1918_RANGES) {
+      if (inRange(hostname, range)) return true;
+    }
+    return false;
+  }
+
+  // 4. Numeric-only hostnames that survived parsing (defense in depth).
+  if (/^[0-9]+$/.test(hostname) || /^0x[0-9a-f]+$/.test(hostname)) return false;
+
+  // 5. Any other IP literal that range_check recognizes but neither V4
+  //    nor V6 returned true on — reject.
+  if (isIP(hostname)) return false;
+
+  // 6. Any remaining hostname (e.g. "attacker.com", "metadata.google.internal")
+  //    is not on the allowlist — reject. DNS rebinding is mitigated by
+  //    refusing to resolve arbitrary names at all.
+  return false;
 }
 
 function validateAnalysisResult(raw: unknown): AnalysisResult {

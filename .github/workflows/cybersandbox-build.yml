@@ -86,8 +86,60 @@ jobs:
           '
           echo "::endgroup::"
 
+      # spec-015: publish image size as a per-release metric.
+      # Methodology: cybersandbox/docs/image-size-audit.md
+      # Only built-in env vars (GITHUB_REF, GITHUB_SHA) are interpolated
+      # into the run script — no user-controlled inputs.
+      - name: Image size metric
+        id: size
+        env:
+          GH_REF: ${{ github.ref }}
+          GH_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Human-readable size (e.g. "8.62GB").
+          size_h="$(docker images --format '{{.Size}}' cybersandbox:ci | head -n1)"
+          # Exact byte count (machine-readable for trend dashboards).
+          size_b="$(docker image inspect cybersandbox:ci --format '{{.Size}}')"
+          # Layer count — useful regression signal (lots of small layers
+          # often hide cache leaks).
+          layers="$(docker image inspect cybersandbox:ci --format '{{len .RootFS.Layers}}')"
+
+          echo "size_human=${size_h}" >> "$GITHUB_OUTPUT"
+          echo "size_bytes=${size_b}" >> "$GITHUB_OUTPUT"
+          echo "layer_count=${layers}" >> "$GITHUB_OUTPUT"
+
+          # Machine-readable artifact for downstream trend tracking.
+          {
+            echo "image=cybersandbox:ci"
+            echo "ref=${GH_REF}"
+            echo "sha=${GH_SHA}"
+            echo "size_human=${size_h}"
+            echo "size_bytes=${size_b}"
+            echo "layer_count=${layers}"
+          } > image-size.txt
+
+          {
+            echo "### Image size"
+            echo ''
+            echo "| metric | value |"
+            echo "| --- | --- |"
+            echo "| size (human)  | ${size_h} |"
+            echo "| size (bytes)  | ${size_b} |"
+            echo "| layer count   | ${layers} |"
+            echo ''
+            echo "_Methodology: cybersandbox/docs/image-size-audit.md_"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload image size artifact
+        uses: actions/upload-artifact@de65e23aa2b7e23d713bb51fbfcb6d502f8667d8 # v5.0.0
+        with:
+          name: cybersandbox-image-size
+          path: image-size.txt
+          retention-days: 90
+
       - name: Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: cybersandbox:ci
           scanners: vuln   # skip secret-scanner: nuclei/metasploit payloads are not secrets
@@ -97,7 +149,8 @@ jobs:
           ignore-unfixed: true
           exit-code: '0'   # report, never block (see trivy-gate for blocking)
           vuln-type: os,library
-
+          timeout: 30m
+          
       - name: Upload Trivy SARIF
         if: always()
         uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
@@ -106,7 +159,7 @@ jobs:
           category: trivy-container
 
       - name: Trivy gate (fail on CRITICAL fixed)
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: cybersandbox:ci
           scanners: vuln   # skip secret-scanner: nuclei/metasploit payloads are not secrets

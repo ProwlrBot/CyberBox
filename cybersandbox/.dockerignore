@@ -1,6 +1,46 @@
+# Build-context exclusions — keep the tarball sent to the daemon small.
+# See docs/image-size-audit.md for context-size measurement.
+
+# VCS / metadata
 .git
+.gitignore
+.gitattributes
+.github
+
+# Docs (not needed at runtime; keep examples/ for reference scripts)
 *.md
+!harbinger-bin/**/*.md
 LICENSE
+SECURITY.md
+SETUP.md
+CHANGELOG.md
+docs/
+
+# Secrets / env
 .env
 .env.*
 !.env.example
+
+# Editor / OS cruft
+.vscode
+.idea
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Test artifacts that may be created by parallel agents
+tests/
+**/__pycache__/
+**/*.pyc
+
+# Compose & local dev overrides — built image has its own runtime config
+docker-compose*.yml
+!docker-compose.dev.yml
+
+# Trivy / scanning outputs
+trivy-results.*
+*.sarif
+
+# Local image-size logs from prior audits
+image-size-*.log

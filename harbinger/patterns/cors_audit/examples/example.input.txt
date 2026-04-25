@@ -1,0 +1,23 @@
+--- probe 1: arbitrary origin ---
+> GET /api/me HTTP/1.1
+> Host: app.example.com
+> Origin: https://attacker.example.com
+> Cookie: session=...
+
+< HTTP/1.1 200 OK
+< Access-Control-Allow-Origin: https://attacker.example.com
+< Access-Control-Allow-Credentials: true
+< Content-Type: application/json
+<
+< {"id":42,"email":"victim@example.com"}
+
+--- probe 2: null origin ---
+> GET /api/me HTTP/1.1
+> Origin: null
+
+< HTTP/1.1 200 OK
+< Access-Control-Allow-Origin: null
+< Access-Control-Allow-Credentials: true
+
+--- probe 3: vary header check ---
+< (no Vary: Origin in either response)

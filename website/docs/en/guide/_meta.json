@@ -5,6 +5,16 @@
     "name": "start"
   },
   {
+    "type": "file",
+    "label": "Supply-chain trust",
+    "name": "trust"
+  },
+  {
+    "type": "file",
+    "label": "Submit a plugin",
+    "name": "submit-plugin"
+  },
+  {
     "type": "dir",
     "label": "Features",
     "name": "basic"
@@ -13,5 +23,15 @@
     "type": "file",
     "label": "Plugins",
     "name": "plugins"
+  },
+  {
+    "type": "file",
+    "label": "harbinger Pattern Catalog",
+    "name": "harbinger-patterns"
+  },
+  {
+    "type": "file",
+    "label": "harbinger doctor",
+    "name": "harbinger-doctor"
   }
 ]

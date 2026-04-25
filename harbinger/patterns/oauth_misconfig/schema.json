@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "oauth_misconfig",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["client_id", "flow", "pkce", "issues", "summary"],
+  "properties": {
+    "client_id": { "type": "string", "minLength": 1 },
+    "flow": {
+      "type": "string",
+      "enum": ["authorization_code", "implicit", "client_credentials", "password", "device_code", "hybrid", "unknown"]
+    },
+    "pkce": {
+      "type": "string",
+      "enum": ["required", "optional", "absent", "unknown"]
+    },
+    "summary": { "type": "string", "minLength": 3, "maxLength": 240 },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "severity", "evidence", "preconditions", "exploitation"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "redirect_uri_open", "redirect_uri_wildcard", "redirect_uri_traversal",
+              "state_missing", "state_predictable",
+              "nonce_missing", "pkce_missing",
+              "implicit_used", "token_in_fragment_logged",
+              "scope_overbroad", "client_secret_leaked",
+              "jwks_mismatch", "insecure_metadata",
+              "response_mode_form_post_missing"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["info", "low", "medium", "high", "critical"]
+          },
+          "evidence": { "type": "string", "minLength": 1, "maxLength": 240 },
+          "preconditions": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 6,
+            "items": { "type": "string", "minLength": 4, "maxLength": 240 }
+          },
+          "exploitation": { "type": "string", "minLength": 16, "maxLength": 500 }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "graphql_recon",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["endpoint", "introspection_enabled", "type_count", "high_value", "auth_signals", "next_steps"],
+  "properties": {
+    "endpoint": { "type": "string", "minLength": 1 },
+    "introspection_enabled": { "type": "boolean" },
+    "type_count": { "type": "integer", "minimum": 0 },
+    "high_value": {
+      "type": "array",
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "name", "signature", "why", "abuse_ideas"],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["query", "mutation", "subscription", "type", "directive"]
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,80}$"
+          },
+          "signature": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "why": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 240
+          },
+          "abuse_ideas": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 8,
+            "items": {
+              "type": "string",
+              "minLength": 4,
+              "maxLength": 240
+            }
+          }
+        }
+      }
+    },
+    "auth_signals": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 240
+      }
+    },
+    "next_steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 4,
+        "maxLength": 240
+      }
+    }
+  }
+}

@@ -109,6 +109,32 @@ if $SYNTAX_OK; then
   pass "all scripts pass bash -n"
 fi
 
+# Test: harbinger doctor subcommand suite (delegates to a focused test file)
+echo "[9] harbinger doctor subcommand suite"
+DOCTOR_TEST="${SCRIPT_DIR}/test_harbinger_doctor.sh"
+if [[ -x "$DOCTOR_TEST" || -f "$DOCTOR_TEST" ]]; then
+  if bash "$DOCTOR_TEST" >/dev/null 2>&1; then
+    pass "harbinger doctor tests pass"
+  else
+    fail "harbinger doctor tests failed (run 'bash $DOCTOR_TEST' for details)"
+  fi
+else
+  fail "test_harbinger_doctor.sh not found at $DOCTOR_TEST"
+fi
+
+# Test: guardrails (NemoClaw filters) suite (spec 005)
+echo "[10] guardrails (prompt-injection + secret-redaction) suite"
+GUARDRAILS_TEST="${SCRIPT_DIR}/test_guardrails.sh"
+if [[ -x "$GUARDRAILS_TEST" || -f "$GUARDRAILS_TEST" ]]; then
+  if bash "$GUARDRAILS_TEST" >/dev/null 2>&1; then
+    pass "guardrails tests pass"
+  else
+    fail "guardrails tests failed (run 'bash $GUARDRAILS_TEST' for details)"
+  fi
+else
+  fail "test_guardrails.sh not found at $GUARDRAILS_TEST"
+fi
+
 echo ""
 echo "Results: ${PASS} passed, ${FAIL} failed"
 [[ $FAIL -eq 0 ]] && exit 0 || exit 1

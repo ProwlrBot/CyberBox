@@ -1,0 +1,13 @@
+HTTP/1.1 200 OK
+Date: Tue, 14 Apr 2026 10:11:12 GMT
+Server: nginx/1.18.0
+X-Powered-By: PHP/7.4.3
+Content-Type: text/html; charset=utf-8
+Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.example.com
+Strict-Transport-Security: max-age=86400
+X-Frame-Options: SAMEORIGIN
+X-Content-Type-Options: nosniff
+Set-Cookie: session=abc123; Path=/
+Cache-Control: no-store
+
+(URL: https://app.example.com/dashboard)

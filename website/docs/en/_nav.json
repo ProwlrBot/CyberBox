@@ -5,6 +5,21 @@
     "activeMatch": "/guide/"
   },
   {
+    "text": "Trust",
+    "link": "/guide/trust",
+    "activeMatch": "/guide/trust"
+  },
+  {
+    "text": "Benchmarks",
+    "link": "/benchmarks",
+    "activeMatch": "/benchmarks"
+  },
+  {
+    "text": "Submit a plugin",
+    "link": "/guide/submit-plugin",
+    "activeMatch": "/guide/submit-plugin"
+  },
+  {
     "text": "API",
     "link": "/api",
     "activeMatch": "/api/"

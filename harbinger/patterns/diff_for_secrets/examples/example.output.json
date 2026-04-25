@@ -1,0 +1,41 @@
+{
+  "scanned_files": 2,
+  "findings": [
+    {
+      "kind": "aws_key",
+      "match": "AKIAIOSFODNN7EXAMPLE",
+      "file": "config/production.env",
+      "line": 4,
+      "confidence": "high",
+      "reason": "AWS access key id pattern AKIA[0-9A-Z]{16} added to a production env file.",
+      "entropy_bits": 84
+    },
+    {
+      "kind": "aws_secret",
+      "match": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+      "file": "config/production.env",
+      "line": 5,
+      "confidence": "high",
+      "reason": "40-char base64-ish AWS secret access key adjacent to an AKIA id.",
+      "entropy_bits": 192
+    },
+    {
+      "kind": "db_url",
+      "match": "postgres://app:hunter2@db.internal:5432/billing",
+      "file": "config/production.env",
+      "line": 6,
+      "confidence": "high",
+      "reason": "Postgres URL with embedded credentials pointing at an internal host.",
+      "entropy_bits": 188
+    },
+    {
+      "kind": "api_key",
+      "match": "test-key-do-not-use",
+      "file": "tests/fixtures/sample.json",
+      "line": 2,
+      "confidence": "low",
+      "reason": "likely-fixture: value lives under tests/fixtures/ and reads as a placeholder.",
+      "entropy_bits": 56
+    }
+  ]
+}

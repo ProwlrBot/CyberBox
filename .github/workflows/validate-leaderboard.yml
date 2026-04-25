@@ -1,0 +1,67 @@
+name: Validate Leaderboard Schema
+
+# Schema-validates the checked-in website/data/leaderboard.json on every PR
+# that touches either the schema or the data file. Catches data-shape drift
+# at PR-time so a contributor editing one half of the contract gets fast
+# feedback before the leaderboard-refresh workflow rejects the row.
+#
+# Spec 014, phase 5-3. Independent of cybersandbox-build.yml so the slim
+# image matrix refactor (spec 012) doesn't have to merge with this gate.
+#
+# Security: this workflow does not consume any untrusted input — it runs
+# python3 on files at HEAD only.
+
+on:
+  pull_request:
+    paths:
+      - 'evaluation/leaderboard_schema.json'
+      - 'website/data/leaderboard.json'
+      - 'evaluation/merge_leaderboard.py'
+      - '.github/workflows/validate-leaderboard.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'evaluation/leaderboard_schema.json'
+      - 'website/data/leaderboard.json'
+      - 'evaluation/merge_leaderboard.py'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13'
+
+      - name: Install jsonschema
+        run: pip install 'jsonschema>=4.18,<5.0'
+
+      - name: Schema is valid Draft 2020-12
+        run: |
+          python3 -c "
+          import json, jsonschema
+          schema = json.load(open('evaluation/leaderboard_schema.json'))
+          jsonschema.Draft202012Validator.check_schema(schema)
+          print('OK: schema is valid Draft 2020-12')
+          "
+
+      - name: Every checked-in row validates against the schema
+        run: |
+          python3 -c "
+          import json, jsonschema, sys
+          schema = json.load(open('evaluation/leaderboard_schema.json'))
+          data = json.load(open('website/data/leaderboard.json'))
+          assert 'rows' in data, 'website/data/leaderboard.json must have a top-level rows array'
+          for i, row in enumerate(data['rows']):
+              try:
+                  jsonschema.validate(instance=row, schema=schema)
+              except jsonschema.ValidationError as e:
+                  print(f'row {i} ({row.get(\"id\", \"<no id>\")}) failed validation: {e.message}', file=sys.stderr)
+                  sys.exit(1)
+          print(f'OK: {len(data[\"rows\"])} row(s) validate against schema')
+          "

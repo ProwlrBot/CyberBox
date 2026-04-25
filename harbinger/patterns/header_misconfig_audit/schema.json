@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "header_misconfig_audit",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["url", "status", "scored", "findings", "positives"],
+  "properties": {
+    "url": { "type": "string", "minLength": 1 },
+    "status": { "type": "integer", "minimum": 100, "maximum": 599 },
+    "scored": { "type": "string", "enum": ["A", "B", "C", "D", "F"] },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["header", "id", "severity", "observed", "expected", "rationale"],
+        "properties": {
+          "header": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9-]{1,80}$"
+          },
+          "id": {
+            "type": "string",
+            "enum": ["missing", "weak", "conflicting", "legacy", "reflective", "over_permissive", "debug_leak"]
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["info", "low", "medium", "high", "critical"]
+          },
+          "observed": { "type": "string", "minLength": 1, "maxLength": 1000 },
+          "expected": { "type": "string", "minLength": 4, "maxLength": 400 },
+          "rationale": { "type": "string", "minLength": 12, "maxLength": 400 }
+        }
+      }
+    },
+    "positives": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 4, "maxLength": 400 }
+    }
+  }
+}

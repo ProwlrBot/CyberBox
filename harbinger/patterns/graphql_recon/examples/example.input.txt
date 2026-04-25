@@ -1,0 +1,31 @@
+POST /graphql HTTP/1.1
+Host: api.example.com
+Content-Type: application/json
+
+{"query":"{ __schema { types { name fields { name args { name type { name } } type { name } } } } }"}
+
+--- response (truncated) ---
+{
+  "data": {
+    "__schema": {
+      "types": [
+        {"name":"Query","fields":[
+          {"name":"me","args":[],"type":{"name":"User"}},
+          {"name":"user","args":[{"name":"id","type":{"name":"ID"}}],"type":{"name":"User"}},
+          {"name":"adminUsers","args":[],"type":{"name":"UserConnection"}}
+        ]},
+        {"name":"Mutation","fields":[
+          {"name":"login","args":[{"name":"email","type":{"name":"String"}},{"name":"password","type":{"name":"String"}}],"type":{"name":"AuthPayload"}},
+          {"name":"impersonate","args":[{"name":"userId","type":{"name":"ID"}}],"type":{"name":"AuthPayload"}},
+          {"name":"setRole","args":[{"name":"userId","type":{"name":"ID"}},{"name":"role","type":{"name":"Role"}}],"type":{"name":"User"}},
+          {"name":"uploadAvatar","args":[{"name":"file","type":{"name":"Upload"}}],"type":{"name":"User"}}
+        ]},
+        {"name":"User","fields":[
+          {"name":"id","args":[],"type":{"name":"ID"}},
+          {"name":"email","args":[],"type":{"name":"String"}},
+          {"name":"role","args":[],"type":{"name":"Role"}}
+        ]}
+      ]
+    }
+  }
+}

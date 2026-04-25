@@ -1,0 +1,134 @@
+---
+title: Reproducing a leaderboard row
+description: How to reproduce any row in the public CyberBox benchmarks leaderboard end-to-end on your own machine.
+---
+
+# Reproducing a leaderboard row
+
+Every row on the [Benchmarks](../benchmarks) page is reproducible from its `config_ref` field. This page is the operator's manual: clone the repo at the matching release tag, run the harness against both targets, merge the sidecars, diff against the published row.
+
+If your reproduction diverges from the published numbers by more than a few percentage points, that's a finding worth opening an issue for — it usually means a model-version drift, a tooling change, or a bug in the harness.
+
+## Prerequisites
+
+- **Docker** (for booting the upstream `agent-infra/sandbox` image and the local CyberSandbox image).
+- **Python 3.13** + [`uv`](https://docs.astral.sh/uv/) for the harness.
+- An LLM API key. For the LangGraph runtime, set `ANTHROPIC_API_KEY` (Claude) or point `base_url` at any OpenAI-compatible endpoint via the TOML config.
+- Optional: `jq` for inspecting the JSON sidecars.
+
+## Step 1 — Clone at the row's release tag
+
+The `release_tag` field on each row tells you which commit produced it. Check out that tag so the harness, schema, and merge script are exactly the versions that produced the row.
+
+```bash
+git clone https://github.com/ProwlrBot/CyberBox.git
+cd CyberBox
+git checkout <release_tag>     # e.g. v0.2.4 — leave blank to use main HEAD
+```
+
+## Step 2 — Run the harness against CyberSandbox
+
+```bash
+cd evaluation
+uv sync                               # one-time
+uv run main.py --config <config_ref>  # e.g. configs/langgraph_ping.toml
+```
+
+The harness writes two files per eval invocation under `result/<YYYYMMDD-UTC+8>/[<output_subdir>/]`:
+
+| File | Purpose |
+|------|---------|
+| `<eval_name>.md` | Human-readable Markdown report (existing format) |
+| `<eval_name>.json` | Machine-readable leaderboard sidecar (spec 014) |
+
+The sidecar is what the leaderboard reads. It validates against [`evaluation/leaderboard_schema.json`](https://github.com/ProwlrBot/CyberBox/blob/main/evaluation/leaderboard_schema.json) at write-time — if it lands on disk, the shape is correct.
+
+## Step 3 — Run against the upstream image
+
+```bash
+evaluation/run_upstream.sh --config <config_ref>
+```
+
+This is a thin wrapper around steps that the CI matrix does directly:
+
+1. `docker pull ghcr.io/agent-infra/sandbox:latest` (override with `UPSTREAM_IMAGE=...`).
+2. `docker run` it on `localhost:8081` (override with `UPSTREAM_PORT=...`).
+3. Wait for `/mcp` readiness (60s timeout).
+4. Run the harness with `MCP_SERVER_URL=http://localhost:8081/mcp`.
+5. Move the resulting sidecars under `evaluation/result/<date>/upstream/` so the merger can pair them.
+
+If you don't have Docker locally, you can skip this step — your reproduction will produce a row with `upstream: null` instead of populated comparison metrics.
+
+## Step 4 — Merge the pair
+
+```bash
+python3 evaluation/merge_leaderboard.py \
+  --in evaluation/result \
+  --out website/data/leaderboard.json
+```
+
+The merger walks the result tree, classifies each sidecar by directory (any path component named `upstream` flips the classification), pairs them by `(date, eval_name)`, and validates each merged row against the schema before writing. Output:
+
+```text
+[skip] 20260425/some_eval: upstream sidecar without cybersandbox baseline
+Wrote 1 row(s) to website/data/leaderboard.json (cybersandbox sidecars: 1, upstream sidecars: 1)
+```
+
+A `[skip]` line means the merger saw an upstream sidecar it couldn't pair with a cybersandbox baseline — that's expected when reproducing an upstream-only run, and the row simply doesn't appear in the output.
+
+## Step 5 — Diff against the published row
+
+The published leaderboard is at [`website/data/leaderboard.json`](https://github.com/ProwlrBot/CyberBox/blob/main/website/data/leaderboard.json) on `main`. Pull it down and compare:
+
+```bash
+curl -sSO https://raw.githubusercontent.com/ProwlrBot/CyberBox/main/website/data/leaderboard.json
+mv leaderboard.json published.json
+diff <(jq '.rows[] | select(.id == "<row_id>")' published.json) \
+     <(jq '.rows[] | select(.id == "<row_id>")' website/data/leaderboard.json)
+```
+
+Expected differences (these don't indicate a bug):
+
+| Field | Why it differs |
+|-------|----------------|
+| `run_timestamp_utc` | A new run produces a new timestamp. |
+| `release_tag` | If you ran on `main` after the published row's tag was cut, your `release_tag` will be the newer `git describe` output. |
+| `latency_ms_p50` / `_p95` / `_mean` | Wall-clock noise — usually within ±10% on the same hardware, more on a busy machine. |
+| `cost_usd` / `token_input` / `token_output` | These are `null` today (no instrumentation yet). |
+
+Real divergences worth investigating:
+
+- **`pass_rate` drift > ~3%** — model behaviour changed (different snapshot, temperature, system prompt). Pin via the TOML config and rerun.
+- **`tool_calls` drift > ~20%** — the agent is taking a meaningfully different path through the MCP surface. Often a sign of an upstream tool-name rename or schema change. See [`evaluation/UPSTREAM_COMPARISON.md`](https://github.com/ProwlrBot/CyberBox/blob/main/evaluation/UPSTREAM_COMPARISON.md).
+- **Schema validation error** at the `merge_leaderboard.py` step — the schema and the harness emitter have drifted apart on `main`. Open an issue with the validator output.
+
+## Adding a new benchmark task
+
+Drop a new TOML under `evaluation/configs/` referencing an XML in `evaluation/dataset/`:
+
+```toml
+# evaluation/configs/my_new_benchmark.toml
+[harness]
+agent = "langgraph"
+eval = "my_new"            # → dataset/evaluation_my_new.xml
+output_subdir = ""
+
+[harness.langgraph]
+model = "gpt-4o-mini"
+base_url = ""
+temperature = 0.0
+max_iterations = 25
+checkpointer = "memory"
+
+[harness.mcp]
+server_url = "http://localhost:8080/mcp"
+```
+
+The next leaderboard-refresh CI run picks it up automatically — no schema or workflow changes needed. The schema is config-agnostic; rows are keyed by `id` (`<date>-<eval_name>`).
+
+## Troubleshooting
+
+- **`Wrote 0 row(s)`** — no cybersandbox sidecar was found. Check that step 2 actually wrote to `evaluation/result/<date>/`. Common causes: missing `MCP_SERVER_URL`, missing API key, the harness wrote to a subdirectory because the TOML set `output_subdir`.
+- **`error: --in ... is not a directory`** — pass the path to the result root (`evaluation/result`), not a specific date dir.
+- **`error: merged row from ... fails schema validation`** — the harness emitter is producing a shape the schema doesn't accept. This should not happen because the emitter validates at write time; if it does, the schema or emitter changed without the other being updated. File it as a bug.
+- **Upstream Docker pull denied** — `agent-infra/sandbox` is public; check your network.

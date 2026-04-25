@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "diff_for_secrets",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["findings", "scanned_files"],
+  "properties": {
+    "scanned_files": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "match", "file", "line", "confidence", "reason", "entropy_bits"],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "aws_key", "aws_secret", "gcp_sa", "azure_key",
+              "github_token", "gitlab_token", "slack_token",
+              "jwt", "private_key", "db_url", "api_key",
+              "password", "oauth_secret", "webhook", "internal_url", "other"
+            ]
+          },
+          "match": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "file": {
+            "type": "string",
+            "minLength": 1
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["high", "medium", "low"]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 240
+          },
+          "entropy_bits": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4096
+          }
+        },
+        "allOf": [
+          {
+            "not": {
+              "properties": {
+                "kind": { "const": "other" },
+                "confidence": { "const": "low" }
+              },
+              "required": ["kind", "confidence"]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

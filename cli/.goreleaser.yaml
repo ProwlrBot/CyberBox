@@ -1,0 +1,100 @@
+# GoReleaser configuration for the cyberbox CLI.
+#
+# Live releases are gated on the cosign keyless workflow that already signs
+# the cybersandbox container image (see .github/workflows/cybersandbox-build.yml).
+# This config matches that supply-chain story: cosign-signed binaries, SBOM,
+# Rekor transparency log entry. Run `goreleaser release --clean` from CI; do
+# NOT publish from a developer laptop.
+
+version: 2
+
+project_name: cyberbox
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: cyberbox
+    main: ./
+    binary: cyberbox
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -X github.com/ProwlrBot/CyberBox/cli/cmd.Version={{.Version}}
+    targets:
+      - linux_amd64
+      - linux_arm64
+      - darwin_amd64
+      - darwin_arm64
+      - windows_amd64
+
+archives:
+  - id: default
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    formats: ['tar.gz']
+    format_overrides:
+      - goos: windows
+        formats: ['zip']
+    files:
+      - LICENSE*
+      - README.md
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+  algorithm: sha256
+
+# Cosign keyless signing of the binaries + checksums.
+# `--yes` is set inside the GitHub Actions runner, where the OIDC identity
+# bound to the workflow is what gets logged in Rekor.
+signs:
+  - id: cosign-binaries
+    cmd: cosign
+    artifacts: all
+    args:
+      - sign-blob
+      - --yes
+      - --output-signature=${signature}
+      - --output-certificate=${certificate}
+      - ${artifact}
+    output: true
+
+# SBOM per-archive, attached to the GitHub release.
+sboms:
+  - id: cyclonedx-sbom
+    artifacts: archive
+    documents:
+      - "{{ .ArtifactName }}.cdx.json"
+    cmd: syft
+    args:
+      - "$artifact"
+      - "--output"
+      - "cyclonedx-json={{ .Document }}"
+
+release:
+  github:
+    owner: ProwlrBot
+    name: CyberBox
+  prerelease: auto
+  mode: append
+  header: |
+    ## cyberbox {{ .Tag }}
+
+    Single Go binary replacing the legacy bash CLIs (csbx, harbinger,
+    invoke-claude, invoke-ollama). Phase 1 ships a fully ported
+    `invoke-claude`; the other subcommands print a redirect to the bash
+    script during the migration window.
+
+    ### Verify
+
+    ```bash
+    cosign verify-blob \
+      --certificate-identity-regexp "^https://github.com/ProwlrBot/CyberBox/.github/workflows/.*\.yml@refs/tags/{{ .Tag }}$" \
+      --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+      --signature cyberbox_{{ .Version }}_linux_amd64.tar.gz.sig \
+      --certificate cyberbox_{{ .Version }}_linux_amd64.tar.gz.pem \
+      cyberbox_{{ .Version }}_linux_amd64.tar.gz
+    ```
