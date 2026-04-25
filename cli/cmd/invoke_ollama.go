@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"strconv"
-	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -171,6 +170,3 @@ func ollamaUsageStr(n int) string {
 	}
 	return strconv.Itoa(n)
 }
-
-// Compile-time guard: keep io.Writer reachable even if the file shrinks.
-var _ io.Writer = (*strings.Builder)(nil)
