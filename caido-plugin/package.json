@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "pnpm -r build",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test"
   },
   "devDependencies": {
     "typescript": "5.4.3",
