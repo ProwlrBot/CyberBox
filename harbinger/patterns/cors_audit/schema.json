@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "cors_audit",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["url", "credentials_supported", "allowed_origins_observed", "verdict", "issues", "summary"],
+  "properties": {
+    "url": { "type": "string", "minLength": 1 },
+    "credentials_supported": { "type": "boolean" },
+    "allowed_origins_observed": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 400 }
+    },
+    "verdict": { "type": "string", "enum": ["safe", "risky", "exploitable"] },
+    "summary": { "type": "string", "minLength": 3, "maxLength": 240 },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "severity", "test_origin", "response_acao", "response_acac", "evidence", "impact"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "reflective_origin", "null_origin", "wildcard_with_credentials",
+              "trusted_subdomain_takeover", "insecure_scheme_allowed",
+              "origin_regex_bypass", "methods_overbroad", "headers_overbroad",
+              "preflight_cache_too_long", "missing_vary_origin"
+            ]
+          },
+          "severity": { "type": "string", "enum": ["info", "low", "medium", "high", "critical"] },
+          "test_origin": { "type": "string", "minLength": 4, "maxLength": 400 },
+          "response_acao": { "type": "string", "minLength": 1, "maxLength": 400 },
+          "response_acac": { "type": "string", "enum": ["true", "false", "absent"] },
+          "evidence": { "type": "string", "minLength": 4, "maxLength": 240 },
+          "impact": { "type": "string", "minLength": 12, "maxLength": 400 }
+        }
+      }
+    }
+  }
+}

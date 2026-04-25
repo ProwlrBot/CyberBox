@@ -1,0 +1,63 @@
+{
+  "endpoint": "https://api.example.com/graphql",
+  "introspection_enabled": true,
+  "type_count": 3,
+  "high_value": [
+    {
+      "kind": "mutation",
+      "name": "impersonate",
+      "signature": "impersonate(userId: ID): AuthPayload",
+      "why": "Direct account takeover primitive if auth check is missing or guessable.",
+      "abuse_ideas": [
+        "Call without auth and with a low userId to see if it returns an AuthPayload.",
+        "Call as low-priv user against userId of an admin and check returned token claims."
+      ]
+    },
+    {
+      "kind": "mutation",
+      "name": "setRole",
+      "signature": "setRole(userId: ID, role: Role): User",
+      "why": "Privilege-escalation primitive — a missing @auth directive turns this into vertical priv-esc.",
+      "abuse_ideas": [
+        "Authenticate as a non-admin and call setRole(userId: <self>, role: ADMIN).",
+        "Probe Role enum via __type(name: \"Role\") for hidden values like SUPERADMIN."
+      ]
+    },
+    {
+      "kind": "query",
+      "name": "user",
+      "signature": "user(id: ID): User",
+      "why": "ID-keyed lookup is a classic IDOR target if the resolver does not enforce ownership.",
+      "abuse_ideas": [
+        "Iterate sequential ID values and diff response shapes for cross-tenant leakage.",
+        "Request sensitive fields like email/role on other users' IDs."
+      ]
+    },
+    {
+      "kind": "query",
+      "name": "adminUsers",
+      "signature": "adminUsers: UserConnection",
+      "why": "Admin-named query that takes no args — easy auth-check regression target.",
+      "abuse_ideas": [
+        "Query as anonymous and as low-priv user; any non-empty result is a finding."
+      ]
+    },
+    {
+      "kind": "mutation",
+      "name": "uploadAvatar",
+      "signature": "uploadAvatar(file: Upload): User",
+      "why": "Upload scalar plus account-bound side effect — test for SSRF, path traversal, content-type confusion.",
+      "abuse_ideas": [
+        "Upload SVG with embedded JS to test for stored XSS on profile rendering.",
+        "Send oversized file and an HTML/JS file to test extension/MIME validation."
+      ]
+    }
+  ],
+  "auth_signals": [
+    "No @auth/@admin directive present in introspection — relying on resolver-side checks only."
+  ],
+  "next_steps": [
+    "Run each mutation unauthenticated to map which require auth vs which silently allow it.",
+    "Diff field-level responses on user(id:) between owner and stranger sessions."
+  ]
+}

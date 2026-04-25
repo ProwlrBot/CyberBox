@@ -1,0 +1,68 @@
+{
+  "url": "https://app.example.com/dashboard",
+  "status": 200,
+  "scored": "D",
+  "findings": [
+    {
+      "header": "Content-Security-Policy",
+      "id": "weak",
+      "severity": "high",
+      "observed": "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.example.com",
+      "expected": "Drop 'unsafe-inline'; pin scripts via per-request nonce or hash; add object-src 'none' and base-uri 'none'.",
+      "rationale": "Inline scripts allowed on a session-bearing dashboard means any reflected/stored XSS sink is directly exploitable."
+    },
+    {
+      "header": "Strict-Transport-Security",
+      "id": "weak",
+      "severity": "low",
+      "observed": "max-age=86400",
+      "expected": "max-age=63072000; includeSubDomains; preload",
+      "rationale": "A 1-day HSTS window is barely better than none — the first visit window is fully unprotected and includeSubDomains is missing."
+    },
+    {
+      "header": "Set-Cookie",
+      "id": "weak",
+      "severity": "high",
+      "observed": "session=abc123; Path=/",
+      "expected": "session=...; Path=/; Secure; HttpOnly; SameSite=Lax (or Strict); consider __Host- prefix",
+      "rationale": "Session cookie has no Secure, HttpOnly, or SameSite attributes — XSS-readable and CSRF-friendly on an authenticated dashboard."
+    },
+    {
+      "header": "Server",
+      "id": "debug_leak",
+      "severity": "low",
+      "observed": "nginx/1.18.0",
+      "expected": "Server: nginx (drop the version)",
+      "rationale": "Pinning the nginx minor version helps an attacker target known CVEs without fingerprinting."
+    },
+    {
+      "header": "X-Powered-By",
+      "id": "debug_leak",
+      "severity": "low",
+      "observed": "PHP/7.4.3",
+      "expected": "absent (set expose_php=Off)",
+      "rationale": "PHP 7.4 is end-of-life; advertising the exact version invites version-specific exploit attempts."
+    },
+    {
+      "header": "Permissions-Policy",
+      "id": "missing",
+      "severity": "low",
+      "observed": "absent",
+      "expected": "Permissions-Policy: geolocation=(), microphone=(), camera=()",
+      "rationale": "A dashboard with no need for these capabilities should disable them to reduce exposure from embedded third-party content."
+    },
+    {
+      "header": "Referrer-Policy",
+      "id": "missing",
+      "severity": "low",
+      "observed": "absent",
+      "expected": "Referrer-Policy: strict-origin-when-cross-origin",
+      "rationale": "Without an explicit policy, links out from the dashboard may leak full URLs containing identifiers."
+    }
+  ],
+  "positives": [
+    "X-Content-Type-Options: nosniff",
+    "X-Frame-Options: SAMEORIGIN",
+    "Cache-Control: no-store"
+  ]
+}

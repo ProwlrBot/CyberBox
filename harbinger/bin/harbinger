@@ -21,6 +21,8 @@ KATANA_DEPTH="${KATANA_DEPTH:-2}"
 HARBINGER_TRIAGE_LIMIT="${HARBINGER_TRIAGE_LIMIT:-50}"
 NUCLEI_SEVERITY="${NUCLEI_SEVERITY:-medium,high,critical}"
 ARJUN_URL_LIMIT="${ARJUN_URL_LIMIT:-10}"
+HARBINGER_VALIDATE_LIMIT="${HARBINGER_VALIDATE_LIMIT:-10}"
+HARBINGER_VALIDATE_TIMEOUT="${HARBINGER_VALIDATE_TIMEOUT:-30}"
 HARBINGER_SCOPE_WILDCARD="${HARBINGER_SCOPE_WILDCARD:-*.}"
 OLLAMA_HOST_DEFAULT="${OLLAMA_HOST:-http://localhost:11434}"
 
@@ -260,6 +262,202 @@ ${findings_data}" > "${workspace}/reports/report-$(date +%Y%m%d).md"
   ok "Report: ${workspace}/reports/report-$(date +%Y%m%d).md"
 }
 
+# ── Phase: Validate (PoC generation + screenshot evidence) ───
+# Reads findings/nuclei.jsonl, generates exploit payloads via Claude Opus,
+# captures screenshots via the capture-screenshot helper, and emits an
+# evidence/manifest.json that phase_report consumes.
+phase_validate() {
+  local target="$1"
+  local workspace="${HARBINGER_DIR}/targets/${target}"
+
+  if [[ ! -d "$workspace" ]]; then
+    err "No workspace for ${target}. Run: harbinger scan ${target}"
+    exit 1
+  fi
+
+  local nuclei_file="${workspace}/findings/nuclei.jsonl"
+  if [[ ! -s "$nuclei_file" ]]; then
+    warn "No nuclei findings at ${nuclei_file} — run: harbinger scan ${target}"
+    exit 0
+  fi
+
+  local capture="${HARBINGER_BIN}/capture-screenshot"
+  if [[ ! -x "$capture" ]]; then
+    err "capture-screenshot helper missing or not executable: ${capture}"
+    exit 1
+  fi
+
+  info "Phase: VALIDATE — ${target}"
+
+  local evidence="${workspace}/evidence"
+  mkdir -p "${evidence}/screenshots" "${evidence}/payloads" "${workspace}/logs"
+
+  local logfile="${workspace}/logs/validate.log"
+  {
+    echo "[$(date -Iseconds)] === validate run start ==="
+    echo "  target=${target}  limit=${HARBINGER_VALIDATE_LIMIT}  timeout=${HARBINGER_VALIDATE_TIMEOUT}s  severity=${NUCLEI_SEVERITY}"
+  } >> "$logfile"
+
+  local severity_re
+  severity_re="^($(echo "$NUCLEI_SEVERITY" | tr ',' '|'))$"
+
+  local manifest_tmp="${evidence}/.manifest.tmp"
+  local manifest="${evidence}/manifest.json"
+
+  jq -n \
+    --arg target "$target" \
+    --arg generated "$(date -Iseconds)" \
+    '{target:$target, generated_at:$generated, findings:[]}' \
+    > "$manifest_tmp"
+
+  local processed=0 captured=0 ai_ok=0 ai_fb=0 skipped=0
+
+  # AI system prompt — high-leverage knob. Tuned for terse, defensive PoCs.
+  local sys_prompt
+  sys_prompt='You are a senior bug bounty hunter writing a minimal proof-of-concept for a vulnerability detected by Nuclei.
+
+Output ONLY valid JSON with this shape:
+{
+  "vulnerability_class": "<short class, e.g. SQLi, SSRF, XSS, IDOR, CVE-XXXX-YYYY>",
+  "summary": "<one-sentence impact statement>",
+  "curl": "<single-line curl command demonstrating the bug, no shell variables>",
+  "expected_response": "<status code, body fragment, header, or behavior that proves the bug>",
+  "steps": ["<step 1>", "<step 2>"],
+  "confidence": "low|medium|high"
+}
+
+Constraints:
+- No destructive payloads (no DROP TABLE, rm -rf, fork bombs, mass account takeover).
+- Stay on the matched URL host. No lateral targets.
+- If unsure, lower confidence rather than fabricate. An empty steps array is acceptable.
+- No prose outside the JSON object.'
+
+  # Read findings on FD 3 so child processes (ai, capture-screenshot) can't
+  # consume our loop's stdin via `cat`-on-non-tty behavior in invoke-claude.
+  while IFS= read -r line <&3; do
+    [[ -n "$line" ]] || continue
+    if (( processed >= HARBINGER_VALIDATE_LIMIT )); then
+      warn "Reached HARBINGER_VALIDATE_LIMIT=${HARBINGER_VALIDATE_LIMIT} — stopping"
+      break
+    fi
+
+    local sev
+    sev=$(echo "$line" | jq -r '."info"?.severity? // empty' 2>/dev/null) || { skipped=$((skipped+1)); continue; }
+    if [[ -z "$sev" ]] || [[ ! "$sev" =~ $severity_re ]]; then
+      skipped=$((skipped+1)); continue
+    fi
+
+    local tmpl matched_at desc curl_cmd
+    tmpl=$(echo "$line" | jq -r '."template-id" // empty')
+    matched_at=$(echo "$line" | jq -r '."matched-at" // empty')
+    desc=$(echo "$line" | jq -r '."info"?.description? // ""')
+    curl_cmd=$(echo "$line" | jq -r '."curl-command" // ""')
+
+    if [[ -z "$tmpl" ]] || [[ -z "$matched_at" ]]; then
+      skipped=$((skipped+1)); continue
+    fi
+
+    case "$matched_at" in
+      http://*|https://*) ;;
+      *) skipped=$((skipped+1)); continue ;;
+    esac
+
+    processed=$((processed+1))
+
+    local id_hash fid
+    id_hash=$(printf '%s' "${tmpl}|${matched_at}" | md5sum | cut -c1-10)
+    fid=$(printf '%s' "${tmpl}-${id_hash}" | tr -c 'A-Za-z0-9_.-' '_' | cut -c1-80)
+
+    info "  [${processed}] ${sev} ${tmpl} → ${matched_at}"
+
+    local payload_path="${evidence}/payloads/${fid}.json"
+    local ai_input ai_out
+    ai_input=$(jq -n \
+      --arg tmpl "$tmpl" --arg sev "$sev" --arg url "$matched_at" \
+      --arg desc "$desc" --arg curl "$curl_cmd" \
+      '{template_id:$tmpl, severity:$sev, matched_at:$url, description:$desc, nuclei_curl:$curl}')
+
+    local ai_status=0
+    ai_out=$(ai best -s "$sys_prompt" "$ai_input" 2>/dev/null) || ai_status=$?
+    if [[ $ai_status -eq 0 ]] && [[ -n "$ai_out" ]] && echo "$ai_out" | jq empty 2>/dev/null; then
+      jq -n \
+        --arg id "$fid" --arg tmpl "$tmpl" --arg sev "$sev" --arg url "$matched_at" \
+        --arg desc "$desc" --arg curl "$curl_cmd" --arg ts "$(date -Iseconds)" \
+        --argjson payload "$ai_out" \
+        '{id:$id, template_id:$tmpl, severity:$sev, matched_at:$url, description:$desc, nuclei_curl:$curl, payload:$payload, generated_at:$ts, source:"ai"}' \
+        > "$payload_path"
+      ai_ok=$((ai_ok+1))
+    else
+      warn "    AI payload failed — falling back to nuclei curl-command"
+      jq -n \
+        --arg id "$fid" --arg tmpl "$tmpl" --arg sev "$sev" --arg url "$matched_at" \
+        --arg desc "$desc" --arg curl "$curl_cmd" --arg ts "$(date -Iseconds)" \
+        '{id:$id, template_id:$tmpl, severity:$sev, matched_at:$url, description:$desc, nuclei_curl:$curl, payload:{curl:$curl, summary:"AI generation failed; using nuclei curl-command verbatim"}, generated_at:$ts, source:"fallback"}' \
+        > "$payload_path"
+      ai_fb=$((ai_fb+1))
+    fi
+
+    local shot_path="${evidence}/screenshots/${fid}.png"
+    local cap_status=0 cap_out="" reason="" shot_status=""
+
+    cap_out=$("$capture" "$matched_at" "$shot_path" --timeout "$HARBINGER_VALIDATE_TIMEOUT" 2>&1) || cap_status=$?
+    echo "[$(date -Iseconds)] capture id=${fid} timeout=${HARBINGER_VALIDATE_TIMEOUT}s exit=${cap_status} ${cap_out}" >> "$logfile"
+
+    # Retry once with 60s timeout on transient runtime failures only;
+    # env errors (browser_missing, playwright_missing) and input errors won't fix themselves.
+    if [[ $cap_status -ne 0 ]] || [[ ! -s "$shot_path" ]]; then
+      reason=$(printf '%s' "$cap_out" | tail -n1 | jq -r '.reason // empty' 2>/dev/null || true)
+      case "$reason" in
+        page_timeout|navigation_failed|screenshot_failed)
+          warn "    screenshot ${reason} — retrying with 60s timeout"
+          cap_status=0
+          cap_out=$("$capture" "$matched_at" "$shot_path" --timeout 60 2>&1) || cap_status=$?
+          echo "[$(date -Iseconds)] capture id=${fid} timeout=60s exit=${cap_status} ${cap_out} (retry)" >> "$logfile"
+          ;;
+      esac
+    fi
+
+    if [[ $cap_status -eq 0 ]] && [[ -s "$shot_path" ]]; then
+      captured=$((captured+1))
+      shot_status="ok"
+    else
+      warn "    screenshot failed: ${cap_out}"
+      shot_status="failed"
+    fi
+
+    jq \
+      --arg id "$fid" --arg sev "$sev" --arg status "$shot_status" \
+      --arg shot "evidence/screenshots/${fid}.png" \
+      --arg payload "evidence/payloads/${fid}.json" \
+      --arg matched "$matched_at" --arg tmpl "$tmpl" \
+      --arg ts "$(date -Iseconds)" \
+      '.findings += [{
+         id:$id, template_id:$tmpl, severity:$sev,
+         status:$status, screenshot:$shot, payload:$payload,
+         matched_at:$matched, timestamp:$ts
+       }]' \
+      "$manifest_tmp" > "${manifest_tmp}.swap" && mv "${manifest_tmp}.swap" "$manifest_tmp"
+
+  done 3< "$nuclei_file"
+
+  mv "$manifest_tmp" "$manifest"
+
+  if (( processed == 0 )); then
+    warn "No findings matched severity filter '${NUCLEI_SEVERITY}' — empty manifest written"
+  fi
+
+  echo "[$(date -Iseconds)] === run end: processed=${processed} captured=${captured} ai_ok=${ai_ok} ai_fb=${ai_fb} skipped=${skipped} ===" >> "$logfile"
+
+  local target_meta="${workspace}/target.json"
+  if [[ -f "$target_meta" ]]; then
+    jq '.phases_completed |= (. + ["validate"] | unique)' "$target_meta" \
+      > "${target_meta}.tmp" && mv "${target_meta}.tmp" "$target_meta"
+  fi
+
+  ok "Validate — ${processed} processed, ${captured} screenshots, ${ai_ok} AI payloads, ${ai_fb} fallbacks, ${skipped} skipped"
+  log "Manifest: ${manifest}"
+}
+
 # ── Phase: Hunt (full pipeline) ──────────────────────────────
 phase_hunt() {
   local target="$1"
@@ -340,9 +538,22 @@ list_patterns() {
     err "No patterns dir: $HARBINGER_PATTERNS_DIR"
     exit 1
   fi
+  local verbose=false
+  if [[ "${1:-}" == "-v" || "${1:-}" == "--verbose" ]]; then
+    verbose=true
+  fi
   for p in "$HARBINGER_PATTERNS_DIR"/*/; do
     [[ -d "$p" ]] || continue
-    basename "$p"
+    local name
+    name=$(basename "$p")
+    if $verbose; then
+      local has_schema="-" has_example="-"
+      [[ -f "$p/schema.json" ]] && has_schema="schema"
+      [[ -f "$p/examples/example.output.json" ]] && has_example="example"
+      printf "%-30s %s %s\n" "$name" "$has_schema" "$has_example"
+    else
+      echo "$name"
+    fi
   done
 }
 
@@ -390,9 +601,12 @@ Commands:
   recon <target>     Enumerate subdomains, probe hosts, crawl URLs
   scan <target>      Run nuclei + parameter discovery
   analyze <file>     AI-analyze a request/response file
+  validate <target>  Generate PoC payloads + screenshots for nuclei findings
   report <target>    Generate report from findings
   pattern <name>     Run a Fabric-style prompt pattern on stdin/args
   pattern list       List available patterns
+  patterns list      List available patterns (alias; -v for schema/example status)
+  patterns run <n>   Run pattern <n> on stdin/args
   status             Show backends, tools, and targets
 
 AI Routing:
@@ -414,11 +628,19 @@ case "${1:-}" in
   recon)    phase_recon "${2:?Usage: harbinger recon <target>}" ;;
   scan)     phase_scan "${2:?Usage: harbinger scan <target>}" ;;
   analyze)  phase_analyze "${2:?Usage: harbinger analyze <file|text>}" ;;
+  validate) phase_validate "${2:?Usage: harbinger validate <target>}" ;;
   report)   phase_report "${2:?Usage: harbinger report <target>}" ;;
   status)   show_status ;;
   pattern)
     case "${2:-}" in
-      ""|list) list_patterns ;;
+      ""|list) list_patterns "${@:3}" ;;
+      *)       run_pattern "$2" "${@:3}" ;;
+    esac
+    ;;
+  patterns)
+    case "${2:-}" in
+      ""|list) list_patterns "${@:3}" ;;
+      run)     run_pattern "${3:?Usage: harbinger patterns run <name> [input]}" "${@:4}" ;;
       *)       run_pattern "$2" "${@:3}" ;;
     esac
     ;;

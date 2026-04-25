@@ -1,0 +1,53 @@
+{
+  "client_id": "acme-spa",
+  "flow": "implicit",
+  "pkce": "absent",
+  "issues": [
+    {
+      "id": "redirect_uri_wildcard",
+      "severity": "high",
+      "evidence": "\"redirect_uris\":[\"https://*.acme.com/cb\", ...]",
+      "preconditions": [
+        "Attacker controls or registers any subdomain under acme.com (e.g. via takeover or dangling DNS)."
+      ],
+      "exploitation": "Register evil.acme.com, send the victim an authorize URL with redirect_uri=https://evil.acme.com/cb, capture the access token from the URL fragment. Result: session takeover for any user who clicks the link while signed in."
+    },
+    {
+      "id": "implicit_used",
+      "severity": "high",
+      "evidence": "\"grant_types\":[\"implicit\", ...] with client_type=public",
+      "preconditions": [
+        "Tokens delivered in URL fragment, exposed to browser history, referer headers, and analytics scripts."
+      ],
+      "exploitation": "Trigger a redirect chain after authorization so the fragment is leaked into a Referer or window.name; or read window.location.hash from a co-resident XSS sink. Result: token theft without needing a code-exchange step."
+    },
+    {
+      "id": "pkce_missing",
+      "severity": "high",
+      "evidence": "\"require_pkce\":false on a public SPA client",
+      "preconditions": [
+        "Public client (no client_secret) and an authorization_code flow path is also enabled."
+      ],
+      "exploitation": "Intercept the authorization code (open redirect, mobile app intent hijack, browser extension) and exchange it at /oauth/token without needing a code_verifier. Result: full account takeover."
+    },
+    {
+      "id": "scope_overbroad",
+      "severity": "medium",
+      "evidence": "scope=openid%20profile%20email%20admin:read",
+      "preconditions": [
+        "The authorization endpoint accepts admin:read for a public SPA client without consent gating."
+      ],
+      "exploitation": "Phish a normal user with a one-click consent screen that quietly includes admin:read; the issued token grants admin-tier API calls bound to the user's identity. Result: vertical privilege escalation."
+    },
+    {
+      "id": "redirect_uri_open",
+      "severity": "critical",
+      "evidence": "\"https://attacker.example.com/cb\" registered as a valid redirect_uri",
+      "preconditions": [
+        "Attacker controls attacker.example.com (no further conditions)."
+      ],
+      "exploitation": "Send the victim the authorize URL pointing at the attacker-owned redirect_uri; tokens are delivered straight to the attacker. Result: pre-auth account takeover with one click."
+    }
+  ],
+  "summary": "Public SPA client allows wildcard and attacker-owned redirect_uris on the implicit flow with PKCE off — single-click ATO."
+}

@@ -1,0 +1,14 @@
+Feature: gift-card redemption.
+
+POST /api/v1/gift-cards/redeem HTTP/1.1
+Host: shop.example.com
+Authorization: Bearer <user>
+Content-Type: application/json
+
+{"code":"WELCOME2026"}
+
+Server behavior (from internal docs):
+- Looks up code, checks `redeemed_by` is NULL, credits user wallet by code.value, sets `redeemed_by = user_id`.
+- Each code is single-use. Credit applied via `UPDATE wallets SET balance = balance + $value WHERE user_id = $u` (no row lock, default isolation = READ COMMITTED).
+- Idempotency-Key header is read but only logged, not enforced.
+- A separate POST /api/v1/wallet/withdraw transfers wallet balance to a bank account. It SELECTs balance then UPDATEs balance -= amount in two statements with no lock.

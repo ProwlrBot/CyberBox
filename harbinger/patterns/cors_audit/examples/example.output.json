@@ -1,0 +1,39 @@
+{
+  "url": "https://app.example.com/api/me",
+  "credentials_supported": true,
+  "allowed_origins_observed": [
+    "https://attacker.example.com",
+    "null"
+  ],
+  "verdict": "exploitable",
+  "issues": [
+    {
+      "id": "reflective_origin",
+      "severity": "critical",
+      "test_origin": "https://attacker.example.com",
+      "response_acao": "https://attacker.example.com",
+      "response_acac": "true",
+      "evidence": "Access-Control-Allow-Origin: https://attacker.example.com  +  Access-Control-Allow-Credentials: true",
+      "impact": "Any page the victim visits can fetch /api/me with their cookies and read the JSON body — full session-data exfil."
+    },
+    {
+      "id": "null_origin",
+      "severity": "high",
+      "test_origin": "null",
+      "response_acao": "null",
+      "response_acac": "true",
+      "evidence": "Access-Control-Allow-Origin: null with credentials true on probe 2",
+      "impact": "An attacker page in a sandboxed iframe (or data: URL) gets credentialed read access without owning a domain at all."
+    },
+    {
+      "id": "missing_vary_origin",
+      "severity": "low",
+      "test_origin": "https://attacker.example.com",
+      "response_acao": "https://attacker.example.com",
+      "response_acac": "true",
+      "evidence": "no Vary: Origin in either response",
+      "impact": "Caches between the user and origin can serve a stale ACAO meant for a different origin, broadening the attack window."
+    }
+  ],
+  "summary": "Reflective ACAO with credentials true — credentialed cross-origin reads of /api/me from any attacker domain."
+}

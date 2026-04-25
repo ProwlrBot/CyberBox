@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "race_condition_hypotheses",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["endpoint", "state_object", "hypotheses", "non_targets", "summary"],
+  "properties": {
+    "endpoint": { "type": "string", "minLength": 1 },
+    "state_object": { "type": "string", "minLength": 2, "maxLength": 240 },
+    "summary": { "type": "string", "minLength": 3, "maxLength": 240 },
+    "non_targets": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 6, "maxLength": 400 }
+    },
+    "hypotheses": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id", "primitive", "request_a", "request_b",
+          "expected_serial_outcome", "expected_race_outcome",
+          "indicator", "exploit_value", "tooling_hint"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{2,60}$"
+          },
+          "primitive": {
+            "type": "string",
+            "enum": [
+              "TOCTOU", "read-modify-write", "idempotency_key_replay",
+              "signup_collision", "lock_skew", "lazy_creation"
+            ]
+          },
+          "request_a": { "type": "string", "minLength": 8, "maxLength": 800 },
+          "request_b": { "type": "string", "minLength": 8, "maxLength": 800 },
+          "expected_serial_outcome": { "type": "string", "minLength": 8, "maxLength": 400 },
+          "expected_race_outcome": { "type": "string", "minLength": 8, "maxLength": 400 },
+          "indicator": { "type": "string", "minLength": 8, "maxLength": 400 },
+          "exploit_value": {
+            "type": "string",
+            "enum": ["low", "medium", "high", "critical"]
+          },
+          "tooling_hint": {
+            "type": "string",
+            "enum": [
+              "turbo-intruder gate",
+              "http2 single-packet",
+              "ffuf -p 0",
+              "raw curl -Z",
+              "db-trigger"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

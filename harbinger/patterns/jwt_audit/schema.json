@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "jwt_audit",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["token_id", "header", "claims", "issues", "summary"],
+  "properties": {
+    "token_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{6,16}$"
+    },
+    "header": {
+      "type": "object",
+      "minProperties": 1
+    },
+    "claims": {
+      "type": "object"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 240
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "severity", "evidence", "impact", "fix"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{2,40}$"
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["info", "low", "medium", "high", "critical"]
+          },
+          "evidence": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "impact": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 240
+          },
+          "fix": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 240
+          }
+        }
+      }
+    }
+  }
+}

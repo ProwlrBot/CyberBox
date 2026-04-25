@@ -1,0 +1,37 @@
+{
+  "token_id": "a1b2c3d4",
+  "header": {
+    "alg": "none",
+    "typ": "JWT"
+  },
+  "claims": {
+    "sub": "42",
+    "email": "victim@example.com",
+    "role": "admin",
+    "iat": 1700000000
+  },
+  "issues": [
+    {
+      "id": "alg_none",
+      "severity": "critical",
+      "evidence": "\"alg\":\"none\"",
+      "impact": "Server accepts unsigned tokens, allowing arbitrary claim forgery including role=admin.",
+      "fix": "Reject any token whose header alg is 'none'; pin verifier to the exact expected algorithm (e.g. RS256)."
+    },
+    {
+      "id": "no_exp",
+      "severity": "medium",
+      "evidence": "claims missing exp; iat=1700000000 only",
+      "impact": "Stolen tokens never expire and can be replayed indefinitely after credential rotation.",
+      "fix": "Issue tokens with a short exp (<= 1h) and refuse tokens without exp on the verifier."
+    },
+    {
+      "id": "sensitive_claim",
+      "severity": "medium",
+      "evidence": "\"email\":\"victim@example.com\"",
+      "impact": "Bearer token leaks user PII to any service that logs Authorization headers or proxies the request.",
+      "fix": "Move email to a server-lookup keyed by sub; keep tokens minimal."
+    }
+  ],
+  "summary": "Token is unsigned (alg=none) and lacks exp; treat as a critical auth bypass."
+}
