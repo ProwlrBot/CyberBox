@@ -111,6 +111,42 @@ ai() {
   esac
 }
 
+# ── NemoClaw-style Guardrails (spec 005) ─────────────────────
+# Defensive filters for AI prompt injection (input) + secret leakage (output).
+# Delegates regex work to bin/harbinger-guardrails; this layer adds:
+#   - jsonl audit log at $HARBINGER_DIR/logs/guardrails.jsonl
+#   - human-visible warn() when patterns are filtered
+# Toggle off with HARBINGER_GUARDRAILS=off (passes through verbatim).
+#
+# Usage:
+#   clean=$(printf '%s' "$untrusted" | guardrails_filter <phase-tag>)
+#   echo "$ai_response" | guardrails_redact
+guardrails_filter() {
+  local phase="${1:-unknown}"
+  local err_tmp
+  err_tmp=$(mktemp)
+  local sanitized rc=0
+  sanitized=$("$HARBINGER_BIN/harbinger-guardrails" filter 2>"$err_tmp") || rc=$?
+  if [[ $rc -eq 2 ]] && [[ -s "$err_tmp" ]]; then
+    mkdir -p "${HARBINGER_DIR}/logs"
+    local entry
+    entry=$(jq -c \
+      --arg ts "$(date -Iseconds)" \
+      --arg phase "$phase" \
+      '. + {ts:$ts, phase:$phase}' "$err_tmp" 2>/dev/null) || entry=""
+    [[ -n "$entry" ]] && printf '%s\n' "$entry" >> "${HARBINGER_DIR}/logs/guardrails.jsonl"
+    local hits
+    hits=$(jq -r '.matches | map(.pattern) | join(", ")' "$err_tmp" 2>/dev/null || echo "?")
+    warn "[guardrails] prompt-injection filtered before ${phase} AI call: ${hits}"
+  fi
+  rm -f "$err_tmp"
+  printf '%s' "$sanitized"
+}
+
+guardrails_redact() {
+  "$HARBINGER_BIN/harbinger-guardrails" redact
+}
+
 # ── Phase: Recon ─────────────────────────────────────────────
 phase_recon() {
   local target="$1"
@@ -160,10 +196,15 @@ phase_recon() {
   # AI-powered triage of recon data (use Ollama — fast, local)
   if [[ -s "${workspace}/recon/live_hosts.json" ]]; then
     info "AI triaging recon data..."
+    # Guardrails: live_hosts.json contains attacker-controllable titles/tech
+    # strings — filter prompt-injection patterns before sending to the AI,
+    # and redact common secret classes from the response before writing.
+    local hosts_clean
+    hosts_clean=$(head -n "$HARBINGER_TRIAGE_LIMIT" "${workspace}/recon/live_hosts.json" | guardrails_filter "recon")
     ai fast -s "You are a bug bounty recon analyst. Identify the most interesting targets for vulnerability testing." \
       "Triage these live hosts and rank by attack surface interest. Focus on: API endpoints, admin panels, file upload, auth pages, old tech stacks.
 
-$(head -n "$HARBINGER_TRIAGE_LIMIT" "${workspace}/recon/live_hosts.json")" > "${workspace}/recon/triage.md" || true
+${hosts_clean}" 2>/dev/null | guardrails_redact > "${workspace}/recon/triage.md" || true
     ok "Triage report: ${workspace}/recon/triage.md"
   fi
 
@@ -224,11 +265,17 @@ phase_analyze() {
     data="$input"
   fi
 
+  # Guardrails: $data is fully attacker-controlled (request body, response,
+  # or arbitrary text from the user). Filter injection patterns before AI;
+  # redact secrets from AI output before printing to the user's terminal.
+  local clean_data
+  clean_data=$(printf '%s' "$data" | guardrails_filter "analyze")
+
   # Use Claude for deep analysis
   ai deep -s "You are an expert bug bounty hunter analyzing HTTP traffic. Be specific about vulnerability classes, CVSS scores, and reproduction steps." \
     "Analyze this for security vulnerabilities:
 
-${data}"
+${clean_data}" | guardrails_redact
 }
 
 # ── Phase: Report ────────────────────────────────────────────
@@ -405,10 +452,17 @@ Constraints:
     info "  [${processed}] ${sev} ${tmpl} → ${matched_at}"
 
     local payload_path="${evidence}/payloads/${fid}.json"
-    local ai_input ai_out
+    local ai_input ai_out clean_desc clean_curl
+    # Guardrails: nuclei's description and matched-host fields can contain
+    # attacker-controlled markup. Filter those two free-form strings before
+    # they reach the AI. We do NOT redact the AI output here — the PoC may
+    # legitimately reference test-shaped tokens (e.g. fake JWT for an auth
+    # bypass demo); blanket redaction would corrupt machine-replay payloads.
+    clean_desc=$(printf '%s' "$desc" | guardrails_filter "validate")
+    clean_curl=$(printf '%s' "$curl_cmd" | guardrails_filter "validate")
     ai_input=$(jq -n \
       --arg tmpl "$tmpl" --arg sev "$sev" --arg url "$matched_at" \
-      --arg desc "$desc" --arg curl "$curl_cmd" \
+      --arg desc "$clean_desc" --arg curl "$clean_curl" \
       '{template_id:$tmpl, severity:$sev, matched_at:$url, description:$desc, nuclei_curl:$curl}')
 
     local ai_status=0
@@ -666,6 +720,19 @@ run_pattern() {
     write_report) tier="best" ;;
   esac
 
+  # Guardrails: pattern input is the most attacker-controllable surface in
+  # harbinger (diffs, JWTs, GraphQL bodies, etc.). Always filter prompt
+  # injection. Output redaction is opt-out: patterns whose explicit job is
+  # to surface secrets (diff_for_secrets) must NOT be redacted, or their
+  # findings would be self-DOSed.
+  local clean_input
+  clean_input=$(printf '%s' "$user_input" | guardrails_filter "pattern_${name}")
+
+  local redact_output="yes"
+  case "$name" in
+    diff_for_secrets) redact_output="no" ;;
+  esac
+
   # If the pattern declares a schema, validate the AI output against it and
   # log any rejection to the run's suppression log so `harbinger doctor` can
   # explain it. Output is still passed through to stdout — Phase 1 observes
@@ -673,12 +740,19 @@ run_pattern() {
   local schema_path="$HARBINGER_PATTERNS_DIR/$name/schema.json"
   if [[ -f "$schema_path" ]]; then
     local raw_output run_id
-    raw_output=$(ai "$tier" -s "$system_prompt" "$user_input")
+    raw_output=$(ai "$tier" -s "$system_prompt" "$clean_input")
+    if [[ "$redact_output" == "yes" ]]; then
+      raw_output=$(printf '%s' "$raw_output" | guardrails_redact)
+    fi
     run_id=$(mk_run_id "$name")
     validate_and_log_suppression "$name" "$schema_path" "$raw_output" "$run_id"
     printf '%s\n' "$raw_output"
   else
-    ai "$tier" -s "$system_prompt" "$user_input"
+    if [[ "$redact_output" == "yes" ]]; then
+      ai "$tier" -s "$system_prompt" "$clean_input" | guardrails_redact
+    else
+      ai "$tier" -s "$system_prompt" "$clean_input"
+    fi
   fi
 }
 
