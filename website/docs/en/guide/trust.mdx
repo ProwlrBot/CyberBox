@@ -1,0 +1,257 @@
+---
+title: Supply-chain trust
+description: Verify CyberBox's signed container image, inspect its SBOM, and reproduce the verify-supply-chain CI run locally.
+---
+
+# Supply-chain trust
+
+CyberBox is built to be **verifiable from a clean machine in under two minutes**.
+Every published container image is:
+
+- **Keyless-signed with cosign** (Sigstore Fulcio + Rekor transparency log)
+- **Shipped with an SBOM** (SPDX, attached as an OCI referrer)
+- **Provenance-attested** (SLSA build provenance, signed by GitHub's OIDC identity)
+- **Gated on Trivy CRITICAL** (the build fails on any fixed CRITICAL CVE)
+- **Independently re-verified in CI** by a second job, on a fresh runner, with no build cache
+
+The contract: if `cosign verify` does not return a signature chained to
+`https://github.com/ProwlrBot/CyberBox/.github/workflows/cybersandbox-build.yml`,
+**don't run the image**. The rest of this page walks you through reproducing
+that check yourself.
+
+## TL;DR — `csbx verify`
+
+Inside the `cybersandbox` image (or anywhere `csbx` is on `PATH`), the
+entire verify-supply-chain CI job collapses to a single command:
+
+```bash
+csbx verify                       # verify the :latest tag
+csbx verify --tag sha-abc1234     # verify a specific build
+csbx verify --ref ghcr.io/prowlrbot/cybersandbox@sha256:deadbeef...
+```
+
+A clean exit means: cosign signature valid, signer identity matches the
+build workflow, SBOM present and well-formed, Rekor transparency-log entry
+discoverable. Any non-zero exit is the contract: **don't run the image**.
+
+`csbx verify` is intentionally a thin wrapper — it shells out to the same
+`cosign` and `docker buildx imagetools` binaries you'd run by hand. The
+exact command it runs is in the next section, so you can audit the wrapper
+or skip it entirely. Run `csbx verify --help` to see every flag, including
+`--identity` for forks and `--skip-sbom` / `--skip-rekor` for offline
+environments.
+
+## Why this matters
+
+The Checkmarx KICS and Trivy supply-chain incidents in March-April 2026 made
+verifying tooling provenance an active operational concern, not a theoretical
+one. CyberBox commits to:
+
+1. **No private signing keys.** All signatures are short-lived, OIDC-bound,
+   and recorded in a public transparency log (Rekor). There is no key to
+   leak, rotate, or steal.
+2. **Reproducible verification.** The verify step in CI uses only `cosign`,
+   `docker buildx imagetools`, and the public Rekor log — the exact same
+   tools you run below.
+3. **Fail-closed on CVEs.** A `CRITICAL,fixed` CVE in OS or library packages
+   blocks publishing, full stop. See the
+   [Trivy gate step](https://github.com/ProwlrBot/CyberBox/blob/main/.github/workflows/cybersandbox-build.yml#L108-L118).
+
+## Prerequisites
+
+```bash
+# macOS
+brew install cosign syft grype docker
+
+# Linux
+go install github.com/sigstore/cosign/v2/cmd/cosign@latest
+go install github.com/anchore/syft/cmd/syft@latest
+go install github.com/anchore/grype/cmd/grype@latest
+```
+
+You'll also need `docker` (or any OCI-compatible client with `imagetools`)
+and `jq` for pretty-printing.
+
+## 1. Verify the cosign signature
+
+The published image is `ghcr.io/prowlrbot/cybersandbox:latest`. Always
+verify by **digest**, not by tag — tags are mutable, content is not.
+
+```bash
+IMAGE=ghcr.io/prowlrbot/cybersandbox
+DIGEST=$(docker buildx imagetools inspect "${IMAGE}:latest" \
+  --format '{{ .Manifest.Digest }}')
+echo "$DIGEST"
+
+cosign verify "${IMAGE}@${DIGEST}" \
+  --certificate-identity-regexp "^https://github.com/ProwlrBot/CyberBox/.github/workflows/cybersandbox-build.yml@refs/" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  | jq .
+```
+
+### Expected output
+
+```json
+[
+  {
+    "critical": {
+      "identity": { "docker-reference": "ghcr.io/prowlrbot/cybersandbox" },
+      "image":    { "docker-manifest-digest": "sha256:..." },
+      "type":     "cosign container image signature"
+    },
+    "optional": {
+      "Bundle": { "Payload": { "logIndex": 12345678, "...": "..." } },
+      "Issuer": "https://token.actions.githubusercontent.com",
+      "Subject": "https://github.com/ProwlrBot/CyberBox/.github/workflows/cybersandbox-build.yml@refs/heads/main"
+    }
+  }
+]
+```
+
+The two values that *prove* this is our build:
+
+- **`Issuer`** — must be `https://token.actions.githubusercontent.com`
+  (GitHub's OIDC). This means the signature was minted by a GitHub Actions
+  runner, not someone with a stolen private key.
+- **`Subject`** — must start with
+  `https://github.com/ProwlrBot/CyberBox/.github/workflows/cybersandbox-build.yml@`.
+  The `@refs/...` suffix tells you which branch/tag drove the build.
+
+If either differs, **stop and report it**.
+
+## 2. Inspect the SBOM
+
+The SBOM is attached to the image as an OCI referrer (not a separate file).
+Two equivalent ways to pull it:
+
+### With `docker buildx imagetools` (no extra tools)
+
+```bash
+docker buildx imagetools inspect "${IMAGE}@${DIGEST}" \
+  --format '{{ json .SBOM }}' > sbom.json
+
+# Sanity check — should be tens of KB minimum
+wc -c sbom.json
+
+# What format is it?
+jq -r '.spdxVersion // .bomFormat' sbom.json
+```
+
+### With `syft` (richer queries)
+
+```bash
+syft "${IMAGE}@${DIGEST}" -o spdx-json > sbom-syft.json
+
+# Top 20 packages by name
+jq -r '.packages[].name' sbom-syft.json | sort -u | head -20
+
+# Find a specific package
+jq '.packages[] | select(.name == "nuclei")' sbom-syft.json
+```
+
+### Scan the SBOM for known CVEs with `grype`
+
+```bash
+grype sbom:sbom-syft.json
+```
+
+The CI build already gates on **CRITICAL, fixed** OS/library CVEs (see the
+Trivy gate step linked above). If `grype` surfaces anything new, it's
+either (a) published *after* our last build — open an issue and we'll
+re-cut a release — or (b) `unfixed`, in which case there's no upstream
+patch yet to apply.
+
+## 3. Look up the Rekor transparency log entry
+
+Every cosign keyless signature is appended to the public Sigstore transparency
+log. You can audit it without hitting our infrastructure at all:
+
+```bash
+# Fetch the inclusion proof for our image
+cosign tree "${IMAGE}@${DIGEST}"
+
+# Pull the raw Rekor entry by log index (from the verify output above)
+LOG_INDEX=12345678   # replace with the value cosign printed
+rekor-cli get --log-index "$LOG_INDEX" --format json | jq .
+```
+
+Or browse it in a web UI:
+[search.sigstore.dev](https://search.sigstore.dev/) — paste the image
+digest into the search box. You'll get back the Fulcio short-lived
+certificate and the Rekor inclusion proof.
+
+The Fulcio certificate's `SAN` (Subject Alternative Name) extension binds
+the signature to a specific GitHub Actions workflow run — that's the link
+back to the public CI log below.
+
+## 4. Reproduce the verify-supply-chain CI job locally
+
+The full CI verify job lives at
+[`.github/workflows/cybersandbox-build.yml`](https://github.com/ProwlrBot/CyberBox/blob/main/.github/workflows/cybersandbox-build.yml#L168-L258)
+under the `verify-supply-chain` job. It runs on a fresh GitHub-hosted
+runner with no build cache, so reproducing it locally is a faithful
+re-execution.
+
+```bash
+#!/usr/bin/env bash
+# Local equivalent of the verify-supply-chain CI job.
+set -euo pipefail
+
+IMAGE=ghcr.io/prowlrbot/cybersandbox
+TAG="${1:-latest}"
+
+# 1. Resolve digest
+ref="${IMAGE}:${TAG}"
+digest="$(docker buildx imagetools inspect "$ref" --format '{{ .Manifest.Digest }}')"
+echo "Resolved ${ref} -> ${digest}"
+
+# 2. Verify cosign signature (chained to our workflow, via Fulcio + Rekor)
+cosign verify "${IMAGE}@${digest}" \
+  --certificate-identity-regexp "^https://github.com/ProwlrBot/CyberBox/.github/workflows/cybersandbox-build.yml@refs/" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  | tee cosign-verify.json
+test -s cosign-verify.json
+
+# 3. Verify the SBOM is non-empty and well-formed
+docker buildx imagetools inspect "${IMAGE}@${digest}" \
+  --format '{{ json .SBOM }}' > sbom.json
+bytes="$(wc -c < sbom.json)"
+echo "SBOM payload bytes: ${bytes}"
+test "${bytes}" -ge 64
+grep -q -E '"SPDXID"|"spdxVersion"|"bomFormat"' sbom.json
+
+echo
+echo "OK — ${IMAGE}@${digest} is signed and carries a valid SBOM."
+```
+
+Save as `verify.sh`, `chmod +x verify.sh`, run `./verify.sh latest`. A
+clean exit is the contract; any non-zero exit means **don't run the
+image**.
+
+## Cross-references
+
+- **CI workflow source** — [`.github/workflows/cybersandbox-build.yml`](https://github.com/ProwlrBot/CyberBox/blob/main/.github/workflows/cybersandbox-build.yml)
+- **Most recent verify run** — [Actions tab, `verify-supply-chain` job](https://github.com/ProwlrBot/CyberBox/actions/workflows/cybersandbox-build.yml?query=branch%3Amain)
+- **Public Rekor search** — [search.sigstore.dev](https://search.sigstore.dev/)
+- **Image registry (GHCR)** — [ghcr.io/prowlrbot/cybersandbox](https://github.com/ProwlrBot/CyberBox/pkgs/container/cybersandbox)
+- **Fulcio / Sigstore root of trust** — [sigstore.dev](https://www.sigstore.dev/)
+- **Security policy** — [`SECURITY.md`](https://github.com/ProwlrBot/CyberBox/blob/main/SECURITY.md)
+
+## FAQ
+
+**Do I need a Sigstore account?** No. Verification reads from the public
+Rekor log; nothing is gated.
+
+**Why keyless instead of a long-lived key?** A long-lived signing key is a
+single point of compromise. Keyless signing mints a fresh certificate per
+build, valid for ~10 minutes, bound to the GitHub Actions OIDC identity —
+there is no secret to steal.
+
+**What if I'm air-gapped?** Pin a digest, copy both the image and its
+referrers (`cosign copy`) into your registry, and run `cosign verify`
+against the cached signature. The verification only needs the public
+Sigstore root, not network access to GHCR.
+
+**The `latest` tag scares me.** It should — pin a digest in production.
+Every CyberBox release publishes a `sha-<short>` and `vX.Y.Z` tag in
+addition to `latest`; use those for reproducibility.

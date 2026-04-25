@@ -12,7 +12,37 @@
   <a href="https://github.com/ProwlrBot/CyberBox/releases/latest"><img src="https://img.shields.io/github/v/release/ProwlrBot/CyberBox" alt="Release"></a>
   <a href="https://github.com/ProwlrBot/CyberBox/actions"><img src="https://img.shields.io/github/actions/workflow/status/ProwlrBot/CyberBox/cybersandbox-build.yml?branch=main" alt="Build"></a>
   <a href="https://github.com/ProwlrBot/CyberBox/blob/main/LICENSE"><img src="https://img.shields.io/github/license/ProwlrBot/CyberBox" alt="License"></a>
+  <a href="https://prowlrbot.com/cyberbox/guide/trust"><img src="https://img.shields.io/badge/supply--chain-cosign%20%2B%20SBOM%20%2B%20SLSA-8b5cf6" alt="Supply chain: cosign + SBOM + SLSA"></a>
 </p>
+
+---
+
+## Verify before you run
+
+CyberBox is built to be **trusted by hunters running it against real targets**.
+Every published image is **keyless-signed with cosign** (Sigstore Fulcio +
+public Rekor transparency log), ships a full **SBOM**, carries **SLSA build
+provenance**, and is gated on **Trivy CRITICAL** before publish. An
+independent CI job re-verifies the signature and SBOM on a fresh runner —
+[see `verify-supply-chain` in the workflow](.github/workflows/cybersandbox-build.yml).
+
+```bash
+IMAGE=ghcr.io/prowlrbot/cybersandbox
+DIGEST=$(docker buildx imagetools inspect "${IMAGE}:latest" --format '{{ .Manifest.Digest }}')
+
+cosign verify "${IMAGE}@${DIGEST}" \
+  --certificate-identity-regexp "^https://github.com/ProwlrBot/CyberBox/.github/workflows/cybersandbox-build.yml@refs/" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+A clean exit is the contract. If `cosign verify` fails, **don't run the
+image**. Full walkthrough — SBOM inspection, Rekor lookup, local CI
+reproduction — in the **[Supply-chain trust guide](https://prowlrbot.com/cyberbox/guide/trust)**.
+
+This matters: the Checkmarx KICS and Trivy supply-chain incidents in
+March-April 2026 made provenance an active operational concern. Most
+hunter toolchains (Kali, BlackArch, ad-hoc Go installs) cannot offer this
+end-to-end without re-architecting. CyberBox can — out of the box.
 
 ---
 
@@ -56,7 +86,7 @@ export ANTHROPIC_API_KEY=sk-ant-…
 
 ## Security posture
 
-CyberBox is built to be trusted by a hunter running it against real targets:
+Beyond the supply-chain story above, the runtime is hardened end-to-end:
 
 - SSRF allowlist on all AI endpoints (`*.anthropic.com` https only for Claude)
 - AI output always schema-validated before surfacing
@@ -64,9 +94,10 @@ CyberBox is built to be trusted by a hunter running it against real targets:
 - Per-provider AI rate limiter
 - No hardcoded values — 15+ settings in the Prowlr UI, env vars for every CLI knob
 - Container runs non-root, ports bound to 127.0.0.1, vault mounted read-only
-- CI publishes SBOM + provenance attestation
 
-See [`cybersandbox/SECURITY.md`](cybersandbox/SECURITY.md) and the hardening log in the changelog.
+See the **[Supply-chain trust guide](https://prowlrbot.com/cyberbox/guide/trust)**,
+[`cybersandbox/SECURITY.md`](cybersandbox/SECURITY.md), and the hardening log
+in the changelog.
 
 ## Plugin marketplace (csbx)
 

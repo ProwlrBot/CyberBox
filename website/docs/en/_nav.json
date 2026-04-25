@@ -5,6 +5,11 @@
     "activeMatch": "/guide/"
   },
   {
+    "text": "Trust",
+    "link": "/guide/trust",
+    "activeMatch": "/guide/trust"
+  },
+  {
     "text": "Submit a plugin",
     "link": "/guide/submit-plugin",
     "activeMatch": "/guide/submit-plugin"

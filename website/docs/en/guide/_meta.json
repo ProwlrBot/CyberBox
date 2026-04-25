@@ -6,6 +6,11 @@
   },
   {
     "type": "file",
+    "label": "Supply-chain trust",
+    "name": "trust"
+  },
+  {
+    "type": "file",
     "label": "Submit a plugin",
     "name": "submit-plugin"
   },
@@ -18,5 +23,10 @@
     "type": "file",
     "label": "Plugins",
     "name": "plugins"
+  },
+  {
+    "type": "file",
+    "label": "harbinger Pattern Catalog",
+    "name": "harbinger-patterns"
   }
 ]
