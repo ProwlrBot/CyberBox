@@ -149,7 +149,8 @@ jobs:
           ignore-unfixed: true
           exit-code: '0'   # report, never block (see trivy-gate for blocking)
           vuln-type: os,library
-
+          timeout: 30m
+          
       - name: Upload Trivy SARIF
         if: always()
         uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
