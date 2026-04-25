@@ -10,8 +10,8 @@ files becoming thin shims once a Go implementation exists.
 | Subcommand | Status | Notes |
 |------------|--------|-------|
 | `cyberbox invoke-claude` | ✅ Ported (Phase 1) | Behavioral parity with `harbinger/bin/invoke-claude` |
-| `cyberbox invoke-ollama` | 🟡 Stub | Prints redirect to bash file |
-| `cyberbox csbx` | 🟡 Stub | Prints redirect to bash file |
+| `cyberbox invoke-ollama` | 🟡 Stub | Prints redirect to bash file (port pending merge of feat/spec-018-phase-2-ollama) |
+| `cyberbox csbx` | 🟢 PARTIAL (Phase 3-2a) | `search`, `info`, `list`, `doctor` ported; `verify` pending phase 3-2c; `install`/`remove`/`update`/`sync`/`pdtm` pending phase 3-3 |
 | `cyberbox harbinger` | 🟡 Stub | Prints redirect to bash file |
 
 Stubs exit with code **2** so callers can distinguish "not yet ported"
@@ -90,13 +90,22 @@ cli/
 ├── main.go                          # tiny entrypoint
 ├── cmd/
 │   ├── root.go                      # cobra root + version
-│   ├── invoke_claude.go             # the only fully ported command
+│   ├── invoke_claude.go             # Phase 1: Anthropic Messages API
 │   ├── invoke_claude_test.go        # table-driven tests via httptest
-│   └── stubs.go                     # csbx/harbinger/invoke-ollama redirect stubs
+│   ├── csbx/                        # Phase 3-2a: csbx subtree (read-only)
+│   │   ├── csbx.go                  # cobra subtree root
+│   │   ├── search.go / _test.go     # registry search by name/desc/tag
+│   │   ├── info.go / _test.go       # registry detail + install status
+│   │   ├── list.go / _test.go       # installed (default) or --available
+│   │   └── doctor.go / _test.go     # health check
+│   └── stubs.go                     # remaining stub redirects (invoke-ollama, harbinger)
 ├── internal/
-│   └── anthropic/
-│       ├── client.go                # minimal Messages API client
-│       └── client_test.go
+│   ├── anthropic/
+│   │   ├── client.go                # minimal Messages API client
+│   │   └── client_test.go
+│   └── csbx/                        # Phase 3-2a: typed state layer
+│       ├── state.go                 # Registry, Installed, Manifest types + Paths + I/O
+│       └── state_test.go
 ├── Makefile
 ├── .goreleaser.yaml                 # cosign-signed, SBOM-attached release config
 ├── go.mod / go.sum
