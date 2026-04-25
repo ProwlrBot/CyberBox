@@ -525,6 +525,17 @@ wheels = [
 ]
 
 [[package]]
+name = "nvdlib"
+version = "0.8.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/33/de/83a5f47eda31fc5471efe2ab2431be0a0d0856d1ac50b9721e7bc086015e/nvdlib-0.8.3-py3-none-any.whl", hash = "sha256:ba9df19942351353da5f3aa9ae9e106bbacd505a89d72d15c49f94d822690128", size = 15318, upload-time = "2025-08-06T21:16:14.662Z" },
+]
+
+[[package]]
 name = "openai"
 version = "2.7.1"
 source = { registry = "https://pypi.org/simple" }
@@ -993,6 +1004,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "langgraph" },
     { name = "mcp" },
+    { name = "nvdlib" },
     { name = "openai" },
     { name = "python-dotenv" },
 ]
@@ -1007,6 +1019,7 @@ dev = [
 requires-dist = [
     { name = "langgraph", specifier = "==1.1.9" },
     { name = "mcp", specifier = ">=1.12.3" },
+    { name = "nvdlib", specifier = ">=0.8.3" },
     { name = "openai", specifier = ">=1.54.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24.0" },

@@ -21,6 +21,9 @@ dependencies = [
     # tomllib is in stdlib since 3.11 and the project pins >=3.13, so we
     # don't need a backport for the config loader.
     "python-dotenv>=1.0.0",
+    # NVD CVE lookup for phase_recon. nvdlib handles NIST NVD API rate
+    # limiting (50 req/30s with key, 5 req/30s without) and pagination.
+    "nvdlib>=0.8.3",
 ]
 
 [project.optional-dependencies]
