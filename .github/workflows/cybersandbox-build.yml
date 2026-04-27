@@ -132,7 +132,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload image size artifact
-        uses: actions/upload-artifact@de65e23aa2b7e23d713bb51fbfcb6d502f8667d8 # v5.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0
         with:
           name: cybersandbox-image-size
           path: image-size.txt
