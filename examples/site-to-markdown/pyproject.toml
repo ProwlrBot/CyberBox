@@ -7,7 +7,7 @@ requires-python = ">=3.11"
 dependencies = [
     "agent-sandbox",
     "playwright>=1.48.0",
-    "python-dotenv>=1.0.0",
+    "python-dotenv>=1.2.2",
 ]
 
 [tool.uv.sources]
