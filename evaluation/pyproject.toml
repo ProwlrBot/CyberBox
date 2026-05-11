@@ -5,7 +5,7 @@ description = "Tool Evaluation Framework using Azure OpenAI and MCP"
 requires-python = ">=3.13"
 dependencies = [
     "openai>=1.54.0",
-    "mcp>=1.12.3",
+    "mcp>=1.23.0",
     # LangGraph is pinned to an exact version. The 1.x line is API-stable
     # but minor releases routinely tweak checkpointer / interrupt semantics,
     # so we want changes to land via an explicit bump rather than a passive
@@ -20,7 +20,7 @@ dependencies = [
     "langgraph==1.1.9",
     # tomllib is in stdlib since 3.11 and the project pins >=3.13, so we
     # don't need a backport for the config loader.
-    "python-dotenv>=1.0.0",
+    "python-dotenv>=1.2.2",
     # NVD CVE lookup for phase_recon. nvdlib handles NIST NVD API rate
     # limiting (50 req/30s with key, 5 req/30s without) and pagination.
     "nvdlib>=0.8.3",
