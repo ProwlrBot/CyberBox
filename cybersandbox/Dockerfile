@@ -8,7 +8,7 @@
 # system deps, (2) language/registry installs, (3) prebuilt binaries,
 # (4) project-local files (most-changed last).
 # ══════════════════════════════════════════════════════════════
-FROM ghcr.io/agent-infra/sandbox@sha256:e0d7cfed24b373850f5f3df64439e9fcaa17e6810ab3234222e901a5fa08397e AS base
+FROM ghcr.io/agent-infra/sandbox@sha256:4dfbd9a78c96b9a518313b63a389f3b7b226324689f421b8f885d0e4461e2e34 AS base
 
 # ══════════════════════════════════════════════════════════════
 # Stage 1: Go tools builder
