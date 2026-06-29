@@ -14,7 +14,7 @@ FROM ghcr.io/agent-infra/sandbox@sha256:e0d7cfed24b373850f5f3df64439e9fcaa17e681
 # Stage 1: Go tools builder
 # ══════════════════════════════════════════════════════════════
 # golang 1.25-bookworm — picks up fixed stdlib for CVE-2025-68121 (crypto/tls).
-FROM golang@sha256:5f3787b7f902c07c7ec4f3aa91a301a3eda8133aa32661a3b3a3a86ab3a68a36 AS go-builder
+FROM golang@sha256:32c0e6e5c4f6707717051091b4d0b077464a679eaab563e11474efc5328e2aa5 AS go-builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends libpcap-dev \
  && rm -rf /var/lib/apt/lists/*
