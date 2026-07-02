@@ -25,7 +25,7 @@ dependencies = [
     # limiting (50 req/30s with key, 5 req/30s without) and pagination.
     "nvdlib>=0.8.3",
     # Draft 2020-12 JSON Schema validation for the leaderboard sidecar
-    # emitter (spec 014). Same dep harbinger uses; pin matches.
+    # emitter (spec 014). Same dep prowl uses; pin matches.
     "jsonschema>=4.18,<5.0",
 ]
 

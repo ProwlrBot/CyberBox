@@ -28,10 +28,11 @@ services:
       # Persist workspace across restarts
       - cybersandbox-workspace:/home/hunter
       # Host CLI tools (image rebuild not required)
-      - ../harbinger/bin/csbx:/usr/local/bin/csbx:ro
-      - ../harbinger/bin/harbinger:/usr/local/bin/harbinger:ro
-      - ../harbinger/bin/invoke-claude:/usr/local/bin/invoke-claude:ro
-      - ../harbinger/bin/invoke-ollama:/usr/local/bin/invoke-ollama:ro
+      - ../prowl/bin/csbx:/usr/local/bin/csbx:ro
+      - ../prowl/bin/harbinger:/usr/local/bin/harbinger:ro
+      - ../prowl/bin/prowl:/usr/local/bin/prowl:ro
+      - ../prowl/bin/invoke-claude:/usr/local/bin/invoke-claude:ro
+      - ../prowl/bin/invoke-ollama:/usr/local/bin/invoke-ollama:ro
     env_file:
       - .env
     user: "0:0"

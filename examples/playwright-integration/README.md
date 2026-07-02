@@ -89,5 +89,5 @@ context = await browser.new_context(
 ## Resources
 
 - [Playwright Documentation](https://playwright.dev/python/docs/intro)
-- [Agent Sandbox Documentation](https://sandbox.agent-infra.com)
+- [CyberBox Documentation](https://prowlrbot.com/cyberbox)
 - [Playwright Selectors Guide](https://playwright.dev/python/docs/selectors)

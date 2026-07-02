@@ -2,24 +2,24 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-HOST="${NEO_HOST:-127.0.0.1}"
-PORT="${NEO_PORT:-8787}"
+HOST="${CYBERBOX_HOST:-${NEO_HOST:-127.0.0.1}}"
+PORT="${CYBERBOX_PORT:-${NEO_PORT:-8787}}"
 URL="http://${HOST}:${PORT}"
 
 usage() {
   cat <<EOF
-cyberbox — CyberBox Neo platform
+cyberbox — CyberBox local platform
 
 Usage:
   cyberbox start          Start API server (no-op if already running)
-  cyberbox stop           Stop server on NEO_PORT
+  cyberbox stop           Stop server on CYBERBOX_PORT
   cyberbox restart        Stop then start
   cyberbox status         Check /health
   cyberbox open           Print dashboard URL
 
 Environment:
-  NEO_HOST   Bind host (default: 127.0.0.1)
-  NEO_PORT   Bind port (default: 8787)
+  CYBERBOX_HOST   Bind host (default: 127.0.0.1)
+  CYBERBOX_PORT   Bind port (default: 8787)
 EOF
 }
 
@@ -37,7 +37,7 @@ port_pids() {
 
 stop_server() {
   if ! is_running && [[ -z "$(port_pids || true)" ]]; then
-    echo "CyberBox Neo is not running on ${HOST}:${PORT}"
+    echo "CyberBox is not running on ${HOST}:${PORT}"
     return 0
   fi
   local pid
@@ -49,10 +49,10 @@ stop_server() {
     kill -9 "$pid" 2>/dev/null || true
   done
   if is_running; then
-    echo "Failed to stop CyberBox Neo on ${HOST}:${PORT}" >&2
+    echo "Failed to stop CyberBox on ${HOST}:${PORT}" >&2
     return 1
   fi
-  echo "Stopped CyberBox Neo on ${HOST}:${PORT}"
+  echo "Stopped CyberBox on ${HOST}:${PORT}"
 }
 
 cmd="${1:-start}"
@@ -61,19 +61,19 @@ shift || true
 case "$cmd" in
   start)
     if is_running; then
-      echo "CyberBox Neo already running at ${URL}/"
+      echo "CyberBox already running at ${URL}/"
       echo "Use: ./bin/cyberbox stop     # to shut down"
       echo "     ./bin/cyberbox restart  # to reload cleanly"
       exit 0
     fi
-    exec "${ROOT}/platform/bin/neo" "$@"
+    exec "${ROOT}/platform/bin/platform" "$@"
     ;;
   stop)
     stop_server
     ;;
   restart)
     stop_server || true
-    exec "${ROOT}/platform/bin/neo" "$@"
+    exec "${ROOT}/platform/bin/platform" "$@"
     ;;
   status)
     curl -fsS "${URL}/health"

@@ -79,7 +79,7 @@ Only `127.0.0.1:8082` is exposed by default (localhost only).
 
 **AI CLI:** invoke-claude, invoke-ollama
 
-**Pipeline:** harbinger (autonomous hunt orchestrator)
+**Pipeline:** prowl (autonomous hunt orchestrator; `harbinger` alias)
 
 **Plugin manager:** csbx (install community tools/wordlists/templates)
 
@@ -103,14 +103,14 @@ invoke-ollama -m mistral "Explain this CVE"
 invoke-ollama -l  # List available models
 ```
 
-### harbinger
+### prowl
 
 ```bash
-harbinger hunt example.com          # Full pipeline: recon → scan → report
-harbinger recon example.com         # Recon only
-harbinger scan example.com          # Scan only (needs recon first)
-harbinger report example.com        # AI-generated report
-harbinger status example.com        # Check workspace
+prowl hunt example.com          # Full pipeline: recon → scan → report
+prowl recon example.com         # Recon only
+prowl scan example.com          # Scan only (needs recon first)
+prowl report example.com        # AI-generated report
+prowl status example.com        # Check workspace
 ```
 
 ### csbx (plugin manager)

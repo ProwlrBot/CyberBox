@@ -26,12 +26,12 @@
   },
   {
     "type": "file",
-    "label": "harbinger Pattern Catalog",
-    "name": "harbinger-patterns"
+    "label": "Prowl Pattern Catalog",
+    "name": "prowl-patterns"
   },
   {
     "type": "file",
-    "label": "harbinger doctor",
-    "name": "harbinger-doctor"
+    "label": "Prowl doctor",
+    "name": "prowl-doctor"
   }
 ]

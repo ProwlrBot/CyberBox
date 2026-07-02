@@ -23,7 +23,7 @@ from deepagents.backends.protocol import (
 from deepagents.backends.sandbox import BaseSandbox
 
 
-class AIOSandboxBackend(BaseSandbox):
+class CyberBoxBackend(BaseSandbox):
     """DeepAgents sandbox backend powered by CyberBox.
 
     All methods call the sandbox SDK APIs directly:
@@ -33,10 +33,10 @@ class AIOSandboxBackend(BaseSandbox):
 
     Usage:
         from agent_sandbox import Sandbox
-        from sandbox_backend import AIOSandboxBackend
+        from sandbox_backend import CyberBoxBackend
 
         client = Sandbox(base_url="http://localhost:8080")
-        backend = AIOSandboxBackend(client)
+        backend = CyberBoxBackend(client)
 
         agent = create_deep_agent(
             model=...,
@@ -44,7 +44,7 @@ class AIOSandboxBackend(BaseSandbox):
         )
 
     Supports context manager protocol:
-        with AIOSandboxBackend(client) as backend:
+        with CyberBoxBackend(client) as backend:
             ...
     """
 

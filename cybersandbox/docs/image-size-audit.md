@@ -94,7 +94,7 @@ optimization that worked once may already be in place.
 | `npm cache clean --force` + rm `/root/.npm`       | Same RUN that installs `@anthropic-ai/claude-code`                         |        ~80–120 MB |
 | Remove `/root/.oh-my-zsh/.git`                    | OMZ keeps full upstream git history by default                             |        ~10–20 MB |
 | Strip Go binaries (`-ldflags=-s -w`, `-trimpath`) | Set `GOFLAGS` in go-builder; only affects produced binaries                |        ~80–120 MB |
-| Layer ordering: most-changed last                 | `harbinger-bin/`, `mcp-hub-cyber.json`, `entrypoint-cyber.sh` last         |   cache wins only |
+| Layer ordering: most-changed last                 | `prowl-bin/`, `mcp-hub-cyber.json`, `entrypoint-cyber.sh` last         |   cache wins only |
 
 ## What NOT to drop
 

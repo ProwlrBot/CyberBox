@@ -168,19 +168,23 @@ ENV PATH="/opt/venv/bin:${PATH}"
 # Templates live in /root/.config/nuclei/ — chowned to hunter below.
 RUN nuclei -update-templates 2>/dev/null || true
 
-# ── Harbinger CLI (invoke-claude, invoke-ollama, harbinger) ──
+# ── Prowl CLI (invoke-claude, invoke-ollama, prowl) ──
 # Project-local files placed last so a churn here only invalidates the
 # tail of the layer cache.
-COPY harbinger-bin/ /usr/local/bin/
+COPY prowl-bin/ /usr/local/bin/
 COPY mcp-hub-cyber.json /opt/cybersandbox/mcp-hub-cyber.json
 COPY entrypoint-cyber.sh /opt/cybersandbox/entrypoint-cyber.sh
 
 RUN set -eux; \
     chmod +x /usr/local/bin/invoke-claude \
              /usr/local/bin/invoke-ollama \
-             /usr/local/bin/harbinger \
+             /usr/local/bin/prowl \
              /usr/local/bin/csbx \
              /opt/cybersandbox/entrypoint-cyber.sh; \
+    ln -sf prowl /usr/local/bin/harbinger; \
+    if [ -f /opt/aio/index.html.template ]; then \
+      sed -i 's/AIO Sandbox/CyberBox/g' /opt/aio/index.html.template; \
+    fi; \
     chmod 666 /opt/gem/mcp-hub.json 2>/dev/null || true; \
     # Create non-root user.
     useradd -m -u 1000 -s /bin/zsh -d /home/hunter hunter 2>/dev/null || true; \
@@ -204,7 +208,7 @@ EXPOSE 8080
 # ── Healthcheck: verify core CLIs resolve ───────────────────
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD command -v nuclei >/dev/null \
-   && command -v harbinger >/dev/null \
+   && command -v prowl >/dev/null \
    && command -v csbx >/dev/null \
    || exit 1
 

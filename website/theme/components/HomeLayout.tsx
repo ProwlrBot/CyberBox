@@ -38,6 +38,8 @@ const CAP_TAGS = [
   { key: 'mcp', label: 'MCP', Icon: McpIcon },
 ];
 
+const BRAND_TAGS = ['Prowlr', 'prowl', 'Caido'];
+
 const FEATURE_ICONS = [
   FeatUnifiedIcon,
   FeatOutofboxIcon,
@@ -194,6 +196,16 @@ export default function HomeLayout() {
                   </span>
                   {i < CAP_TAGS.length - 1 && (
                     <span className="ch-cap-sep">/</span>
+                  )}
+                </span>
+              ))}
+            </div>
+            <div className="ch-hero-brand">
+              {BRAND_TAGS.map((label, i) => (
+                <span key={label}>
+                  <span className="ch-brand-chip">{label}</span>
+                  {i < BRAND_TAGS.length - 1 && (
+                    <span className="ch-cap-sep">·</span>
                   )}
                 </span>
               ))}

@@ -68,5 +68,5 @@ The template includes all necessary files - just modify `main.py` with your code
 ### Need Help?
 
 - Check existing examples for reference
-- Review the [CyberBox Documentation](https://sandbox.agent-infra.com)
+- Review the [CyberBox Documentation](https://prowlrbot.com/cyberbox)
 - Open an issue for questions or suggestions

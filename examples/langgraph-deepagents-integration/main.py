@@ -6,7 +6,7 @@ from agent_sandbox import Sandbox
 from deepagents import create_deep_agent
 from langchain.chat_models.base import init_chat_model
 
-from sandbox_backend import AIOSandboxBackend
+from sandbox_backend import CyberBoxBackend
 
 # Ensure localhost bypasses proxy
 os.environ['NO_PROXY'] = 'localhost,127.0.0.1'
@@ -20,7 +20,7 @@ async def main():
     sandbox_url = os.getenv("SANDBOX_URL", "http://localhost:8080")
     client = Sandbox(base_url=sandbox_url)
 
-    with AIOSandboxBackend(client) as backend:
+    with CyberBoxBackend(client) as backend:
         model = init_chat_model(
             model=f"openai:{os.getenv('OPENAI_MODEL_ID')}",
             base_url=os.getenv("OPENAI_BASEURL"),

@@ -196,6 +196,34 @@ html.dark {
   user-select: none;
 }
 
+.ch-hero-brand {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 32px;
+  animation: ch-fadeUp 0.55s 0.22s ease both;
+}
+
+.ch-brand-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #c4b5fd;
+  background: rgba(139, 92, 246, 0.12);
+  border: 1px solid rgba(139, 92, 246, 0.28);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+html.dark .ch-brand-chip {
+  color: #ddd6fe;
+  background: rgba(139, 92, 246, 0.16);
+  border-color: rgba(167, 139, 250, 0.35);
+}
+
 // CTA Buttons
 .ch-hero-cta {
   display: flex;

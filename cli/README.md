@@ -1,6 +1,6 @@
 # cyberbox
 
-Single Go binary replacing the legacy bash CLIs (`csbx`, `harbinger`,
+Single Go binary replacing the legacy bash CLIs (`csbx`, `prowl`,
 `invoke-claude`, `invoke-ollama`). Implements [spec 018](../.auto-claude/specs/018-single-go-binary-for-csbx-harbinger-invoke-cli/spec.md)
 incrementally — each subcommand is ported in its own PR, with the bash
 files becoming thin shims once a Go implementation exists.
@@ -9,10 +9,10 @@ files becoming thin shims once a Go implementation exists.
 
 | Subcommand | Status | Notes |
 |------------|--------|-------|
-| `cyberbox invoke-claude` | ✅ Ported (Phase 1) | Behavioral parity with `harbinger/bin/invoke-claude` |
-| `cyberbox invoke-ollama` | ✅ Ported (Phase 2) | Behavioral parity with `harbinger/bin/invoke-ollama`; supports `-m/-s/-j/-r/-l` flags + OLLAMA_HOST/OLLAMA_MODEL env precedence |
+| `cyberbox invoke-claude` | ✅ Ported (Phase 1) | Behavioral parity with `prowl/bin/invoke-claude` |
+| `cyberbox invoke-ollama` | ✅ Ported (Phase 2) | Behavioral parity with `prowl/bin/invoke-ollama`; supports `-m/-s/-j/-r/-l` flags + OLLAMA_HOST/OLLAMA_MODEL env precedence |
 | `cyberbox csbx` | 🟢 PARTIAL (Phases 3-2a + 3-2c) | `search`, `info`, `list`, `doctor`, `verify` ported; `install`/`remove`/`update`/`sync`/`pdtm` pending phase 3-3 |
-| `cyberbox harbinger` | 🟡 Stub | Prints redirect to bash file |
+| `cyberbox prowl` | 🟡 Stub | Prints redirect to bash file (`harbinger` alias) |
 
 Stubs exit with code **2** so callers can distinguish "not yet ported"
 from generic operation failures (exit 1).
@@ -62,7 +62,7 @@ Flag parity with the bash scripts:
 
 ## Migration plan
 
-The bash files in `harbinger/bin/` continue to work unchanged today. Once
+The bash files in `prowl/bin/` continue to work unchanged today. Once
 each subcommand has a stable Go port:
 
 1. Cut a `cyberbox` release via GoReleaser (cross-compiled, cosign-signed,
@@ -74,7 +74,7 @@ each subcommand has a stable Go port:
    exec "$(dirname "$0")/cyberbox" invoke-claude "$@"
    ```
 
-   Test scripts that invoke the bash file directly (e.g. `harbinger/tests/test_csbx.sh`)
+   Test scripts that invoke the bash file directly (e.g. `prowl/tests/test_csbx.sh`)
    keep working without modification.
 3. After two releases of shim-only behaviour, remove the bash files.
 
@@ -86,8 +86,9 @@ The order of ports is driven by:
    schema. Shares HTTP client patterns.
 3. **csbx** — biggest user-facing surface (946 bash lines, many
    subcommands). Needs YAML/registry parsing, plugin install hooks.
-4. **harbinger** — most complex (683 bash lines plus Python helpers and
+4. **prowl** — most complex (683 bash lines plus Python helpers and
    phase orchestration). Last because it depends on the above three.
+   The `harbinger` subcommand name is kept as a compatibility alias.
 
 ## Layout
 
@@ -107,7 +108,7 @@ cli/
 │   │   ├── list.go / _test.go       # installed (default) or --available
 │   │   ├── doctor.go / _test.go     # health check
 │   │   └── verify.go / _test.go     # cosign keyless + SBOM + Rekor URL
-│   └── stubs.go                     # remaining harbinger stub
+│   └── stubs.go                     # remaining prowl stub (harbinger alias)
 ├── internal/
 │   ├── anthropic/
 │   │   ├── client.go                # minimal Messages API client
@@ -143,10 +144,10 @@ cli/
 
 Spec 018 acceptance criterion: *Existing bash test suite passes unchanged
 against the new binary.* Once a subcommand is ported, its bash test
-suite (`harbinger/tests/test_<name>.sh`) is the regression baseline. PRs
+suite (`prowl/tests/test_<name>.sh`) is the regression baseline. PRs
 that swap a bash file for a shim must show the same test green.
 
 `invoke-claude` does not currently have a bash test (the existing tests
-cover csbx, harbinger, and pattern files). Phase-1 tests live in Go;
-adding a bash compat test in `harbinger/tests/test_invoke_claude.sh`
+cover csbx, prowl, and pattern files). Phase-1 tests live in Go;
+adding a bash compat test in `prowl/tests/test_invoke_claude.sh`
 when the bash file becomes a shim is a planned follow-up.

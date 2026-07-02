@@ -65,7 +65,7 @@ https://prowlrbot.com/cyberbox/guide/trust
 
 - `cybersandbox` Docker image — 160+ pre-installed tools, signed and
   SBOM-attested.
-- `harbinger` — autonomous recon → scan → report pipeline.
+- `prowl` — autonomous recon → scan → report pipeline.
 - `csbx` — community plugin manager (Homebrew-tap style).
 - `invoke-claude` / `invoke-ollama` — uniform CLI wrappers for both AI
   providers.

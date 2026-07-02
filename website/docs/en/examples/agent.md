@@ -13,7 +13,7 @@ import asyncio
 import aiohttp
 from typing import Dict, Any
 
-class AIOSandboxAgent:
+class CyberBoxAgent:
     def __init__(self, base_url: str = "http://localhost:8080"):
         self.base_url = base_url
         self.session = None
@@ -52,7 +52,7 @@ class AIOSandboxAgent:
 
 # Usage example
 async def main():
-    async with AIOSandboxAgent() as agent:
+    async with CyberBoxAgent() as agent:
         # Execute a command
         result = await agent.execute_shell("python --version")
         print(f"Python version: {result}")
@@ -150,7 +150,7 @@ async def mcp_example():
 Here's an example of a complex agent that combines browser automation, file operations, and code execution:
 
 ```python
-class WebScrapingAgent(AIOSandboxAgent):
+class WebScrapingAgent(CyberBoxAgent):
     async def scrape_and_analyze(self, url: str, analysis_script: str):
         """Complete workflow: scrape website, save data, and analyze"""
 
@@ -214,7 +214,7 @@ print(f"Images found: {len(soup.find_all('img'))}")
 For long-running agent workflows, manage shell sessions effectively:
 
 ```python
-class SessionManagedAgent(AIOSandboxAgent):
+class SessionManagedAgent(CyberBoxAgent):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.shell_session_id = None
@@ -278,7 +278,7 @@ from pydantic import BaseModel, Field
 class SandboxExecuteTool(BaseTool):
     name = "sandbox_execute"
     description = "Execute shell commands in CyberBox"
-    agent: AIOSandboxAgent = Field(...)
+    agent: CyberBoxAgent = Field(...)
 
     def _run(self, command: str) -> str:
         """Execute command synchronously"""
@@ -296,7 +296,7 @@ class SandboxExecuteTool(BaseTool):
 class SandboxFileTool(BaseTool):
     name = "sandbox_file_ops"
     description = "Read and write files in CyberBox"
-    agent: AIOSandboxAgent = Field(...)
+    agent: CyberBoxAgent = Field(...)
 
     def _run(self, action: str, path: str, content: str = "") -> str:
         """Perform file operations"""
@@ -319,7 +319,7 @@ class SandboxFileTool(BaseTool):
 
 # Create LangChain agent with sandbox tools
 async def create_sandbox_agent():
-    sandbox_agent = AIOSandboxAgent()
+    sandbox_agent = CyberBoxAgent()
     await sandbox_agent.__aenter__()
 
     tools = [
@@ -349,7 +349,7 @@ from openai import OpenAI
 class OpenAISandboxAssistant:
     def __init__(self, api_key: str, sandbox_url: str = "http://localhost:8080"):
         self.client = OpenAI(api_key=api_key)
-        self.sandbox = AIOSandboxAgent(sandbox_url)
+        self.sandbox = CyberBoxAgent(sandbox_url)
 
     async def create_assistant(self):
         """Create OpenAI Assistant with sandbox function calls"""
@@ -412,7 +412,7 @@ class OpenAISandboxAssistant:
 ### Robust Error Handling
 
 ```python
-class RobustSandboxAgent(AIOSandboxAgent):
+class RobustSandboxAgent(CyberBoxAgent):
     async def safe_execute(self, command: str, max_retries: int = 3):
         """Execute command with retries and error handling"""
         for attempt in range(max_retries):
@@ -453,7 +453,7 @@ class RobustSandboxAgent(AIOSandboxAgent):
 ### Performance Optimization
 
 ```python
-class OptimizedSandboxAgent(AIOSandboxAgent):
+class OptimizedSandboxAgent(CyberBoxAgent):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.connection_pool = aiohttp.TCPConnector(limit=10, limit_per_host=5)
@@ -487,7 +487,7 @@ from unittest.mock import AsyncMock, patch
 
 class TestSandboxAgent(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
-        self.agent = AIOSandboxAgent("http://test-sandbox:8080")
+        self.agent = CyberBoxAgent("http://test-sandbox:8080")
         await self.agent.__aenter__()
 
     async def asyncTearDown(self):

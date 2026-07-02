@@ -11,7 +11,7 @@ import (
 // can distinguish "feature unimplemented" (2) from "operation failed" (1).
 //
 // Phases 1 (invoke-claude), 2 (invoke-ollama), and 3-2a (csbx read-only)
-// each replaced their stub with a real implementation. Only harbinger
+// each replaced their stub with a real implementation. Only prowl
 // remains as a redirect-stub until its port lands in a follow-up phase.
 func notYetPorted(name, bashPath string) func(cmd *cobra.Command, args []string) {
 	return func(cmd *cobra.Command, args []string) {
@@ -44,11 +44,12 @@ func joinArgs(args []string) string {
 // cobra.Command). cli/cmd/root.go still calls newInvokeOllamaCmd() —
 // which now resolves to the real one defined in invoke_ollama.go.
 
-func newHarbingerCmd() *cobra.Command {
+func newProwlCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:                "harbinger [args]...",
+		Use:                "prowl [args]...",
+		Aliases:            []string{"harbinger"},
 		Short:              "(stub) Phase-driven security testing CLI",
 		DisableFlagParsing: true,
-		Run:                notYetPorted("harbinger", "harbinger/bin/harbinger"),
+		Run:                notYetPorted("prowl", "prowl/bin/prowl"),
 	}
 }

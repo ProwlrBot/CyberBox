@@ -26,7 +26,7 @@ uv run main.py
 ## What This Example Does
 
 1. Connects to the sandbox browser via CDP
-2. Navigates to a website (https://sandbox.agent-infra.com/)
+2. Navigates to a website (https://prowlrbot.com/cyberbox)
 3. Captures the HTML content and screenshot
 4. Uses Jupyter in the sandbox to convert HTML to markdown using `markdownify`
 5. Saves the markdown file with embedded screenshot

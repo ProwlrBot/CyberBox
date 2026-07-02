@@ -83,7 +83,7 @@ release:
   header: |
     ## cyberbox {{ .Tag }}
 
-    Single Go binary replacing the legacy bash CLIs (csbx, harbinger,
+    Single Go binary replacing the legacy bash CLIs (csbx, prowl,
     invoke-claude, invoke-ollama). Phase 1 ships a fully ported
     `invoke-claude`; the other subcommands print a redirect to the bash
     script during the migration window.

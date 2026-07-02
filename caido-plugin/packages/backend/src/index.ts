@@ -893,7 +893,7 @@ async function getQuickCommands(sdk: SDK): Promise<Array<{ label: string; cmd: s
   return [
     { label: "AI Analyze (Ollama)", cmd: "invoke-ollama", icon: "fas fa-robot" },
     { label: "AI Analyze (Claude)", cmd: "invoke-claude", icon: "fas fa-brain" },
-    { label: "Harbinger Status", cmd: "harbinger status", icon: "fas fa-satellite-dish" },
+    { label: "Pipeline status", cmd: "prowl status", icon: "fas fa-satellite-dish" },
     { label: "csbx List", cmd: "csbx list", icon: "fas fa-puzzle-piece" },
     { label: "Nuclei Scan", cmd: "echo 'Usage: nuclei -u <target>'", icon: "fas fa-search" },
     { label: "Subfinder", cmd: "echo 'Usage: subfinder -d <domain>'", icon: "fas fa-globe" },

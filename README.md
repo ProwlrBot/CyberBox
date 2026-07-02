@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="website/docs/public/brand/banner.png" alt="CyberBox — fortified chest with biohazard seal, Prowlr / Harbinger / LLM / Caido chips" width="720">
+  <img src="website/docs/public/brand/banner.png" alt="CyberBox — fortified chest with biohazard seal, Prowlr / prowl / LLM / Caido chips" width="720">
 </p>
 
 <h1 align="center">CyberBox</h1>
@@ -46,7 +46,7 @@ end-to-end without re-architecting. CyberBox can — out of the box.
 
 ---
 
-CyberBox pairs a hardened sandbox container with **Prowlr** (a Caido proxy plugin), **harbinger** (an autonomous hunting pipeline), and **csbx** (a community plugin manager). Built for the hunter who works out of Caido + Obsidian + a local LLM.
+CyberBox pairs a hardened sandbox container with **Prowlr** (a Caido proxy plugin), **prowl** (autonomous hunt pipeline), and **csbx** (a community plugin manager). Built for the hunter who works out of Caido + Obsidian + a local LLM.
 
 ## What's in the box
 
@@ -54,7 +54,7 @@ CyberBox pairs a hardened sandbox container with **Prowlr** (a Caido proxy plugi
 |-----------|------|
 | **cybersandbox** | Docker image with 160+ security tools, Ollama client, Metasploit, mounted wordlists volume |
 | **Prowlr (Caido plugin)** | Scope enforcement, dual-LLM AI analysis (Claude + Ollama), embedded xterm.js terminal, Obsidian findings export, NemoClaw-style guardrails |
-| **harbinger** | Autonomous recon → scan → report pipeline; Fabric-style prompt patterns |
+| **prowl** | Autonomous recon → scan → report pipeline; Fabric-style prompt patterns (`harbinger` kept as compatibility alias) |
 | **csbx** | Plugin manager (Homebrew-tap style); pdtm-compatible install path for Go tools |
 | **invoke-claude / invoke-ollama** | CLI wrappers for both AI providers with uniform flags |
 
@@ -79,10 +79,12 @@ Install both via **Caido → Settings → Plugins → Install from file**.
 **Host CLI:**
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-…
-./harbinger/bin/harbinger status
-./harbinger/bin/harbinger hunt example.com
-./harbinger/bin/harbinger pattern analyze_vulns < request.txt
+./prowl/bin/prowl status
+./prowl/bin/prowl hunt example.com
+./prowl/bin/prowl pattern analyze_vulns < request.txt
 ```
+
+(`prowl` is the primary CLI name; `prowl` remains as a compatibility alias.)
 
 ## Security posture
 
@@ -117,7 +119,7 @@ Registry lives at [ProwlrBot/csbx-registry](https://github.com/ProwlrBot/csbx-re
 ```
 caido-plugin/       Prowlr Caido plugin (TypeScript, IIFE bundle)
 cybersandbox/       Dockerfile, compose, SETUP, SECURITY, CHANGELOG
-harbinger/          bin/{harbinger,csbx,invoke-claude,invoke-ollama}
+prowl/              bin/{prowl,harbinger,csbx,invoke-claude,invoke-ollama}
                     patterns/  Fabric-style prompt library
                     tests/     bash test harness (16 tests)
 .github/            CI workflow, issue + PR templates

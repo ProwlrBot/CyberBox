@@ -19,7 +19,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-CSBX="${REPO_ROOT}/harbinger/bin/csbx"
+CSBX="${REPO_ROOT}/prowl/bin/csbx"
 
 PASS=0
 FAIL=0

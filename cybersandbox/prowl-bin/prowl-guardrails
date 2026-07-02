@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+"""
+prowl-guardrails — NemoClaw-style defensive filters for AI prompt injection
+                   and AI-output secret leakage.
+
+Ports the 7 INJECTION_PATTERNS and 6 SECRET_PATTERNS from the Caido plugin
+backend (caido-plugin/packages/backend/src/index.ts §"NemoClaw-style
+Guardrails") to a stdin→stdout filter callable from the harbinger bash
+orchestrator.
+
+Two modes:
+    filter   sanitize untrusted text before it reaches an AI prompt
+    redact   redact common secret classes the AI may have echoed back
+
+Usage:
+    echo "$untrusted_traffic" | prowl-guardrails filter
+    echo "$ai_response"       | prowl-guardrails redact
+
+Off-switch:
+    PROWL_GUARDRAILS=off      bypasses both modes (passthrough, exit 0)
+    HARBINGER_GUARDRAILS=off  deprecated alias
+
+Exit codes (filter mode):
+    0   no injection patterns matched (clean passthrough)
+    2   one or more patterns matched and were filtered (text on stdout still
+        usable, but the caller should log/note that filtering occurred)
+
+Exit codes (redact mode):
+    0   always (redaction is silent — no flag signaling needed since the
+        caller can't distinguish "secret was redacted" from "no secret
+        present" without re-scanning, and the security goal is *not* to
+        announce which secrets were leaked)
+
+Stderr (filter mode, on flag):
+    Single JSON line:
+        {"flagged": true, "matches": [{"pattern": "ignore_previous", "count": 1}, ...]}
+    The orchestrator pipes this to a jsonl log so `harbinger doctor` (and
+    future audit tooling) can surface what was filtered.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import sys
+from typing import List, Tuple
+
+
+# ── 7 prompt-injection patterns (parity with caido-plugin TS) ────────────
+# Each entry: (name, compiled regex, replacement string)
+# Names are stable identifiers used in the stderr log — keep them snake_case
+# and unchanging so `harbinger doctor` filtering remains stable.
+INJECTION_PATTERNS: List[Tuple[str, re.Pattern[str], str]] = [
+    ("ignore_previous",
+     re.compile(r"ignore (?:all |the )?(?:previous|prior|above) (?:instructions?|prompts?|rules?)", re.I),
+     "[FILTERED-INJECTION]"),
+    ("disregard_system",
+     re.compile(r"disregard (?:all |your )?(?:instructions?|system prompt)", re.I),
+     "[FILTERED-INJECTION]"),
+    ("dan_jailbreak",
+     re.compile(r"you are (?:now )?(?:a |an )?(?:dan|evil|unrestricted|jailbroken)", re.I),
+     "[FILTERED-INJECTION]"),
+    ("system_prompt_marker",
+     re.compile(r"system\s*prompt\s*[:=]", re.I),
+     "[FILTERED-INJECTION]"),
+    ("im_start_end",
+     re.compile(r"<\|im_start\|>|<\|im_end\|>"),
+     "[FILTERED-INJECTION]"),
+    ("system_bracket",
+     re.compile(r"\[\[\s*SYSTEM\s*\]\]", re.I),
+     "[FILTERED-INJECTION]"),
+    # NOTE: Caido request bodies legitimately contain ``` so we only flag
+    # with verb context (system|instructions). Same caveat applies in
+    # harbinger when the input is a request/response capture.
+    ("fenced_system_prompt",
+     re.compile(r"```(?:system|instructions?)\s*\n", re.I),
+     "[FILTERED-INJECTION]"),
+]
+
+
+# ── 6 secret patterns to redact from AI output (parity with caido-plugin) ─
+# Order matters slightly: more-specific prefixes first so a generic match
+# doesn't shadow a specific one (e.g. sk-ant- before sk-).
+SECRET_PATTERNS: List[Tuple[str, re.Pattern[str], str]] = [
+    ("anthropic_key",
+     re.compile(r"sk-ant-[a-zA-Z0-9_-]{20,}"),
+     "sk-ant-***"),
+    ("openai_key",
+     re.compile(r"sk-[a-zA-Z0-9]{32,}"),
+     "sk-***"),
+    ("aws_access_key",
+     re.compile(r"AKIA[0-9A-Z]{16}"),
+     "AKIA***"),
+    ("github_pat",
+     re.compile(r"ghp_[a-zA-Z0-9]{30,}"),
+     "ghp_***"),
+    ("github_oauth",
+     re.compile(r"gho_[a-zA-Z0-9]{30,}"),
+     "gho_***"),
+    ("jwt",
+     re.compile(r"eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"),
+     "[JWT-REDACTED]"),
+]
+
+
+def filter_input(text: str) -> Tuple[str, List[Tuple[str, int]]]:
+    """Apply INJECTION_PATTERNS to text; return (sanitized, [(name, count), ...])."""
+    out = text
+    matches: List[Tuple[str, int]] = []
+    for name, pat, repl in INJECTION_PATTERNS:
+        new_out, n = pat.subn(repl, out)
+        if n > 0:
+            matches.append((name, n))
+            out = new_out
+    return out, matches
+
+
+def redact_output(text: str) -> str:
+    """Apply SECRET_PATTERNS to text; return redacted."""
+    out = text
+    for _name, pat, repl in SECRET_PATTERNS:
+        out = pat.sub(repl, out)
+    return out
+
+
+def _disabled() -> bool:
+    return os.environ.get("PROWL_GUARDRAILS", os.environ.get("HARBINGER_GUARDRAILS", "on")).strip().lower() == "off"
+
+
+def _usage(rc: int = 2) -> "None":
+    sys.stderr.write(
+        "usage: prowl-guardrails (filter|redact)\n"
+        "       reads stdin, writes stdout\n"
+    )
+    sys.exit(rc)
+
+
+def main(argv: List[str]) -> int:
+    if len(argv) != 2:
+        _usage()
+    mode = argv[1]
+    if mode not in ("filter", "redact"):
+        _usage()
+
+    # Read raw bytes then decode permissively — AI prompts can include
+    # arbitrary unicode, and bash callers shouldn't have to worry about
+    # locale settings on a hot path.
+    data = sys.stdin.buffer.read().decode("utf-8", errors="replace")
+
+    if _disabled():
+        sys.stdout.write(data)
+        return 0
+
+    if mode == "filter":
+        sanitized, matches = filter_input(data)
+        sys.stdout.write(sanitized)
+        if matches:
+            sys.stderr.write(json.dumps({
+                "flagged": True,
+                "matches": [{"pattern": n, "count": c} for n, c in matches],
+            }) + "\n")
+            return 2
+        return 0
+
+    # mode == "redact"
+    sys.stdout.write(redact_output(data))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

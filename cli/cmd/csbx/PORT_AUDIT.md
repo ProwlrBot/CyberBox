@@ -1,15 +1,15 @@
 # csbx — port audit (spec 018, phase 3-1)
 
-Inventory of `cybersandbox/harbinger-bin/csbx` (946 bash lines) for the Go
+Inventory of `cybersandbox/prowl-bin/csbx` (946 bash lines) for the Go
 port. This document is the contract that phases 3-2 and 3-3 verify
 against — every behaviour listed here must round-trip through the Go
-implementation, and the existing bash test suite (`harbinger/tests/test_csbx.sh`)
+implementation, and the existing bash test suite (`prowl/tests/test_csbx.sh`)
 is the regression baseline once the bash file becomes a shim.
 
 ## Source of truth
 
-- Canonical path: `cybersandbox/harbinger-bin/csbx`
-- Mirror: `harbinger/bin/csbx` (byte-identical at audit time, mtime-synced
+- Canonical path: `cybersandbox/prowl-bin/csbx`
+- Mirror: `prowl/bin/csbx` (byte-identical at audit time, mtime-synced
   by the cybersandbox build; treat as a copy, NOT a separate target).
 - Mirror divergence is a build bug — surface to the user; do not port it
   twice.
@@ -447,7 +447,7 @@ These are intentional non-goals for spec 018 phase 3:
 
 ## Test surface for phase 3-2 and 3-3
 
-The bash test suite at `harbinger/tests/test_csbx.sh` is the regression
+The bash test suite at `prowl/tests/test_csbx.sh` is the regression
 baseline. Once the bash file becomes a shim, the same tests must pass
 against the Go binary. Inventory of expected coverage (to be added in a
 follow-up if not already present):
@@ -474,5 +474,5 @@ status table. The Go port keeps the bash file as-is until phase 5
 exec "$(dirname "$0")/cyberbox" csbx "$@"
 ```
 
-Until then, both bash and Go versions co-exist and `harbinger/tests/test_csbx.sh`
+Until then, both bash and Go versions co-exist and `prowl/tests/test_csbx.sh`
 runs against the bash file (the regression baseline).

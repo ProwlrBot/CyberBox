@@ -31,7 +31,7 @@ docker run --security-opt seccomp=unconfined --rm -it -p 8080:8080 enterprise-pu
 ```
 
 More information:
-- [CyberBox Guide](https://sandbox.agent-infra.com/)
+- [CyberBox Guide](https://prowlrbot.com/cyberbox)
 
 ### 2. Setup Environment
 
@@ -64,7 +64,7 @@ uv run main.py
 
 ```
 DeepAgents Agent
-    └── AIOSandboxBackend (sandbox_backend.py)
+    └── CyberBoxBackend (sandbox_backend.py)
         ├── execute(cmd)       → client.bash.exec()
         ├── upload_files()     → client.file.write_file()
         └── download_files()   → client.file.read_file()
@@ -78,7 +78,7 @@ This follows the same pattern as `langchain-daytona`, `langchain-runloop`, etc.
 ```
 aio-deepagents/
 ├── main.py              # Main entry point
-├── sandbox_backend.py   # AIOSandboxBackend — DeepAgents sandbox protocol impl
+├── sandbox_backend.py   # CyberBoxBackend — DeepAgents sandbox protocol impl
 ├── pyproject.toml       # Project configuration and dependencies
 ├── .env.example         # Environment variables template
 └── README.md            # This file

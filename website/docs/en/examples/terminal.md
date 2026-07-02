@@ -599,7 +599,7 @@ import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import 'xterm/css/xterm.css';
 
-const AIOTerminal = ({ baseUrl = 'ws://localhost:8080' }) => {
+const CyberBoxTerminal = ({ baseUrl = 'ws://localhost:8080' }) => {
     const terminalRef = useRef(null);
     const [terminal, setTerminal] = useState(null);
     const [websocket, setWebsocket] = useState(null);
@@ -751,7 +751,7 @@ const AIOTerminal = ({ baseUrl = 'ws://localhost:8080' }) => {
     );
 };
 
-export default AIOTerminal;
+export default CyberBoxTerminal;
 ```
 
 ## Next Steps

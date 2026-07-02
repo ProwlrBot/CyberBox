@@ -1,5 +1,5 @@
 // cyberbox is the unified Go-native CLI replacement for the bash csbx,
-// harbinger, invoke-claude, and invoke-ollama scripts. See cli/README.md
+// prowl, invoke-claude, and invoke-ollama scripts. See cli/README.md
 // for the migration plan; only invoke-claude is fully ported in Phase 1.
 package main
 

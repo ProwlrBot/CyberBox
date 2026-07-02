@@ -84,5 +84,5 @@ When finalized artwork is ready:
 - **Source**: AI-generated (ChatGPT image, 2026-04-18)
 - **Palette**: orange / blue (accent hero art — sits alongside the violet/carbon core palette above; do not treat its hexes as brand tokens)
 - **Subject**: fortified chest with biohazard seal + "CyberBox" wordmark
-- **Chips shown**: Prowlr, Harbinger, LLM, Caido
+- **Chips shown**: Prowlr, prowl, LLM, Caido
 - **Used in**: `README.md` (top hero), `website/docs/en/index.md` (rspress home hero `image.src`)

@@ -77,12 +77,12 @@ jobs:
           docker run --rm --entrypoint sh cybersandbox:ci -c '
             set -e
             for bin in nuclei subfinder httpx katana dalfox ffuf gitleaks trufflehog \
-                      harbinger csbx invoke-claude invoke-ollama; do
+                      prowl csbx invoke-claude invoke-ollama; do
               command -v "$bin" >/dev/null || { echo "MISSING: $bin"; exit 1; }
               echo "  [ok] $bin"
             done
             csbx --help >/dev/null
-            harbinger status >/dev/null
+            prowl status >/dev/null
           '
           echo "::endgroup::"
 

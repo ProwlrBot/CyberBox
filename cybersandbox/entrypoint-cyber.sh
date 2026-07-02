@@ -47,7 +47,7 @@ fi
 
 # Verify key tools
 echo "[+] Tool check:"
-for tool in nuclei subfinder httpx katana dalfox ffuf nmap crystal jwt-hack trufflehog gitleaks mitmproxy msfconsole harbinger csbx; do
+for tool in nuclei subfinder httpx katana dalfox ffuf nmap crystal jwt-hack trufflehog gitleaks mitmproxy msfconsole prowl csbx; do
     if command -v "$tool" &>/dev/null; then
         echo "    ✓ $tool"
     else
