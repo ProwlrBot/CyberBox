@@ -583,9 +583,9 @@ show_status() {
     warn "Claude: No API key (set ANTHROPIC_API_KEY)"
   fi
 
-  if curl -sS "${OLLAMA_HOST_DEFAULT}/api/tags" >/dev/null 2>&1; then
-    local models
-    models=$(curl -sS "${OLLAMA_HOST_DEFAULT}/api/tags" | jq -r '.models[].name' | tr '\n' ', ' | sed 's/,$//')
+  local tags_json models
+  if tags_json=$(curl -fsS "${OLLAMA_HOST_DEFAULT}/api/tags" 2>/dev/null) \
+    && models=$(jq -er '[.models[]?.name] | join(", ")' <<<"$tags_json" 2>/dev/null); then
     ok "Ollama: running (${models:-no models})"
   else
     warn "Ollama: not running"

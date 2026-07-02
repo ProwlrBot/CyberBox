@@ -13,6 +13,7 @@
   },
   "devDependencies": {
     "@caido/sdk-backend": "0.41.0",
+    "@types/node": "^22.19.19",
     "vitest": "^2.1.9"
   }
 }

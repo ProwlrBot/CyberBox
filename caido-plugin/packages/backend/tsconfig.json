@@ -6,7 +6,7 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "types": ["@caido/sdk-backend"]
+    "types": ["@caido/sdk-backend", "node"]
   },
   "include": ["./src/**/*.ts"]
 }

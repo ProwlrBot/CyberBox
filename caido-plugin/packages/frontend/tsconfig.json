@@ -6,7 +6,8 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "lib": ["ESNext", "DOM"]
+    "lib": ["ESNext", "DOM"],
+    "types": ["@caido/sdk-frontend", "@caido/sdk-backend", "node"]
   },
   "include": ["./src/**/*.ts"]
 }

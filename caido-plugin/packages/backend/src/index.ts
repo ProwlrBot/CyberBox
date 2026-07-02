@@ -317,9 +317,9 @@ async function checkScope(sdk: SDK, url: string): Promise<ScopeCheckResult> {
     return { inScope: false, matchedRule: null };
   }
 
-  const rules = db.prepare(
+  const rules = await db.prepare(
     "SELECT * FROM scope_rules WHERE active = 1 ORDER BY type ASC"
-  ).all() as ScopeRule[];
+  ).all() as unknown as ScopeRule[];
 
   // Excludes take priority
   for (const rule of rules) {
@@ -345,7 +345,7 @@ async function checkScope(sdk: SDK, url: string): Promise<ScopeCheckResult> {
 
 async function getScopeRules(sdk: SDK): Promise<ScopeRule[]> {
   const db = await sdk.meta.db();
-  return db.prepare("SELECT * FROM scope_rules ORDER BY type, pattern").all() as ScopeRule[];
+  return await db.prepare("SELECT * FROM scope_rules ORDER BY type, pattern").all() as unknown as ScopeRule[];
 }
 
 async function addScopeRule(
@@ -363,7 +363,7 @@ async function addScopeRule(
 
   const db = await sdk.meta.db();
   const stmt = db.prepare("INSERT INTO scope_rules (pattern, type) VALUES (?, ?)");
-  const result = stmt.run(pattern, type);
+  const result = await stmt.run(pattern, type);
   const id = Number(result.lastInsertRowid);
   sdk.console.log(`[Prowlr] Scope rule added: ${type} ${pattern}`);
   return { id, pattern, type, active: true };
@@ -587,7 +587,7 @@ async function analyzeRequest(sdk: SDK, requestId: string): Promise<AnalysisResu
   const { request, response } = result;
   const reqRaw = request.toSpecRaw().getRaw();
   const reqText = new TextDecoder().decode(reqRaw);
-  const resText = response ? new TextDecoder().decode(response.getRaw()) : "(no response)";
+  const resText = response ? new TextDecoder().decode(response.getRaw() as unknown as AllowSharedBufferSource) : "(no response)";
 
   // Guardrails: filter prompt injection attempts from captured traffic before sending to AI
   const guardrailsOn = (settings.guardrails_enabled ?? "true") !== "false";
@@ -667,7 +667,7 @@ async function saveAnalysisAsFinding(
   // Validate severity again at persistence layer
   const safeSeverity = VALID_SEVERITIES.has(analysis.severity) ? analysis.severity : "info";
 
-  const insertResult = stmt.run(
+  const insertResult = await stmt.run(
     requestId,
     analysis.summary,
     safeSeverity,
@@ -697,7 +697,7 @@ async function saveAnalysisAsFinding(
 
 async function getFindings(sdk: SDK): Promise<Finding[]> {
   const db = await sdk.meta.db();
-  return db.prepare("SELECT * FROM findings ORDER BY timestamp DESC").all() as Finding[];
+  return await db.prepare("SELECT * FROM findings ORDER BY timestamp DESC").all() as unknown as Finding[];
 }
 
 async function deleteFinding(sdk: SDK, id: number): Promise<void> {
@@ -779,7 +779,15 @@ async function exportFindingsToObsidian(sdk: SDK): Promise<string> {
 
 // ── Terminal ────────────────────────────────────────────────
 
-const terminalSessions = new Map<string, { proc: any; timeout: any }>();
+type TerminalProcess = {
+  kill: (signal?: string) => void;
+  stdin?: { writable?: boolean; write: (data: string) => void };
+  stdout?: { on: (event: "data", callback: (chunk: Buffer) => void) => void };
+  stderr?: { on: (event: "data", callback: (chunk: Buffer) => void) => void };
+  on: (event: "close" | "error", callback: ((code: number | null) => void) | ((err: Error) => void)) => void;
+};
+
+const terminalSessions = new Map<string, { proc: TerminalProcess; timeout: ReturnType<typeof setTimeout> }>();
 
 async function terminalExec(sdk: SDK<API, BackendEvents>, sessionId: string, command: string): Promise<string> {
   // Input validation
@@ -805,7 +813,7 @@ async function terminalExec(sdk: SDK<API, BackendEvents>, sessionId: string, com
     const proc = spawn("bash", ["-c", command], {
       cwd,
       env: { ...process.env, TERM: "xterm-256color", COLUMNS: "120", LINES: "30" },
-    });
+    }) as unknown as TerminalProcess;
 
     // Store timeout ID so we can clear it on early exit
     const killTimer = setTimeout(() => {
@@ -851,8 +859,11 @@ async function terminalExec(sdk: SDK<API, BackendEvents>, sessionId: string, com
 
 async function terminalInput(sdk: SDK, sessionId: string, data: string): Promise<void> {
   const session = terminalSessions.get(sessionId);
-  if (session?.proc?.stdin?.writable) {
-    session.proc.stdin.write(data);
+  const stdin = session?.proc?.stdin as { writable?: boolean; destroyed?: boolean; write: (data: string) => void } | undefined;
+  if (stdin && stdin.writable !== false && stdin.destroyed !== true) {
+    try {
+      stdin.write(data);
+    } catch {}
   }
 }
 
@@ -894,7 +905,7 @@ async function getQuickCommands(sdk: SDK): Promise<Array<{ label: string; cmd: s
 
 async function getSetting(sdk: SDK, key: string): Promise<string> {
   const db = await sdk.meta.db();
-  const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | undefined;
+  const row = await db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as unknown as { value: string } | undefined;
   return row?.value || "";
 }
 
