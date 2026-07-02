@@ -39,7 +39,7 @@ classifiers = [
 requires-python = ">=3.9"
 dependencies = [
     "httpx[socks]>=0.28.1,<1",
-    "pydantic>=2.13.3,<3",
+    "pydantic>=2.13.4,<3",
     "typing_extensions>=4.0.0; python_version < '3.10'",
 ]
 
