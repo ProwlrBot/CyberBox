@@ -29,8 +29,9 @@ git config --global user.email "${GIT_EMAIL:-96064915+kdairatchi@users.noreply.g
 
 # Link Obsidian vault if mounted
 if [ -d /vault ]; then
-    ln -sf /vault /home/hunter/vault
-    echo "[+] Obsidian vault linked at /home/hunter/vault (read-only)"
+  rm -rf /home/hunter/vault 2>/dev/null || true
+  ln -sf /vault /home/hunter/vault
+  echo "[+] Obsidian vault linked at /home/hunter/vault (read-only)"
 fi
 
 # Create export directories (writable volume for findings → Obsidian sync)
@@ -39,8 +40,9 @@ echo "[+] Export dir ready at /home/hunter/exports/ (sync to vault)"
 
 # Link nuclei templates if mounted
 if [ -d /templates ]; then
-    ln -sf /templates /home/hunter/nuclei-templates
-    echo "[+] Custom nuclei templates linked"
+  rm -rf /home/hunter/nuclei-templates-custom 2>/dev/null || true
+  ln -sf /templates /home/hunter/nuclei-templates-custom
+  echo "[+] Custom nuclei templates linked at /home/hunter/nuclei-templates-custom"
 fi
 
 # Verify key tools

@@ -1,16 +1,20 @@
-"""Neo FastAPI application entrypoint."""
+"""CyberBox Neo FastAPI application entrypoint."""
 from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse
 
 from . import db, seed
 from .auth import bootstrap_admin, current_user
 from .config import get_settings
 from .hub import hub
+from .routers import api
 from . import __version__
+
+TITLE = "CyberBox Neo"
 
 
 @asynccontextmanager
@@ -23,12 +27,55 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="Neo", version=__version__, lifespan=lifespan)
+app = FastAPI(title=TITLE, version=__version__, lifespan=lifespan)
+app.include_router(api.router)
+
+
+@app.get("/", response_class=HTMLResponse)
+def root() -> str:
+    settings = get_settings()
+    base = f"http://{settings.host}:{settings.port}"
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{TITLE}</title>
+  <style>
+    body {{ font-family: ui-sans-serif, system-ui, sans-serif; max-width: 52rem; margin: 3rem auto; padding: 0 1rem; color: #e5e7eb; background: #0b1220; }}
+    h1 {{ color: #38bdf8; }}
+    a {{ color: #7dd3fc; }}
+    code {{ background: #111827; padding: 0.1rem 0.35rem; border-radius: 0.25rem; }}
+    .card {{ background: #111827; border: 1px solid #1f2937; border-radius: 0.75rem; padding: 1rem 1.25rem; margin: 1rem 0; }}
+  </style>
+</head>
+<body>
+  <h1>{TITLE}</h1>
+  <p>Local-first security testing platform. API is running.</p>
+  <div class="card">
+    <p><strong>Quick links</strong></p>
+    <ul>
+      <li><a href="{base}/health">Health</a></li>
+      <li><a href="{base}/docs">API docs</a></li>
+      <li><a href="{base}/redoc">ReDoc</a></li>
+      <li><a href="{base}/ws">WebSocket hub</a> (connect from client)</li>
+    </ul>
+  </div>
+  <div class="card">
+    <p><strong>Auth</strong></p>
+    <p>Send your admin key as <code>X-Api-Key</code> or <code>Authorization: Bearer …</code>.</p>
+    <p>Key file: <code>~/.neo/admin.key</code></p>
+  </div>
+  <div class="card">
+    <p><strong>Start from repo</strong></p>
+    <pre><code>./bin/cyberbox start</code></pre>
+  </div>
+</body>
+</html>"""
 
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok", "version": __version__}
+    return {"status": "ok", "service": "cyberbox-neo", "version": __version__}
 
 
 @app.get("/me")

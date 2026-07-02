@@ -27,11 +27,20 @@ services:
       - cybersandbox-exports:/home/hunter/exports
       # Persist workspace across restarts
       - cybersandbox-workspace:/home/hunter
+      # Host CLI tools (image rebuild not required)
+      - ../harbinger/bin/csbx:/usr/local/bin/csbx:ro
+      - ../harbinger/bin/harbinger:/usr/local/bin/harbinger:ro
+      - ../harbinger/bin/invoke-claude:/usr/local/bin/invoke-claude:ro
+      - ../harbinger/bin/invoke-ollama:/usr/local/bin/invoke-ollama:ro
     env_file:
       - .env
+    user: "0:0"
     environment:
       TZ: ${TZ:-America/New_York}
       WORKSPACE: /home/hunter
+      USER: hunter
+      USER_GID: "1000"
+      USER_UID: "1000"
       DISPLAY_WIDTH: "1920"
       DISPLAY_HEIGHT: "1080"
       SEARXNG_URL: "http://host.docker.internal:8888"

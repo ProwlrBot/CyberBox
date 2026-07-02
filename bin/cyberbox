@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+HOST="${NEO_HOST:-127.0.0.1}"
+PORT="${NEO_PORT:-8787}"
+URL="http://${HOST}:${PORT}"
+
+usage() {
+  cat <<EOF
+cyberbox — CyberBox Neo platform
+
+Usage:
+  cyberbox start          Start API server (no-op if already running)
+  cyberbox stop           Stop server on NEO_PORT
+  cyberbox restart        Stop then start
+  cyberbox status         Check /health
+  cyberbox open           Print dashboard URL
+
+Environment:
+  NEO_HOST   Bind host (default: 127.0.0.1)
+  NEO_PORT   Bind port (default: 8787)
+EOF
+}
+
+is_running() {
+  curl -fsS "${URL}/health" >/dev/null 2>&1
+}
+
+port_pids() {
+  if command -v ss >/dev/null 2>&1; then
+    ss -ltnp 2>/dev/null | grep -E ":${PORT}\\b" | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u
+  elif command -v lsof >/dev/null 2>&1; then
+    lsof -ti ":${PORT}" 2>/dev/null | sort -u
+  fi
+}
+
+stop_server() {
+  if ! is_running && [[ -z "$(port_pids || true)" ]]; then
+    echo "CyberBox Neo is not running on ${HOST}:${PORT}"
+    return 0
+  fi
+  local pid
+  for pid in $(port_pids); do
+    kill "$pid" 2>/dev/null || true
+  done
+  sleep 1
+  for pid in $(port_pids); do
+    kill -9 "$pid" 2>/dev/null || true
+  done
+  if is_running; then
+    echo "Failed to stop CyberBox Neo on ${HOST}:${PORT}" >&2
+    return 1
+  fi
+  echo "Stopped CyberBox Neo on ${HOST}:${PORT}"
+}
+
+cmd="${1:-start}"
+shift || true
+
+case "$cmd" in
+  start)
+    if is_running; then
+      echo "CyberBox Neo already running at ${URL}/"
+      echo "Use: ./bin/cyberbox stop     # to shut down"
+      echo "     ./bin/cyberbox restart  # to reload cleanly"
+      exit 0
+    fi
+    exec "${ROOT}/platform/bin/neo" "$@"
+    ;;
+  stop)
+    stop_server
+    ;;
+  restart)
+    stop_server || true
+    exec "${ROOT}/platform/bin/neo" "$@"
+    ;;
+  status)
+    curl -fsS "${URL}/health"
+    echo
+    ;;
+  open)
+    echo "${URL}/"
+    ;;
+  -h|--help|help)
+    usage
+    ;;
+  *)
+    echo "Unknown command: $cmd" >&2
+    usage >&2
+    exit 1
+    ;;
+esac
