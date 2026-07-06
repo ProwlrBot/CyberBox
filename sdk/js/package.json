@@ -48,14 +48,14 @@
   "author": "kdairatchi <prowlr@proton.me>",
   "license": "Apache-2.0",
   "devDependencies": {
-    "@rslib/core": "^0.21.2",
+    "@rslib/core": "^0.23.2",
     "@types/node": "^25.6.0",
-    "@vitest/coverage-v8": "^4.1.4",
-    "@vitest/ui": "^4.1.4",
+    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/ui": "^4.1.10",
     "rimraf": "^6.1.3",
     "typescript": "^6.0.3",
     "vite": "^7",
-    "vitest": "^4.1.4"
+    "vitest": "^4.1.10"
   },
   "engines": {
     "node": ">=18.0.0"
