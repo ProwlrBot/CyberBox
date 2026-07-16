@@ -5,7 +5,7 @@ description = "Tool Evaluation Framework using Azure OpenAI and MCP"
 requires-python = ">=3.13"
 dependencies = [
     "openai>=1.54.0",
-    "mcp>=1.12.3",
+    "mcp>=1.28.1",
     # LangGraph is pinned to an exact version. The 1.x line is API-stable
     # but minor releases routinely tweak checkpointer / interrupt semantics,
     # so we want changes to land via an explicit bump rather than a passive
@@ -31,7 +31,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0.0",
+    "pytest>=9.1.1",
     "pytest-asyncio>=0.24.0",
 ]
 
