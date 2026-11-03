@@ -35,6 +35,16 @@ ensure_dirs() {
   fi
 }
 
+require_yaml() {
+  if ! command -v python3 &>/dev/null || ! python3 -c "import yaml" 2>/dev/null; then
+    err "PyYAML runtime dependency is missing"
+    echo "  CyberBox image fix: rebuild with pyyaml included in /opt/venv" >&2
+    echo "  Current container: ask an administrator to run:" >&2
+    echo "    /opt/venv/bin/pip install pyyaml" >&2
+    return 1
+  fi
+}
+
 # ── YAML helpers (safe — values via env vars, not string interpolation) ───
 yaml_get() {
   local file="$1" key="$2"
@@ -534,7 +544,7 @@ cmd_doctor() {
     ok "python3 + pyyaml available"
   else
     err "python3 or pyyaml missing — csbx needs it"
-    echo "  Fix: pip3 install pyyaml"
+    echo "  Fix as container root: /opt/venv/bin/pip install pyyaml"
   fi
 
   # Check git
@@ -931,14 +941,14 @@ EOF
 ensure_dirs
 
 case "${1:-}" in
-  search)   cmd_search "${2:-}" ;;
-  info)     cmd_info "${2:?Usage: csbx info <plugin>}" ;;
-  install)  cmd_install "${2:?Usage: csbx install <plugin|url>}" ;;
-  remove)   cmd_remove "${2:?Usage: csbx remove <plugin>}" ;;
-  update)   cmd_update "${2:?Usage: csbx update <plugin|--all>}" ;;
-  list)     cmd_list "${2:-}" ;;
+  search)   require_yaml && cmd_search "${2:-}" ;;
+  info)     require_yaml && cmd_info "${2:?Usage: csbx info <plugin>}" ;;
+  install)  require_yaml && cmd_install "${2:?Usage: csbx install <plugin|url>}" ;;
+  remove)   require_yaml && cmd_remove "${2:?Usage: csbx remove <plugin>}" ;;
+  update)   require_yaml && cmd_update "${2:?Usage: csbx update <plugin|--all>}" ;;
+  list)     require_yaml && cmd_list "${2:-}" ;;
   sync)     registry_sync ;;
-  pdtm)     cmd_pdtm "${2:?Usage: csbx pdtm <manifest.yaml|go-install-path>}" ;;
+  pdtm)     require_yaml && cmd_pdtm "${2:?Usage: csbx pdtm <manifest.yaml|go-install-path>}" ;;
   verify)   shift; cmd_verify "$@" ;;
   doctor)   cmd_doctor ;;
   -h|--help|help|"") usage ;;

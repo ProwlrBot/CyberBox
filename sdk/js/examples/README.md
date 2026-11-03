@@ -28,7 +28,7 @@ Volcengine cloud provider integration:
 - Deleting sandboxes
 
 ### 4. advanced-usage.ts
-Comprehensive demonstration of SDK features:
+Examples of the main SDK features:
 - File operations (read, write, list, search, find)
 - Code execution (Python, JavaScript, Node.js)
 - Shell commands

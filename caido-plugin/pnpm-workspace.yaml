@@ -1,2 +1,5 @@
 packages:
   - "packages/*"
+allowBuilds:
+  # Vite's pinned bundler. Keep lifecycle permission explicit and narrow.
+  esbuild: true

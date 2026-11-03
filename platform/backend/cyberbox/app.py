@@ -3,14 +3,17 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from . import db, seed
-from .auth import bootstrap_admin, current_user
+from .auth import authenticate_key, bootstrap_admin, current_user
 from .config import get_settings
 from .hub import hub
+from .services import executions
 from .routers import api
 from . import __version__
 
@@ -24,11 +27,15 @@ async def lifespan(_app: FastAPI):
     seed.seed()
     bootstrap_admin()
     hub.bind_loop(asyncio.get_running_loop())
+    executions.recover()
     yield
 
 
 app = FastAPI(title=TITLE, version=__version__, lifespan=lifespan)
 app.include_router(api.router)
+_frontend_dist = Path(__file__).parents[2] / "frontend" / "dist"
+if _frontend_dist.is_dir():
+    app.mount("/app", StaticFiles(directory=_frontend_dist, html=True), name="workspace")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -97,6 +104,7 @@ def root() -> str:
     <ul>
       <li><a href="{base}/health">Health</a></li>
       <li><a href="{base}/docs">API docs</a></li>
+      <li><a href="{base}/app/">Research workspace</a></li>
       <li><a href="{base}/redoc">ReDoc</a></li>
       <li><a href="{base}/ws">WebSocket hub</a> (connect from client)</li>
     </ul>
@@ -115,8 +123,15 @@ def root() -> str:
 
 
 @app.get("/health")
-def health() -> dict:
-    return {"status": "ok", "service": "cyberbox", "version": __version__}
+def health():
+    try:
+        result = db.query_one("PRAGMA quick_check(1)")
+        database_ready = bool(result and next(iter(result.values())) == "ok")
+    except Exception:  # health failures become explicit state, never a traceback
+        database_ready = False
+    payload = {"status": "ok" if database_ready else "degraded", "service": "cyberbox",
+               "version": __version__, "database": "ready" if database_ready else "degraded"}
+    return payload if database_ready else JSONResponse(payload, status_code=503)
 
 
 @app.get("/me")
@@ -126,6 +141,13 @@ def me(user: dict = Depends(current_user)) -> dict:
 
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket) -> None:
+    authorization = ws.headers.get("authorization", "")
+    key = ws.headers.get("x-api-key")
+    if not key and authorization.lower().startswith("bearer "):
+        key = authorization[7:].strip()
+    if not authenticate_key(key):
+        await ws.close(code=4401, reason="authentication required")
+        return
     await hub.connect(ws)
     try:
         while True:

@@ -1,23 +1,62 @@
 services:
+  control-plane:
+    build:
+      context: ./platform/backend
+    restart: unless-stopped
+    init: true
+    read_only: true
+    pids_limit: 256
+    mem_limit: "1g"
+    cpus: "1"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=128m,noexec,nosuid,nodev
+    volumes:
+      - cyberbox-control:/data
+      - ./.cyberbox/browser-hunt:/browser-hunt-state:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      CYBERBOX_HOME: /data
+      CYBERBOX_HOST: 127.0.0.1
+      CYBERBOX_PORT: "8787"
+      CYBERBOX_INTERNAL_SERVICE_TOKEN: ${CYBERBOX_INTERNAL_SERVICE_TOKEN:-}
+      CYBERBOX_BROWSER_BROKER_URL: http://host.docker.internal:${CYBERBOX_BROWSER_BROKER_PORT:-17890}
+      CYBERBOX_BROWSER_OPERATOR_TOKEN_FILE: /browser-hunt-state/operator.key
+    expose:
+      - "8787"
+
   sandbox:
-    container_name: cybersandbox
-    image: ghcr.io/prowlrbot/cybersandbox:latest
+    image: ${CYBERBOX_IMAGE:-ghcr.io/prowlrbot/cybersandbox:latest}
     # Upstream /opt/gem/run.sh expects root entry so it can useradd +
     # chown /opt/jupyter, then self-drops to $USER via `su -` before
     # exec'ing supervisord. The image's Dockerfile prematurely sets
     # USER 1000, which breaks that contract. Override to root here;
     # the actual services still run as hunter at the app layer.
     user: "0:0"
-    security_opt:
-      - seccomp:unconfined
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: "unless-stopped"
+    init: true
+    pids_limit: 2048
+    security_opt:
+      - no-new-privileges:true
     shm_size: "2gb"
     mem_limit: "8g"
     cpus: "4"
     ports:
-      - "${HOST_PORT:-8080}:8080"
+      # Local-first by default. Self-hosted deployments must opt in to an
+      # external bind and place an authenticated TLS proxy in front.
+      - "${CYBERBOX_BIND:-127.0.0.1}:${HOST_PORT:-8080}:8080"
+    volumes:
+      - cyberbox-workspace:/home/hunter
+      - ./platform/nginx-control.conf:/opt/gem/nginx/control-plane.conf:ro
+    depends_on:
+      control-plane:
+        condition: service_healthy
     environment:
       # Align runtime user with the image's build-time user (UID/GID 1000).
       # Upstream /opt/gem/run.sh defaults to USER=gem, which collides with
@@ -28,7 +67,7 @@ services:
       PROXY_SERVER: ${PROXY_SERVER:-}
       JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
       DNS_OVER_HTTPS_TEMPLATES: ${DNS_OVER_HTTPS_TEMPLATES:-"https://cloudflare-dns.com/dns-query{?dns}"}
-      WORKSPACE: ${WORKSPACE:-"/home/gem"}
+      WORKSPACE: ${WORKSPACE:-"/home/hunter"}
       HOMEPAGE: ${HOMEPAGE:-}
       BROWSER_EXTRA_ARGS: ${BROWSER_EXTRA_ARGS:-}
       TZ: ${TZ:-Asia/Singapore}
@@ -59,3 +98,9 @@ services:
       # Features
       DISABLE_JUPYTER: ${DISABLE_JUPYTER:-false}
       DISABLE_CODE_SERVER: ${DISABLE_CODE_SERVER:-false}
+      CYBERBOX_CONTROL_PLANE_URL: http://control-plane:8787/health
+      CYBERBOX_INTERNAL_SERVICE_TOKEN: ${CYBERBOX_INTERNAL_SERVICE_TOKEN:-}
+
+volumes:
+  cyberbox-workspace:
+  cyberbox-control:

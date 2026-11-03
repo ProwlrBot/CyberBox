@@ -10,6 +10,10 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
+    init: true
+    pids_limit: 2048
+    security_opt:
+      - no-new-privileges:true
     shm_size: "2gb"
     mem_limit: "8g"
     cpus: "4"
@@ -33,6 +37,13 @@ services:
       - ../prowl/bin/prowl:/usr/local/bin/prowl:ro
       - ../prowl/bin/invoke-claude:/usr/local/bin/invoke-claude:ro
       - ../prowl/bin/invoke-ollama:/usr/local/bin/invoke-ollama:ro
+      # Main-dashboard Plugin Center integration (live during development).
+      - ./plugin-center:/opt/cybersandbox/plugin-center:ro
+      - ./plugin-center/nginx.conf:/opt/gem/nginx/csbx.conf:ro
+      - ./plugin-center/supervisor.conf:/opt/gem/supervisord/csbx-ui.conf:ro
+      - ./entrypoint-cyber.sh:/opt/cybersandbox/entrypoint-cyber.sh:ro
+      - ./workspace-migrate.sh:/opt/cybersandbox/workspace-migrate.sh:ro
+      - ./healthcheck.sh:/opt/cybersandbox/healthcheck.sh:ro
     env_file:
       - .env
     user: "0:0"
@@ -46,7 +57,7 @@ services:
       DISPLAY_HEIGHT: "1080"
       SEARXNG_URL: "http://host.docker.internal:8888"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      test: ["CMD", "/opt/cybersandbox/healthcheck.sh"]
       interval: 30s
       timeout: 10s
       retries: 3

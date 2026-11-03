@@ -88,7 +88,7 @@ LABEL maintainer="kdairatchi <prowlr@proton.me>" \
 
 USER root
 
-# ── System deps + Crystal repo + Metasploit (single layer) ───
+# ── System deps + Crystal repo (single layer) ─────────────
 # Layer-merging rationale:
 #   * Both apt operations share a single `rm -rf /var/lib/apt/lists/*`,
 #     avoiding an intermediate layer that retains the apt index.
@@ -97,7 +97,9 @@ USER root
 #     /go/bin and copied below — runtime needs libpcap0.8 only.
 #   * build-essential and pkg-config were compile-time only — removed.
 #   * Crystal repo install merged here so apt index is hit once.
-#   * Metasploit installer shipped with /var/cache/apt residue — purge.
+# Metasploit is intentionally not installed here. Rapid7's moving installer
+# downloads an unpinned package of several hundred MB and made the core image
+# non-reproducible. It remains an honestly capability-gated provider preview.
 RUN set -eux; \
     install -d -m 0755 /usr/share/keyrings; \
     curl -fsSL https://packagecloud.io/84codes/crystal/gpgkey \
@@ -113,13 +115,7 @@ RUN set -eux; \
       mitmproxy tcpdump tshark \
       gnupg ca-certificates \
       crystal; \
-    # Metasploit (uses curl/apt; runs apt-get update internally).
-    curl -fsSL https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb \
-      -o /tmp/msfinstall; \
-    chmod +x /tmp/msfinstall; \
-    /tmp/msfinstall; \
     # Aggressive cleanup — apt cache, lists, docs, locales we don't ship.
-    rm -f /tmp/msfinstall; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/* \
            /var/cache/apt/archives/* \
@@ -148,7 +144,7 @@ RUN set -eux; \
       arjun wafw00f commix sqlmap \
       shodan censys \
       requests beautifulsoup4 \
-      rich typer click; \
+      rich typer click pyyaml; \
     # Strip pip __pycache__ leftovers (~tens of MB).
     find /opt/venv -depth -type d -name __pycache__ -exec rm -rf {} +; \
     find /opt/venv -depth -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete; \
@@ -174,13 +170,20 @@ RUN nuclei -update-templates 2>/dev/null || true
 COPY prowl-bin/ /usr/local/bin/
 COPY mcp-hub-cyber.json /opt/cybersandbox/mcp-hub-cyber.json
 COPY entrypoint-cyber.sh /opt/cybersandbox/entrypoint-cyber.sh
+COPY workspace-migrate.sh /opt/cybersandbox/workspace-migrate.sh
+COPY healthcheck.sh /opt/cybersandbox/healthcheck.sh
+COPY plugin-center/ /opt/cybersandbox/plugin-center/
+COPY plugin-center/nginx.conf /opt/gem/nginx/csbx.conf
+COPY plugin-center/supervisor.conf /opt/gem/supervisord/csbx-ui.conf
 
 RUN set -eux; \
     chmod +x /usr/local/bin/invoke-claude \
              /usr/local/bin/invoke-ollama \
              /usr/local/bin/prowl \
              /usr/local/bin/csbx \
-             /opt/cybersandbox/entrypoint-cyber.sh; \
+             /opt/cybersandbox/entrypoint-cyber.sh \
+             /opt/cybersandbox/workspace-migrate.sh \
+             /opt/cybersandbox/healthcheck.sh; \
     ln -sf prowl /usr/local/bin/harbinger; \
     if [ -f /opt/aio/index.html.template ]; then \
       sed -i 's/AIO Sandbox/CyberBox/g' /opt/aio/index.html.template; \
@@ -206,11 +209,8 @@ USER 1000
 EXPOSE 8080
 
 # ── Healthcheck: verify core CLIs resolve ───────────────────
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD command -v nuclei >/dev/null \
-   && command -v prowl >/dev/null \
-   && command -v csbx >/dev/null \
-   || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+  CMD /opt/cybersandbox/healthcheck.sh
 
 # ── Use entrypoint overlay ──────────────────────────────────
 ENTRYPOINT ["/opt/cybersandbox/entrypoint-cyber.sh"]

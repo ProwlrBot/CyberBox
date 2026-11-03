@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from . import db
 from .config import get_settings
+from .services import playbooks, profiles, project_templates
 
 
 def _now() -> str:
@@ -66,3 +67,6 @@ def seed() -> None:
                    "yaml": t["yaml"], "tags": json.dumps(t["tags"]), "created_at": now},
                   conflict_cols=["template_id"],
                   update_cols=["name", "category", "severity", "yaml", "tags"])
+    profiles.seed()
+    playbooks.seed()
+    project_templates.seed()

@@ -175,7 +175,7 @@ ws.onmessage = (event) => {
 ### Interactive Commands
 Handle commands requiring user input:
 ```bash
-# Commands that prompt for input work seamlessly
+# Commands that prompt for input are supported
 sudo passwd user
 # Password prompt appears in terminal
 # User input is sent through WebSocket

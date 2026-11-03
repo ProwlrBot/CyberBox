@@ -52,7 +52,7 @@ The spec-015 acceptance bar is ≥15% reduction in cold-build time. Most
 of that comes from `--mount=type=cache` for `/root/.cache/go-build` and
 `/go/pkg/mod` in the go-builder stage.
 
-## What to look for — high-leverage signals
+## What to look for
 
 Run `docker history` and triage layers in this order:
 

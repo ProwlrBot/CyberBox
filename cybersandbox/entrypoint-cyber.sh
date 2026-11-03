@@ -4,6 +4,46 @@
 
 echo "=== CyberSandbox Initializing ==="
 
+sh /opt/cybersandbox/workspace-migrate.sh
+
+# The browser profile lives on the persistent workspace volume. Chromium's
+# singleton files contain a container hostname and survive a container
+# replacement, causing Chrome to exit with status 21 on the next start even
+# though no browser process exists. The base supervisor has not started yet,
+# so these files are always stale at this point.
+find /home/hunter/.config/browser -maxdepth 1 -name 'Singleton*' -delete 2>/dev/null || true
+echo "[+] Browser profile locks cleared"
+
+# The base entrypoint generates /opt/aio/index.html after this overlay hands
+# off. Patch it once it appears, then reload Nginx if it is already ready.
+# The helper is idempotent, so this is safe for both fresh and reused images.
+(
+  for _ in $(seq 1 60); do
+    if [ -f /opt/aio/index.html ]; then
+      /opt/venv/bin/python /opt/cybersandbox/plugin-center/integrate_dashboard.py 2>/dev/null || exit 0
+      echo "[+] CSBX Plugin Center registered"
+      for _ in $(seq 1 30); do
+        if [ -f /var/run/nginx.pid ]; then
+          nginx -c /opt/gem/nginx.conf -s reload 2>/dev/null || true
+          break
+        fi
+        sleep 1
+      done
+      for _ in $(seq 1 30); do
+        if curl -fsS -o /dev/null http://127.0.0.1:8080/index.html &&
+           curl -fsS -o /dev/null http://127.0.0.1:8080/csbx/api/health; then
+          touch /tmp/cyberbox-dashboard-ready
+          break
+        fi
+        sleep 1
+      done
+      exit 0
+    fi
+    sleep 1
+  done
+  echo "[!] CSBX Plugin Center dashboard integration skipped"
+) &
+
 # Merge custom MCP config (preserve base, overlay ours)
 if [ -f /opt/cybersandbox/mcp-hub-cyber.json ] && [ -f /opt/gem/mcp-hub.json ]; then
     if [ -w /opt/gem/mcp-hub.json ]; then

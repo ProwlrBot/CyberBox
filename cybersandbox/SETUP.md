@@ -75,7 +75,12 @@ Only `127.0.0.1:8082` is exposed by default (localhost only).
 
 **Secrets:** trufflehog, gitleaks
 
-**Network:** nmap, mitmproxy, Metasploit (msfconsole)
+**Network:** nmap, mitmproxy
+
+**Optional provider preview:** Metasploit is shown as `Requires configuration` when
+`msfconsole` is unavailable. It is excluded from the core image because:
+the upstream moving installer is not reproducibly pinned and should be isolated
+as a separately reviewed provider image before use.
 
 **AI CLI:** invoke-claude, invoke-ollama
 
@@ -127,7 +132,7 @@ csbx doctor                         # Health check
 
 ## Prowlr Caido Plugin
 
-The Prowlr plugin adds scope enforcement, AI-powered request analysis, and Obsidian export to Caido.
+The Prowlr plugin adds scope checks, Claude or Ollama request analysis, and Obsidian export to Caido.
 
 ### Install
 

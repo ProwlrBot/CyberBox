@@ -333,7 +333,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 async def logged_mcp_call(tool_name, **kwargs):
-    """MCP call with comprehensive logging"""
+    """MCP call with request, response, and error logging."""
     start_time = time.time()
 
     logger.info(f"MCP call starting: {tool_name} with args {kwargs}")

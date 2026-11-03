@@ -1,6 +1,6 @@
 # Agent Integration
 
-This guide shows how to integrate AI agents with CyberBox, leveraging the Model Context Protocol (MCP) and REST APIs for powerful agent workflows.
+This guide shows how an agent can use CyberBox through the Model Context Protocol (MCP) and REST APIs.
 
 ## Quick Start
 
@@ -67,7 +67,7 @@ if __name__ == "__main__":
 
 ### MCP Integration
 
-CyberBox provides built-in MCP servers for seamless agent integration:
+CyberBox includes MCP servers for agent integrations:
 
 ```python
 import json
@@ -409,7 +409,7 @@ class OpenAISandboxAssistant:
 
 ## Error Handling and Best Practices
 
-### Robust Error Handling
+### Error handling
 
 ```python
 class RobustSandboxAgent(CyberBoxAgent):

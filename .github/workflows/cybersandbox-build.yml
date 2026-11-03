@@ -86,6 +86,16 @@ jobs:
           '
           echo "::endgroup::"
 
+      - name: Install browser smoke dependencies
+        run: |
+          npm ci --prefix platform/frontend --ignore-scripts
+          npx --prefix platform/frontend playwright install chromium --with-deps
+
+      - name: Runtime and browser smoke test
+        env:
+          CYBERBOX_BROWSER_SMOKE: "1"
+        run: sh cybersandbox/tests/runtime_smoke.sh cybersandbox:ci
+
       # spec-015: publish image size as a per-release metric.
       # Methodology: cybersandbox/docs/image-size-audit.md
       # Only built-in env vars (GITHUB_REF, GITHUB_SHA) are interpolated

@@ -77,6 +77,12 @@ JSON_COLUMNS = {
     "technologies", "labels", "metadata", "tags", "phase_checklist",
     "severity_counts", "working_memory", "stats", "request_chain",
     "req_headers", "resp_headers", "variables", "config",
+    "budget", "policy", "ports", "methods", "input", "output",
+    "data", "manifest",
+    "inputs", "context", "supporting_artifacts", "contradicting_artifacts",
+    "knowledge_citations", "result", "artifact_ids", "finding_ids",
+    "technology_tags", "evidence_ids", "expected",
+    "allowed_methods", "permissions",
 }
 
 

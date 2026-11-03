@@ -30,7 +30,7 @@ uv run main.py
 
 - **Safe Code Execution**: All code runs in an isolated sandbox environment
 - **Multi-language Support**: Supports both Python (via Jupyter) and Node.js execution
-- **OpenAI Function Calling**: Leverages GPT's ability to generate and call functions
+- **OpenAI function calling**: lets the model select and call declared functions
 
 ## Example Usage
 

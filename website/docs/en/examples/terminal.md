@@ -1,6 +1,6 @@
 # Terminal Integration Examples
 
-This section provides comprehensive examples for integrating with CyberBox's WebSocket terminal interface.
+This section shows how to integrate with CyberBox's WebSocket terminal interface.
 
 ## Basic Terminal Client
 

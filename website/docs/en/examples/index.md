@@ -414,7 +414,7 @@ if (shot.ok) console.log(shot.body.data);
 
 - **[Terminal Examples](/examples/terminal)** - Start with terminal integration
 - **[Browser Examples](/examples/browser)** - Explore browser automation
-- **[Agent Integration](/examples/agent)** - Build AI-powered workflows
+- **[Agent Integration](/examples/agent)** - Connect agents through MCP and REST
 
 For additional support:
 - Check the [API documentation](/api/) for detailed specifications

@@ -1,0 +1,116 @@
+name: cyberbox-browser-hunt
+
+# Optional two-browser lab for authorized web testing. Each role has its own
+# persistent home directory, browser profile, network, and API credential.
+# Agents use the CyberBox broker; nothing is published beyond loopback.
+x-browser-hunt-service: &browser-hunt-service
+  image: ${CYBERBOX_IMAGE:-ghcr.io/prowlrbot/cybersandbox:latest}
+  user: "0:0"
+  restart: unless-stopped
+  init: true
+  pids_limit: 1024
+  security_opt:
+    - no-new-privileges:true
+  shm_size: "1gb"
+  mem_limit: ${CYBERBOX_HUNT_MEMORY:-4g}
+  cpus: ${CYBERBOX_HUNT_CPUS:-2}
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  environment: &browser-hunt-environment
+    USER: hunter
+    USER_UID: "1000"
+    USER_GID: "1000"
+    WORKSPACE: /home/hunter
+    TZ: ${TZ:-America/New_York}
+    DISPLAY_WIDTH: ${DISPLAY_WIDTH:-1440}
+    DISPLAY_HEIGHT: ${DISPLAY_HEIGHT:-900}
+    WAIT_PORTS: "8079,8091"
+    VNC_SERVER_PORT: "5900"
+    PUBLIC_PORT: "8080"
+    AUTH_BACKEND_PORT: "8081"
+    WEBSOCKET_PROXY_PORT: "6080"
+    GEM_SERVER_PORT: "8088"
+    MCP_HUB_PORT: "8079"
+    SANDBOX_SRV_PORT: "8091"
+    JUPYTER_LAB_PORT: "8888"
+    CODE_SERVER_PORT: "8200"
+    MCP_SERVER_BROWSER_PORT: "8100"
+    TINYPROXY_PORT: "8118"
+    MCP_SERVER_MARKITDOWN_PORT: "8101"
+    MCP_SERVER_CHROME_DEVTOOLS_PORT: "8102"
+    BROWSER_REMOTE_DEBUGGING_PORT: "9222"
+    DISABLE_JUPYTER: "true"
+    DISABLE_CODE_SERVER: "true"
+    GITHUB_TOKEN: ""
+    PROXY_SERVER: ${PROXY_SERVER:-}
+    JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
+    BROWSER_EXTRA_ARGS: ${BROWSER_EXTRA_ARGS:-}
+  healthcheck:
+    test: ["CMD", "/opt/cybersandbox/healthcheck.sh"]
+    interval: 30s
+    timeout: 10s
+    retries: 5
+    start_period: 90s
+
+services:
+  browser-broker:
+    image: ${CYBERBOX_IMAGE:-ghcr.io/prowlrbot/cybersandbox:latest}
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    entrypoint: []
+    command: ["python3", "/opt/cyberbox-browser", "serve", "--bind", "0.0.0.0", "--port", "17890"]
+    environment:
+      CYBERBOX_BROWSER_HOME: /state
+      CYBERBOX_ATTACKER_URL: http://attacker-browser:8080
+      CYBERBOX_VICTIM_URL: http://victim-browser:8080
+      CYBERBOX_ATTACKER_PUBLIC_URL: http://127.0.0.1:${CYBERBOX_ATTACKER_UI_PORT:-8083}
+      CYBERBOX_VICTIM_PUBLIC_URL: http://127.0.0.1:${CYBERBOX_VICTIM_UI_PORT:-8084}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5-coder:14b}
+    volumes:
+      - ./bin/cyberbox-browser:/opt/cyberbox-browser:ro
+      - ./.cyberbox/browser-hunt:/state
+    ports:
+      - "127.0.0.1:${CYBERBOX_BROWSER_BROKER_PORT:-17890}:17890"
+    networks: [attacker-net, victim-net]
+    depends_on:
+      attacker-browser: { condition: service_healthy }
+      victim-browser: { condition: service_healthy }
+
+  attacker-browser:
+    <<: *browser-hunt-service
+    environment:
+      <<: *browser-hunt-environment
+      CYBERBOX_BROWSER_ROLE: attacker
+      SANDBOX_API_KEY: ${CYBERBOX_ATTACKER_API_KEY:?start with ./bin/cyberbox browser-hunt start}
+    ports:
+      - "127.0.0.1:${CYBERBOX_ATTACKER_UI_PORT:-8083}:8080"
+    volumes:
+      - cyberbox-attacker-browser:/home/hunter
+    networks:
+      - attacker-net
+
+  victim-browser:
+    <<: *browser-hunt-service
+    environment:
+      <<: *browser-hunt-environment
+      CYBERBOX_BROWSER_ROLE: victim
+      SANDBOX_API_KEY: ${CYBERBOX_VICTIM_API_KEY:?start with ./bin/cyberbox browser-hunt start}
+    ports:
+      - "127.0.0.1:${CYBERBOX_VICTIM_UI_PORT:-8084}:8080"
+    volumes:
+      - cyberbox-victim-browser:/home/hunter
+    networks:
+      - victim-net
+
+networks:
+  attacker-net:
+  victim-net:
+
+volumes:
+  cyberbox-attacker-browser:
+  cyberbox-victim-browser:

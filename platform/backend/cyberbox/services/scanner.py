@@ -125,7 +125,12 @@ def _ingest_finding(project_id: str, task_id: str | None, rec: dict, scan_id: st
     if db.query_one("SELECT id FROM vulnerabilities WHERE project_id=? AND dedup_key=?",
                     [project_id, dedup_key]):
         return False
-    verified, poc, chain = verify.verify_finding(template_id, matched_at, rec)
+    engagement = db.query_one(
+        "SELECT id FROM engagements WHERE project_id=? AND status='active' ORDER BY created_at DESC LIMIT 1",
+        [project_id],
+    )
+    verified, poc, chain = verify.verify_finding(
+        template_id, matched_at, rec, engagement["id"] if engagement else None)
     sla = db.query_one("SELECT days FROM sla_policy WHERE severity=?", [severity])
     sla_due = (datetime.now(timezone.utc) + timedelta(days=sla["days"])).isoformat() if sla else None
     asset = db.query_one(

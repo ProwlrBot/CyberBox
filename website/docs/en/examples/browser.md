@@ -619,7 +619,7 @@ print(summary.to_string())
     print("Analysis Result:", result.content)
 ```
 
-This comprehensive guide covers the main approaches to browser automation with CyberBox. Choose the method that best fits your use case:
+This guide covers the supported approaches to browser automation with CyberBox. Choose the method that fits the task:
 
 - **VNC** for visual interaction and debugging
 - **CDP** for low-level browser control

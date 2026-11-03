@@ -15,6 +15,7 @@ const Targets     = lazy(() => import("./pages/hunt/Targets"));
 const Findings    = lazy(() => import("./pages/hunt/Findings"));
 const Jobs        = lazy(() => import("./pages/hunt/Jobs"));
 const SettingsPage = lazy(() => import("./pages/settings/Settings"));
+const BrowserHunt  = lazy(() => import("./pages/workspace/BrowserHunt"));
 
 export interface NavItem { label: string; path: string; Icon: React.FC<{ size?: number }> }
 export interface NavSection { id: string; label: string; items: NavItem[] }
@@ -52,7 +53,7 @@ export const NAV_SECTIONS: NavSection[] = [
   ]},
   { id: "workspace", label: "WORKSPACE", items: [
     { label: "Code",     path: "/workspace/code",     Icon: Code2 },
-    { label: "Browser",  path: "/workspace/browser",  Icon: Monitor },
+    { label: "Browser Hunt", path: "/workspace/browser", Icon: Monitor },
     { label: "Terminal", path: "/workspace/terminal", Icon: Terminal },
     { label: "Jupyter",  path: "/workspace/jupyter",  Icon: BookOpen },
     { label: "Files",    path: "/workspace/files",    Icon: FolderOpen },
@@ -87,6 +88,7 @@ export const appRoutes: RouteObject[] = [
   { path: "source/*",       element: S("Source") },
   { path: "labs/*",         element: S("Labs") },
   { path: "tools/*",        element: S("Tools") },
+  { path: "workspace/browser", element: <Suspense fallback={null}><BrowserHunt /></Suspense> },
   { path: "workspace/*",    element: S("Workspace") },
   { path: "system/jobs",    element: <Suspense fallback={null}><Jobs /></Suspense> },
   { path: "system/*",       element: S("System") },

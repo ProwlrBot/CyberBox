@@ -5,6 +5,8 @@ import urllib.parse
 import urllib.request
 import urllib.error
 
+from . import policy
+
 
 def _curl_poc(method: str, url: str, headers: dict | None = None, body: str | None = None) -> str:
     parts = [f"curl -sk -X {method}"]
@@ -25,7 +27,13 @@ _no_redirect_opener = urllib.request.build_opener(_NoRedirect)
 
 
 def _fetch(url: str, headers: dict | None = None, method: str = "GET",
-           timeout: int = 12, follow_redirects: bool = True) -> tuple[int, dict, str]:
+           timeout: int = 12, follow_redirects: bool = True,
+           engagement_id: str | None = None) -> tuple[int, dict, str]:
+    if not engagement_id:
+        return 0, {}, ""
+    decision = policy.evaluate(engagement_id, url, method, "low-impact")
+    if not decision["allowed"] or decision["requires_approval"]:
+        return 0, {}, ""
     req = urllib.request.Request(url, method=method, headers=headers or {})
     opener = urllib.request.urlopen if follow_redirects else _no_redirect_opener.open
     try:
@@ -37,10 +45,10 @@ def _fetch(url: str, headers: dict | None = None, method: str = "GET",
         return 0, {}, ""
 
 
-def verify_open_redirect(url: str) -> tuple[bool, str, list]:
+def verify_open_redirect(url: str, engagement_id: str) -> tuple[bool, str, list]:
     canary = "https://cyberbox-oob.example.org/"
     test = url.split("?")[0] + "?url=" + urllib.parse.quote(canary)
-    status, headers, _ = _fetch(test, follow_redirects=False)
+    status, headers, _ = _fetch(test, follow_redirects=False, engagement_id=engagement_id)
     loc = headers.get("Location", "")
     if loc.startswith(canary) or "cyberbox-oob.example.org" in loc:
         poc = _curl_poc("GET", test)
@@ -49,12 +57,12 @@ def verify_open_redirect(url: str) -> tuple[bool, str, list]:
     return False, "", []
 
 
-def verify_idor_sequential(matched_at: str) -> tuple[bool, str, list]:
+def verify_idor_sequential(matched_at: str, engagement_id: str) -> tuple[bool, str, list]:
     base = matched_at.rstrip("0123456789").rstrip("/")
     chain, distinct = [], set()
     for i in (1, 2, 3):
         u = f"{base}/{i}"
-        status, _, body = _fetch(u)
+        status, _, body = _fetch(u, engagement_id=engagement_id)
         chain.append({"request": _curl_poc("GET", u), "response": f"{status} ({len(body)} bytes)"})
         if status == 200:
             distinct.add(body[:256])
@@ -65,9 +73,9 @@ def verify_idor_sequential(matched_at: str) -> tuple[bool, str, list]:
     return False, "", []
 
 
-def verify_secrets_exposure(url: str) -> tuple[bool, str, list]:
+def verify_secrets_exposure(url: str, engagement_id: str) -> tuple[bool, str, list]:
     import re
-    status, _, body = _fetch(url)
+    status, _, body = _fetch(url, engagement_id=engagement_id)
     if status == 200 and re.search(r"(?i)(secret|password|api[_-]?key|AKIA[0-9A-Z]{16})\s*[=:\"]", body):
         snippet = body[:300]
         poc = f"Config endpoint leaks secrets:\n{_curl_poc('GET', url)}\n\n{snippet}"
@@ -75,8 +83,8 @@ def verify_secrets_exposure(url: str) -> tuple[bool, str, list]:
     return False, "", []
 
 
-def verify_cloud_metadata(url: str) -> tuple[bool, str, list]:
-    status, _, body = _fetch(url, headers={"Metadata": "true"})
+def verify_cloud_metadata(url: str, engagement_id: str) -> tuple[bool, str, list]:
+    status, _, body = _fetch(url, headers={"Metadata": "true"}, engagement_id=engagement_id)
     if status == 200 and ("AccessKeyId" in body or "SecretAccessKey" in body):
         poc = _curl_poc("GET", url, {"Metadata": "true"})
         return True, f"SSRF reaches cloud IMDS:\n{poc}", \
@@ -93,11 +101,14 @@ VERIFIERS = {
 }
 
 
-def verify_finding(template_id: str, matched_at: str, rec: dict) -> tuple[bool, str, list]:
+def verify_finding(template_id: str, matched_at: str, rec: dict,
+                   engagement_id: str | None = None) -> tuple[bool, str, list]:
     for key, fn in VERIFIERS.items():
         if key in template_id:
             try:
-                return fn(matched_at)
+                if not engagement_id:
+                    break
+                return fn(matched_at, engagement_id)
             except Exception:  # noqa: BLE001
                 break
     extracted = rec.get("extracted-results") or []

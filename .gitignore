@@ -2,6 +2,7 @@
 .DS_Store
 *.local
 *.log*
+.cyberbox/
 
 # Dist
 node_modules
@@ -12,6 +13,7 @@ doc_build/
 *.egg-info/
 __pycache__/
 *.pyc
+*.tsbuildinfo
 
 # Caido plugin release artifacts (belong on a GitHub Release, not in the repo)
 caido-plugin/*.zip
@@ -34,3 +36,10 @@ CLAUDE.md
 .worktrees/
 .security-key
 logs/security/
+
+# Local agent and index state
+/.claude/
+/.ghactor/
+/AGENTS.md
+/ruvector.db
+/platform/docs/research-workspace-concept.png

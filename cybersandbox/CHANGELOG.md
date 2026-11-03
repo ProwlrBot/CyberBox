@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Browser Hunt
+
+- Added two separate browser sessions for authorized testing: attacker and victim. Each session has its own profile, network, credential, and saved sign-in state.
+- Added a broker that gives terminal agents a small, logged browser API instead of direct browser-debugging access. Claude, Ollama, Hermes, and other clients can share the same contract without sharing a session.
+- Added the Browser Hunt control room to the CyberBox UI. It shows both sessions, human/agent control, pending approvals, scope, recent activity, and provider controls in one place.
+- Sign-in stays human-assisted. A short-lived takeover link opens the selected browser, and the resulting browser state can be saved and restored without placing credentials in a prompt.
+- Evidence redaction is now a visible policy with three choices: `Always`, `Evidence only`, and `Off`. Operator tokens, cookies, passwords, and broker credentials remain hidden in every mode.
+- Added an optional NVIDIA OpenShell policy that limits sandbox agents to the broker's health, contract, and action endpoints.
+
+### Operations
+
+- `./bin/cyberbox browser-hunt start` now starts the two browsers and their broker together.
+- The main control plane can reach the local broker through an operator-only proxy; the operator token never reaches the browser UI.
+- Browser actions use short leases, exact-action approvals, scope checks, and an append-only local activity log.
+
 ## 0.2.3 — 2026-04-17
 
 Release hygiene: sprint2 supply-chain follow-ups.

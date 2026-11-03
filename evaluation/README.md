@@ -1,6 +1,6 @@
 # CyberBox Tool Evaluation
 
-> A comprehensive evaluation framework for MCP (Model Context Protocol) tools and AI agent capabilities based on cybersandbox.
+> An evaluation framework for MCP tools and agent behavior in CyberBox.
 
 Inspired by [Anthropic's "Writing Tools for Agents"](https://www.anthropic.com/engineering/writing-tools-for-agents)
 

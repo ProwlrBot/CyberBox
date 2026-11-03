@@ -13,7 +13,7 @@ Beyond tool integration, it offers live sandbox previews to observe agent activi
 ## Key Features
 
 ### Unified File System
-Because all components run in the same container, files downloaded in the browser are immediately accessible through Shell and File operations, enabling seamless workflows.
+Because the components share a container, files downloaded in the browser are immediately available to Shell and File operations.
 
 ### Multi-Interface Access
 - **VNC**: Visual browser interaction at `/vnc/index.html`
@@ -22,7 +22,7 @@ Because all components run in the same container, files downloaded in the browse
 - **MCP Hub**: Aggregated services at `/mcp`
 
 ### MCP Integration
-APIs and MCP servers support mutual invocation, enabling seamless communication between different service layers and enhanced interoperability:
+APIs and MCP servers can call one another across service layers:
 - Browser automation
 - File system operations
 - Terminal interactions
@@ -42,7 +42,7 @@ Perfect for building AI agents that need to:
 - Browse websites and interact with web applications
 - Execute code in secure sandboxes
 - Manipulate files and run shell commands
-- Access multiple development tools seamlessly
+- Use multiple development tools in the same workspace
 
 ### Cloud Development
 Ideal for teams needing:

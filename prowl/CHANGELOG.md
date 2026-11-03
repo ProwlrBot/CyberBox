@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Browser Hunt
+
+- `invoke-claude` and `invoke-ollama` can now plan one browser step through the CyberBox broker. The broker checks the role lease, scope, control mode, and any required approval before the browser receives the action.
+- Browser observations carry a prompt-injection warning and are treated as untrusted page content.
+
 ### Added
 - **NemoClaw-style guardrails for AI calls** (spec 005). Ports the 7 prompt-injection patterns and 6 secret-redaction classes from the Caido plugin backend (`caido-plugin/packages/backend/src/index.ts` §"NemoClaw-style Guardrails") to a new Python helper `prowl/bin/prowl-guardrails` with two modes: `filter` (stdin → sanitized stdout, exit 2 on flag, structured JSON match log on stderr) and `redact` (stdin → stdout with secrets replaced). The orchestrator wires this into four AI sites:
   - `phase_recon` — filters live_hosts.json before triage prompt; redacts triage.md output.

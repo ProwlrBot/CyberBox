@@ -1,6 +1,6 @@
 # CyberBox Documentation
 
-This documentation provides comprehensive guides and API references for the CyberBox environment.
+This directory contains the CyberBox guides and API reference.
 
 ## 📚 Documentation Structure
 

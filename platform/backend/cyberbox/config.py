@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -19,6 +20,9 @@ class Settings:
     home: Path = field(default_factory=_home)
     host: str = os.environ.get("CYBERBOX_HOST", os.environ.get("NEO_HOST", "127.0.0.1"))
     port: int = int(os.environ.get("CYBERBOX_PORT", os.environ.get("NEO_PORT", "8787")))
+    internal_service_token: str = os.environ.get("CYBERBOX_INTERNAL_SERVICE_TOKEN", "")
+    browser_broker_url: str = os.environ.get("CYBERBOX_BROWSER_BROKER_URL", "http://127.0.0.1:17890")
+    browser_operator_token_file: str = os.environ.get("CYBERBOX_BROWSER_OPERATOR_TOKEN_FILE", "")
     severities: tuple[str, ...] = ("critical", "high", "medium", "low", "info", "unknown")
     sla_defaults: dict[str, int] = field(
         default_factory=lambda: {"critical": 14, "high": 60, "medium": 90, "low": 120}
@@ -50,11 +54,15 @@ class Settings:
         return self.home / "templates"
 
     @property
+    def artifacts_dir(self) -> Path:
+        return self.home / "artifacts"
+
+    @property
     def config_path(self) -> Path:
         return self.home / "config.yaml"
 
     def ensure_dirs(self) -> None:
-        for p in (self.home, self.scans_dir, self.templates_dir):
+        for p in (self.home, self.scans_dir, self.templates_dir, self.artifacts_dir):
             p.mkdir(parents=True, exist_ok=True)
 
     def load_yaml(self) -> None:
@@ -69,6 +77,10 @@ class Settings:
         snapshot = {"host": self.host, "port": self.port,
                     "sla_defaults": self.sla_defaults, "tools": self.tools}
         self.config_path.write_text(yaml.safe_dump(snapshot, sort_keys=False))
+
+
+def generate_internal_token() -> str:
+    return "cbin_" + secrets.token_urlsafe(32)
 
 
 _settings: Settings | None = None

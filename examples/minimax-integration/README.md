@@ -45,4 +45,4 @@ MINIMAX_MODEL=MiniMax-M2.7-highspeed TASK="sort a list of 100 random numbers" uv
 - **OpenAI-compatible** — uses the standard `openai` Python SDK, just with a different `base_url`
 - **Safe Code Execution** — all code runs in an isolated sandbox environment
 - **Multi-language Support** — supports both Python (Jupyter) and Node.js execution
-- **Function Calling** — leverages MiniMax's tool-use capabilities
+- **Function calling** — lets MiniMax select and call declared tools

@@ -2,57 +2,208 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-HOST="${CYBERBOX_HOST:-${NEO_HOST:-127.0.0.1}}"
-PORT="${CYBERBOX_PORT:-${NEO_PORT:-8787}}"
-URL="http://${HOST}:${PORT}"
+BIND="${CYBERBOX_BIND:-127.0.0.1}"
+PORT="${HOST_PORT:-8080}"
+DISPLAY_HOST="$BIND"
+[[ "$DISPLAY_HOST" == "0.0.0.0" || "$DISPLAY_HOST" == "::" ]] && DISPLAY_HOST="127.0.0.1"
+URL="http://${DISPLAY_HOST}:${PORT}"
+COMPOSE=(docker compose --project-directory "$ROOT" -f "$ROOT/docker-compose.yaml")
+BROWSER_HUNT_COMPOSE=(docker compose --project-directory "$ROOT" -f "$ROOT/docker-compose.browser-hunt.yaml")
+TOKEN_FILE="$ROOT/.cyberbox/internal-service.token"
+BROWSER_HUNT_HOME="${CYBERBOX_BROWSER_HOME:-$ROOT/.cyberbox/browser-hunt}"
+CYBERBOX_BROWSER_HOME="$BROWSER_HUNT_HOME"
+export CYBERBOX_BROWSER_HOME
 
 usage() {
   cat <<EOF
-cyberbox — CyberBox local platform
+cyberbox — complete CyberBox Docker workstation
 
 Usage:
-  cyberbox start          Start API server (no-op if already running)
-  cyberbox stop           Stop server on CYBERBOX_PORT
-  cyberbox restart        Stop then start
-  cyberbox status         Check /health
-  cyberbox open           Print dashboard URL
+  cyberbox start          Start the Docker workstation
+  cyberbox stop           Stop the Docker workstation
+  cyberbox restart        Recreate the Docker workstation
+  cyberbox status         Show container and subsystem health
+  cyberbox logs           Follow workstation logs
+  cyberbox open           Print the dashboard URL
+  cyberbox browser-hunt {start|stop|restart|status|logs|open|connect}
+                          Run isolated attacker + victim browsers
+  cyberbox browser ...   Use the gated role-aware browser broker
+  cyberbox platform ...   Run the development control-plane prototype
 
 Environment:
-  CYBERBOX_HOST   Bind host (default: 127.0.0.1)
-  CYBERBOX_PORT   Bind port (default: 8787)
+  CYBERBOX_BIND   Published bind address (default: 127.0.0.1)
+  HOST_PORT       Dashboard port (default: 8080)
+  CYBERBOX_IMAGE  Image override (for example: cybersandbox:ci)
+  CYBERBOX_ATTACKER_UI_PORT / CYBERBOX_VICTIM_UI_PORT (8083 / 8084)
 EOF
 }
 
-is_running() {
-  curl -fsS "${URL}/health" >/dev/null 2>&1
+browser_hunt_urls() {
+  local attacker_ui="${CYBERBOX_ATTACKER_UI_PORT:-8083}"
+  local victim_ui="${CYBERBOX_VICTIM_UI_PORT:-8084}"
+  cat <<EOF
+Attacker UI:  http://127.0.0.1:${attacker_ui}/
+Victim UI:    http://127.0.0.1:${victim_ui}/
+Agent broker: ./bin/cyberbox browser --help
+EOF
 }
 
-port_pids() {
-  if command -v ss >/dev/null 2>&1; then
-    ss -ltnp 2>/dev/null | grep -E ":${PORT}\\b" | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u
-  elif command -v lsof >/dev/null 2>&1; then
-    lsof -ti ":${PORT}" 2>/dev/null | sort -u
-  fi
+browser_hunt_connect() {
+  cat <<EOF
+# Initialize policy (repeat --scope as needed)
+./bin/cyberbox browser init --mode guided --scope '*.example.com'
+
+# Human-assisted sign-in and reusable auth checkpoint
+./bin/cyberbox browser auth begin --role victim
+./bin/cyberbox browser auth ready --role victim --label victim-test-account
+
+# Give Claude Code, Hermes, Codex, or another terminal agent an exclusive lease
+export CYBERBOX_BROWSER_LEASE="\$(./bin/cyberbox browser lease acquire --role attacker --agent claude-code)"
+./bin/cyberbox browser action status --role attacker
+
+# One gated model-planned step with the existing terminal providers
+./bin/cyberbox browser agent-step --provider claude --role attacker --goal 'Inspect the login page'
+./bin/cyberbox browser agent-step --provider ollama --role attacker --goal 'Describe the visible form'
+EOF
 }
 
-stop_server() {
-  if ! is_running && [[ -z "$(port_pids || true)" ]]; then
-    echo "CyberBox is not running on ${HOST}:${PORT}"
-    return 0
-  fi
-  local pid
-  for pid in $(port_pids); do
-    kill "$pid" 2>/dev/null || true
+ensure_browser_hunt_tokens() {
+  mkdir -p "$BROWSER_HUNT_HOME"
+  chmod 700 "$BROWSER_HUNT_HOME"
+  local role file variable value
+  for role in attacker victim; do
+    file="$BROWSER_HUNT_HOME/${role}.key"
+    if [[ ! -s "$file" ]]; then
+      umask 077
+      python3 -c 'import secrets; print("cbbr_" + secrets.token_urlsafe(32))' > "$file"
+    fi
+    chmod 600 "$file"
+    value="$(<"$file")"
+    if [[ "$role" == attacker ]]; then
+      CYBERBOX_ATTACKER_API_KEY="$value"
+      export CYBERBOX_ATTACKER_API_KEY
+    else
+      CYBERBOX_VICTIM_API_KEY="$value"
+      export CYBERBOX_VICTIM_API_KEY
+    fi
   done
-  sleep 1
-  for pid in $(port_pids); do
-    kill -9 "$pid" 2>/dev/null || true
-  done
-  if is_running; then
-    echo "Failed to stop CyberBox on ${HOST}:${PORT}" >&2
-    return 1
+  if [[ ! -s "$BROWSER_HUNT_HOME/operator.key" ]]; then
+    umask 077
+    python3 -c 'import secrets; print("cbop_" + secrets.token_urlsafe(32))' > "$BROWSER_HUNT_HOME/operator.key"
   fi
-  echo "Stopped CyberBox on ${HOST}:${PORT}"
+  chmod 600 "$BROWSER_HUNT_HOME/operator.key"
+  python3 -c 'import secrets; print("cbgen_" + secrets.token_urlsafe(18))' > "$BROWSER_HUNT_HOME/generation"
+  chmod 600 "$BROWSER_HUNT_HOME/generation"
+}
+
+wait_browser_hunt() {
+  local attacker_ui="${CYBERBOX_ATTACKER_UI_PORT:-8083}"
+  local victim_ui="${CYBERBOX_VICTIM_UI_PORT:-8084}"
+  local attempt
+  for attempt in $(seq 1 90); do
+    if curl -fsS -H "Authorization: Bearer ${CYBERBOX_ATTACKER_API_KEY}" \
+         "http://127.0.0.1:${attacker_ui}/json/version" >/dev/null 2>&1 &&
+       curl -fsS -H "Authorization: Bearer ${CYBERBOX_VICTIM_API_KEY}" \
+         "http://127.0.0.1:${victim_ui}/json/version" >/dev/null 2>&1; then
+      echo "Both browser roles are ready."
+      return 0
+    fi
+    if [[ $("${BROWSER_HUNT_COMPOSE[@]}" ps --status running --quiet | wc -l) -lt 2 ]]; then
+      echo "A browser role exited during startup. Run: ./bin/cyberbox browser-hunt logs" >&2
+      return 1
+    fi
+    sleep 2
+  done
+  echo "Browser roles did not become ready. Run: ./bin/cyberbox browser-hunt logs" >&2
+  return 1
+}
+
+browser_hunt() {
+  local action="${1:-status}"
+  shift || true
+  require_docker
+  case "$action" in
+    start)
+      ensure_browser_hunt_tokens
+      "${BROWSER_HUNT_COMPOSE[@]}" up -d
+      wait_browser_hunt
+      browser_hunt_urls
+      echo "Sign in manually in each UI, then connect an agent with: ./bin/cyberbox browser-hunt connect"
+      ;;
+    stop)
+      "${BROWSER_HUNT_COMPOSE[@]}" down
+      ;;
+    restart)
+      ensure_browser_hunt_tokens
+      "${BROWSER_HUNT_COMPOSE[@]}" up -d --force-recreate
+      wait_browser_hunt
+      browser_hunt_urls
+      ;;
+    status)
+      "${BROWSER_HUNT_COMPOSE[@]}" ps
+      browser_hunt_urls
+      ;;
+    logs)
+      exec "${BROWSER_HUNT_COMPOSE[@]}" logs -f "$@"
+      ;;
+    open)
+      browser_hunt_urls
+      ;;
+    connect)
+      browser_hunt_connect
+      ;;
+    *)
+      echo "Unknown browser-hunt action: $action" >&2
+      usage >&2
+      return 1
+      ;;
+  esac
+}
+
+require_docker() {
+  command -v docker >/dev/null 2>&1 || {
+    echo "Docker is required to run the CyberBox workstation." >&2
+    exit 1
+  }
+  docker compose version >/dev/null 2>&1 || {
+    echo "Docker Compose v2 is required to run CyberBox." >&2
+    exit 1
+  }
+}
+
+ensure_internal_token() {
+  if [[ -n "${CYBERBOX_INTERNAL_SERVICE_TOKEN:-}" ]]; then
+    export CYBERBOX_INTERNAL_SERVICE_TOKEN
+    return
+  fi
+  mkdir -p "$(dirname "$TOKEN_FILE")"
+  chmod 700 "$(dirname "$TOKEN_FILE")"
+  if [[ ! -s "$TOKEN_FILE" ]]; then
+    umask 077
+    python3 - <<'PY' > "$TOKEN_FILE"
+import secrets
+print("cbin_" + secrets.token_urlsafe(32))
+PY
+  fi
+  CYBERBOX_INTERNAL_SERVICE_TOKEN="$(<"$TOKEN_FILE")"
+  export CYBERBOX_INTERNAL_SERVICE_TOKEN
+}
+
+wait_ready() {
+  local attempt
+  for attempt in $(seq 1 60); do
+    if curl -fsS "${URL}/csbx/api/health" >/dev/null 2>&1; then
+      echo "CyberBox ready at ${URL}/"
+      return 0
+    fi
+    if ! "${COMPOSE[@]}" ps --status running --quiet | grep -q .; then
+      echo "CyberBox exited during startup. Run: ./bin/cyberbox logs" >&2
+      return 1
+    fi
+    sleep 2
+  done
+  echo "CyberBox did not become ready at ${URL}/. Run: ./bin/cyberbox logs" >&2
+  return 1
 }
 
 cmd="${1:-start}"
@@ -60,27 +211,51 @@ shift || true
 
 case "$cmd" in
   start)
-    if is_running; then
+    require_docker
+    ensure_internal_token
+    ensure_browser_hunt_tokens
+    if curl -fsS "${URL}/csbx/api/health" >/dev/null 2>&1; then
       echo "CyberBox already running at ${URL}/"
-      echo "Use: ./bin/cyberbox stop     # to shut down"
-      echo "     ./bin/cyberbox restart  # to reload cleanly"
       exit 0
     fi
-    exec "${ROOT}/platform/bin/platform" "$@"
+    "${COMPOSE[@]}" up -d
+    wait_ready
     ;;
   stop)
-    stop_server
+    require_docker
+    "${COMPOSE[@]}" down
     ;;
   restart)
-    stop_server || true
-    exec "${ROOT}/platform/bin/platform" "$@"
+    require_docker
+    ensure_internal_token
+    ensure_browser_hunt_tokens
+    "${COMPOSE[@]}" up -d --force-recreate
+    wait_ready
     ;;
   status)
-    curl -fsS "${URL}/health"
+    require_docker
+    "${COMPOSE[@]}" ps
+    if ! curl -fsS "${URL}/csbx/api/health"; then
+      echo "CyberBox health API unavailable at ${URL}/" >&2
+      exit 1
+    fi
     echo
+    ;;
+  logs)
+    require_docker
+    exec docker compose --project-directory "$ROOT" -f "$ROOT/docker-compose.yaml" logs -f "$@"
     ;;
   open)
     echo "${URL}/"
+    ;;
+  browser-hunt)
+    browser_hunt "$@"
+    ;;
+  browser)
+    exec "${ROOT}/bin/cyberbox-browser" "$@"
+    ;;
+  platform)
+    exec "${ROOT}/platform/bin/platform" "$@"
     ;;
   -h|--help|help)
     usage

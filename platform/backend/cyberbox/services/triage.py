@@ -46,7 +46,12 @@ def retest(vuln_id: str) -> dict:
     if not v:
         return {"error": "not found"}
     template_id = v["template_id"] or ""
-    verified, poc, chain = verify.verify_finding(template_id, v["matched_at"] or "", {})
+    engagement = db.query_one(
+        "SELECT id FROM engagements WHERE project_id=? AND status='active' ORDER BY created_at DESC LIMIT 1",
+        [v["project_id"]],
+    )
+    verified, poc, chain = verify.verify_finding(
+        template_id, v["matched_at"] or "", {}, engagement["id"] if engagement else None)
     has_verifier = any(key in template_id for key in verify.VERIFIERS)
     if not verified and has_verifier and v["status"] in ("open", "triaged"):
         db.execute("UPDATE vulnerabilities SET status='fixed', fixed_at=? WHERE id=?", [_now(), vuln_id])

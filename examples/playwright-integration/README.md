@@ -1,6 +1,6 @@
 # Playwright Integration Example
 
-This example demonstrates how to integrate [Playwright](https://playwright.dev) with agent-sandbox, allowing you to use Playwright's powerful browser automation capabilities with a sandboxed browser.
+This example connects [Playwright](https://playwright.dev) to a sandboxed CyberBox browser.
 
 ## Prerequisites
 
@@ -56,7 +56,7 @@ await page.screenshot(path="screenshot.png")
 - **Sandboxed Execution**: Browser runs in isolated sandbox environment
 - **CDP Integration**: Connect via Chrome DevTools Protocol
 - **Screenshot Support**: Capture visual output
-- **Element Selection**: Powerful selectors and locators
+- **Element selection**: Playwright selectors and locators
 - **Async/Await**: Modern async Python patterns
 
 ## Advanced Usage

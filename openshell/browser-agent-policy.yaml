@@ -1,0 +1,27 @@
+version: 1
+
+# Run the agent in OpenShell and the CyberBox broker on the trusted host.
+# Replace the placeholder with the exact Docker-host address visible inside
+# the OpenShell sandbox. Do not widen it to an entire private subnet.
+network_policies:
+  cyberbox_browser_broker:
+    endpoints:
+      - host: host.docker.internal
+        port: 17890
+        protocol: rest
+        enforcement: enforce
+        allowed_ips:
+          - <DOCKER_HOST_IP>/32
+        rules:
+          - allow:
+              method: GET
+              path: /health
+          - allow:
+              method: GET
+              path: /v1/contract
+          - allow:
+              method: POST
+              path: /v1/action
+    binaries:
+      - path: /usr/bin/curl
+      - path: /usr/bin/python3*
