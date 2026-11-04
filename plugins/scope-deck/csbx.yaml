@@ -1,0 +1,14 @@
+name: scope-deck
+type: tool
+description: Explainable target intelligence and hunt selection for authorized bug bounty and CVD research.
+license: Apache-2.0
+url: https://github.com/ProwlrBot/CyberBox/tree/main/plugins/scope-deck
+binaries:
+  - bin/scopedeck
+install: |
+  mkdir -p bin
+  go build -tags sqlite_fts5 -trimpath -ldflags "-s -w" -o bin/scopedeck ./cmd/scopedeck
+post_install: |
+  echo "ScopeDeck installed. Run: scopedeck serve"
+uninstall: |
+  rm -f bin/scopedeck

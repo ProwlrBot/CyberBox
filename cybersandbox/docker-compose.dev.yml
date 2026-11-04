@@ -2,8 +2,8 @@ services:
   cybersandbox:
     container_name: cybersandbox
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: cybersandbox/Dockerfile
     cap_add:
       - NET_RAW
       - NET_ADMIN
@@ -33,6 +33,7 @@ services:
       - cybersandbox-workspace:/home/hunter
       # Host CLI tools (image rebuild not required)
       - ../prowl/bin/csbx:/usr/local/bin/csbx:ro
+      - ../prowl/bin/csbx-registry:/usr/local/bin/csbx-registry:ro
       - ../prowl/bin/harbinger:/usr/local/bin/harbinger:ro
       - ../prowl/bin/prowl:/usr/local/bin/prowl:ro
       - ../prowl/bin/invoke-claude:/usr/local/bin/invoke-claude:ro

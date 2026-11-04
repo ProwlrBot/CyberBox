@@ -52,7 +52,9 @@ function render() {
     ? `<div class="grid">${rows.map(view === "plugins" ? pluginCard : previewCard).join("")}</div>`
     : '<p class="empty">No matching integrations for this profile.</p>';
   content.querySelectorAll("[data-command]").forEach((button) => {
-    button.onclick = () => showCommand(button.dataset.title, button.dataset.command);
+    button.onclick = () => button.dataset.plugin
+      ? showPlan(button.dataset.plugin, button.dataset.title, button.dataset.command)
+      : showCommand(button.dataset.title, button.dataset.command);
   });
 }
 
@@ -64,9 +66,10 @@ function healthCard(component) {
 }
 
 function pluginCard(plugin) {
-  const command = plugin.installed ? `csbx update ${plugin.name}` : `csbx install ${plugin.name}`;
+  const command = plugin.installed ? `csbx update ${plugin.name}` : plugin.command;
   const state = plugin.installed ? "installed" : "available";
-  return `<article><div><span class="type">${esc(plugin.type)}</span><span class="state ${plugin.installed ? "yes" : ""}">${state}</span></div><h2>${esc(plugin.name)}</h2><p>${esc(plugin.description)}</p><footer><small>${esc(plugin.size)}</small>${(plugin.tags || []).slice(0, 2).map((tag) => `<span class="tag">${esc(tag)}</span>`).join("")}<button class="action" data-title="${esc(plugin.name)}" data-command="${esc(command)}">${plugin.installed ? "Update preview" : "Review install preview"}</button></footer></article>`;
+  const trust = plugin.trust_tier === "strict" ? `${plugin.signature_method || "signature"} required` : plugin.pinned ? "pinned source" : "mutable source";
+  return `<article><div><span class="type">${esc(plugin.type)}</span><span class="state ${plugin.installed ? "yes" : plugin.trust_tier === "strict" ? "yes" : ""}">${state}</span></div><h2>${esc(plugin.name)}</h2><p>${esc(plugin.description)}</p><footer><small>${esc(plugin.size)}</small><span class="tag">${esc(trust)}</span>${(plugin.tags || []).slice(0, 1).map((tag) => `<span class="tag">${esc(tag)}</span>`).join("")}<button class="action" data-plugin="${esc(plugin.name)}" data-title="${esc(plugin.name)}" data-command="${esc(command)}">${plugin.installed ? "Update preview" : "Review install plan"}</button></footer></article>`;
 }
 
 function previewCard(preview) {
@@ -78,7 +81,25 @@ function previewCard(preview) {
 function showCommand(title, command) {
   $("#command-title").textContent = title;
   $("#command-value").textContent = command;
+  $("#plan-block").hidden = true;
   $("#command").showModal();
+}
+
+async function showPlan(name, title, command) {
+  $("#command-title").textContent = title;
+  $("#command-value").textContent = command;
+  $("#plan-value").textContent = "Resolving registry plan…";
+  $("#plan-block").hidden = false;
+  $("#command").showModal();
+  try {
+    const response = await fetch(`api/plan?name=${encodeURIComponent(name)}`, { cache: "no-store" });
+    const plan = await response.json();
+    if (!response.ok) throw Error(plan.error || "Plan unavailable");
+    $("#plan-value").textContent = JSON.stringify(plan, null, 2);
+    $("#command-value").textContent = plan.command;
+  } catch (error) {
+    $("#plan-value").textContent = error.message;
+  }
 }
 
 async function copyCommand() {

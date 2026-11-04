@@ -15,7 +15,15 @@ class PluginCenterTest(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         home = Path(self.temp.name)
         (home / "registry.yaml").write_text(
-            "version: 1\nplugins:\n  hydra-lists:\n    type: wordlist\n"
+            "version: 1\npolicy_version: '2026-04-25'\npdtm_tools:\n"
+            "  subfinder:\n    repo: projectdiscovery/subfinder\n    install_type: go\n"
+            "    go_install_path: github.com/projectdiscovery/subfinder/v2/cmd/subfinder\n"
+            "    version: v2.13.0\ncaido_plugins:\n"
+            "  signed-caido:\n    type: caido-plugin\n    repo: https://github.com/example/plugin\n"
+            "    description: Signed test integration\n    size: 1MB\n    tags: [caido]\n"
+            "    release: v1.0.0\n    manifest: caido.json\n"
+            "    signature: {method: cosign, issuer: https://token.actions.githubusercontent.com, identity: https://example.test/identity}\n"
+            "plugins:\n  hydra-lists:\n    type: wordlist\n"
             "    description: Curated authentication test fixtures\n    size: 1MB\n"
             "    tags: [credentials, lab]\n    repo: https://example.test/lists\n"
             "  ../unsafe:\n    type: tool\n")
@@ -35,8 +43,18 @@ class PluginCenterTest(unittest.TestCase):
 
     def test_state_combines_registry_installs_and_safe_previews(self) -> None:
         state = self.module.state()
-        self.assertEqual([item["name"] for item in state["plugins"]], ["hydra-lists"])
-        self.assertTrue(state["plugins"][0]["installed"])
+        self.assertEqual({item["name"] for item in state["plugins"]},
+                         {"hydra-lists", "signed-caido", "subfinder"})
+        hydra_lists = next(item for item in state["plugins"] if item["name"] == "hydra-lists")
+        self.assertTrue(hydra_lists["installed"])
+        self.assertFalse(hydra_lists["pinned"])
+        signed = next(item for item in state["plugins"] if item["name"] == "signed-caido")
+        self.assertEqual(signed["trust_tier"], "strict")
+        self.assertEqual(signed["signature_method"], "cosign")
+        self.assertEqual(signed["command"], "csbx install --caido signed-caido")
+        pdtm = next(item for item in state["plugins"] if item["name"] == "subfinder")
+        self.assertTrue(pdtm["pinned"])
+        self.assertEqual(pdtm["command"], "csbx pdtm subfinder")
         self.assertIn("hydra", {item["id"] for item in state["previews"]})
         hydra = next(item for item in state["previews"] if item["id"] == "hydra")
         self.assertIn("scope required", hydra["controls"])
@@ -66,6 +84,17 @@ class PluginCenterTest(unittest.TestCase):
         for preview in state["previews"]:
             if preview.get("risk") == "approval":
                 self.assertIn("approval required", preview["controls"])
+
+    def test_install_plan_exposes_registry_policy_and_trust(self) -> None:
+        standard = self.module.install_plan("hydra-lists")
+        self.assertTrue(standard["mutable_source"])
+        self.assertEqual(standard["policy_version"], "2026-04-25")
+        self.assertEqual(standard["command"], "csbx install hydra-lists")
+        strict = self.module.install_plan("signed-caido")
+        self.assertEqual(strict["trust_tier"], "strict")
+        self.assertEqual(strict["signature"]["method"], "cosign")
+        with self.assertRaises(ValueError):
+            self.module.install_plan("../unsafe")
 
     def test_health_reports_ready_and_degraded_components_honestly(self) -> None:
         class Response:

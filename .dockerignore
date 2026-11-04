@@ -1,0 +1,14 @@
+.git
+.claude
+.ghactor
+.cyberbox
+node_modules
+**/node_modules
+**/__pycache__
+**/*.pyc
+**/dist
+**/.env
+**/.env.*
+*.db
+*.log
+plugins/scope-deck

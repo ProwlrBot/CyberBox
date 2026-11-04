@@ -17,6 +17,21 @@
 - The main control plane can reach the local broker through an operator-only proxy; the operator token never reaches the browser UI.
 - Browser actions use short leases, exact-action approvals, scope checks, and an append-only local activity log.
 
+### CSBX and Plugin Center
+
+- Brought the client up to the current registry contract: version and policy validation, named PDTM tools, all three catalog sections, and install-plan output.
+- Added strict signed-release handling for Caido plugins. CSBX verifies cosign or minisign sidecars, rejects unsafe archives, and only then activates the plugin.
+- Standard installs now record the resolved Git commit, preserve registry pins during updates, refuse dirty checkouts, and roll back failed hooks or activation steps.
+- Install records are written atomically and mutating commands share a lock, preventing concurrent installs from corrupting `installed.yaml`.
+- Plugin Center now labels signatures as requirements until verification has actually happened and shows the resolved registry plan before handing a command to Terminal.
+- The image now uses the canonical scripts from `prowl/bin` and includes the verification tools required by strict-tier installs.
+
+### ScopeDeck
+
+- Added ScopeDeck, a local SQLite catalog for program, policy, scope, signal, and change data. It provides search, weighted target draws, JSON export, a loopback web UI, and a small REST API.
+- Fixed the initial persistence path so migrations run, syncs retain stable source and program IDs, detail records are stored, and repeat imports are idempotent.
+- Remote imports require HTTPS, reject private or reserved destinations, cap response sizes, and limit redirects. Local imports must be regular files.
+
 ## 0.2.3 — 2026-04-17
 
 Release hygiene: sprint2 supply-chain follow-ups.

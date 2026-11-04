@@ -13,11 +13,15 @@ CSBX_TEMPLATES="${CSBX_PLUGINS}/nuclei-templates"
 CSBX_REGISTRY_URL="${CSBX_REGISTRY_URL:-https://raw.githubusercontent.com/ProwlrBot/csbx-registry/main/registry.yaml}"
 CSBX_REGISTRY="${CSBX_HOME}/registry.yaml"
 CSBX_INSTALLED="${CSBX_HOME}/installed.yaml"
+CSBX_REGISTRY_HELPER="${CSBX_REGISTRY_HELPER:-$(dirname "$0")/csbx-registry}"
 
 # ── Colors ───────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 BLUE='\033[0;34m'; CYAN='\033[0;36m'; DIM='\033[0;90m'
 BOLD='\033[1m'; NC='\033[0m'
+if [[ -n "${NO_COLOR:-}" || ! -t 1 ]]; then
+  RED=''; GREEN=''; YELLOW=''; BLUE=''; CYAN=''; DIM=''; BOLD=''; NC=''
+fi
 
 info()  { echo -e "${CYAN}[+]${NC} $*"; }
 ok()    { echo -e "${GREEN}[✓]${NC} $*"; }
@@ -35,6 +39,23 @@ ensure_dirs() {
   fi
 }
 
+acquire_mutation_lock() {
+  if command -v flock &>/dev/null; then
+    exec 9>"${CSBX_HOME}/.mutation.lock"
+    if ! flock -n 9; then
+      err "Another csbx mutation is already running"
+      return 1
+    fi
+  else
+    local lock_dir="${CSBX_HOME}/.mutation.lock.d"
+    if ! mkdir "$lock_dir" 2>/dev/null; then
+      err "Another csbx mutation is already running (remove ${lock_dir} if it is stale)"
+      return 1
+    fi
+    trap 'rmdir "${CSBX_HOME}/.mutation.lock.d" 2>/dev/null || true' EXIT
+  fi
+}
+
 require_yaml() {
   if ! command -v python3 &>/dev/null || ! python3 -c "import yaml" 2>/dev/null; then
     err "PyYAML runtime dependency is missing"
@@ -43,6 +64,21 @@ require_yaml() {
     echo "    /opt/venv/bin/pip install pyyaml" >&2
     return 1
   fi
+}
+
+require_registry_helper() {
+  if [[ ! -x "$CSBX_REGISTRY_HELPER" ]]; then
+    err "csbx-registry helper is missing or not executable: $CSBX_REGISTRY_HELPER"
+    return 1
+  fi
+}
+
+registry_get() {
+  CSBX_REGISTRY="$CSBX_REGISTRY" "$CSBX_REGISTRY_HELPER" get "$1" "$2" "$3"
+}
+
+registry_plan() {
+  CSBX_REGISTRY="$CSBX_REGISTRY" "$CSBX_REGISTRY_HELPER" plan "$1" "$2"
 }
 
 # ── YAML helpers (safe — values via env vars, not string interpolation) ───
@@ -96,6 +132,57 @@ except: pass
 PYEOF
 }
 
+installed_field() {
+  local name="$1" field="$2"
+  CSBX_INSTALLED="$CSBX_INSTALLED" CSBX_NAME="$name" CSBX_FIELD="$field" python3 - <<'PYEOF' 2>/dev/null
+import os, yaml
+with open(os.environ["CSBX_INSTALLED"], encoding="utf-8") as handle:
+    data = yaml.safe_load(handle) or {}
+value = data.get("plugins", {}).get(os.environ["CSBX_NAME"], {}).get(os.environ["CSBX_FIELD"], "")
+print(value if value is not None else "")
+PYEOF
+}
+
+record_install() {
+  CSBX_INSTALLED="$CSBX_INSTALLED" python3 - <<'PYEOF'
+import datetime, json, os, pathlib, tempfile, yaml
+path = pathlib.Path(os.environ["CSBX_INSTALLED"])
+with path.open(encoding="utf-8") as handle:
+    data = yaml.safe_load(handle) or {}
+record = json.loads(os.environ["CSBX_RECORD"])
+record["installed_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+data.setdefault("plugins", {})[os.environ["CSBX_RECORD_NAME"]] = record
+fd, temporary = tempfile.mkstemp(prefix="installed.", suffix=".yaml", dir=path.parent)
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        yaml.safe_dump(data, handle, default_flow_style=False, sort_keys=True)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, path)
+finally:
+    if os.path.exists(temporary): os.unlink(temporary)
+PYEOF
+}
+
+remove_install_record() {
+  CSBX_INSTALLED="$CSBX_INSTALLED" CSBX_NAME="$1" python3 - <<'PYEOF'
+import os, pathlib, tempfile, yaml
+path = pathlib.Path(os.environ["CSBX_INSTALLED"])
+with path.open(encoding="utf-8") as handle:
+    data = yaml.safe_load(handle) or {}
+data.get("plugins", {}).pop(os.environ["CSBX_NAME"], None)
+fd, temporary = tempfile.mkstemp(prefix="installed.", suffix=".yaml", dir=path.parent)
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        yaml.safe_dump(data, handle, default_flow_style=False, sort_keys=True)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, path)
+finally:
+    if os.path.exists(temporary): os.unlink(temporary)
+PYEOF
+}
+
 # ── Name validation ──────────────────────────────────────────
 validate_name() {
   local name="$1"
@@ -108,7 +195,7 @@ validate_name() {
 # ── Install hook confirmation ────────────────────────────────
 confirm_hook() {
   local label="$1" script="$2"
-  if [[ "${CSBX_YES:-}" == "1" ]]; then
+  if [[ "${CSBX_YES:-}" == "1" && "${CSBX_ACCEPT_HOOKS:-}" == "1" ]]; then
     return 0
   fi
   echo -e "${YELLOW}── ${label} hook script ──${NC}"
@@ -118,14 +205,47 @@ confirm_hook() {
   [[ "$answer" =~ ^[Yy]$ ]]
 }
 
+confirm_action() {
+  local prompt="$1"
+  [[ "${CSBX_YES:-}" == "1" ]] && return 0
+  read -r -p "${prompt} [y/N] " answer
+  [[ "$answer" =~ ^[Yy]$ ]]
+}
+
+require_non_root_install() {
+  if [[ "$(id -u)" == "0" && "${CSBX_ALLOW_ROOT:-}" != "1" ]]; then
+    err "Refusing to install plugins as root (set CSBX_ALLOW_ROOT=1 only inside a disposable installer sandbox)"
+    return 1
+  fi
+}
+
+safe_plugin_file() {
+  local root="$1" relative="$2"
+  [[ -n "$relative" && "$relative" != /* && "$relative" != *".."* ]] || return 1
+  CSBX_SAFE_ROOT="$root" CSBX_SAFE_PATH="$relative" python3 - <<'PYEOF'
+import os, pathlib, sys
+root = pathlib.Path(os.environ["CSBX_SAFE_ROOT"]).resolve()
+path = (root / os.environ["CSBX_SAFE_PATH"]).resolve()
+try: path.relative_to(root)
+except ValueError: sys.exit(1)
+sys.exit(0 if path.is_file() else 1)
+PYEOF
+}
+
 # ── Registry ─────────────────────────────────────────────────
 registry_sync() {
   info "Syncing registry..."
   local tmp_registry
   tmp_registry=$(mktemp "${CSBX_HOME}/registry.XXXXXX")
   if curl -fsSL "$CSBX_REGISTRY_URL" -o "$tmp_registry" 2>/dev/null; then
-    mv "$tmp_registry" "$CSBX_REGISTRY"
-    ok "Registry synced"
+    if CSBX_REGISTRY="$tmp_registry" "$CSBX_REGISTRY_HELPER" validate >/dev/null; then
+      mv "$tmp_registry" "$CSBX_REGISTRY"
+      ok "Registry synced and validated"
+    else
+      rm -f "$tmp_registry"
+      err "Downloaded registry failed contract validation; cached registry was not changed"
+      return 1
+    fi
   else
     rm -f "$tmp_registry"
     warn "Failed to fetch registry — using cached copy"
@@ -133,6 +253,9 @@ registry_sync() {
     if [[ ! -f "$CSBX_REGISTRY" ]]; then
       cat > "$CSBX_REGISTRY" <<'YAML'
 version: 1
+policy_version: "2026-04-25"
+pdtm_tools: {}
+caido_plugins: {}
 plugins:
   seclists:
     repo: https://github.com/danielmiessler/SecLists
@@ -210,13 +333,15 @@ import yaml, os
 with open(os.environ['CSBX_REGISTRY']) as f:
     reg = yaml.safe_load(f)
 query = os.environ.get('CSBX_QUERY', '').lower()
-for name, info in sorted(reg.get('plugins', {}).items()):
-    searchable = f"{name} {info.get('description','')} {' '.join(info.get('tags',[]))}".lower()
-    if not query or query in searchable:
-        typ = info.get('type','?')
-        desc = info.get('description','')[:60]
-        size = info.get('size','?')
-        print(f'  \033[1m{name:25s}\033[0m {typ:20s} {size:>8s}  {desc}')
+for section in ('plugins', 'pdtm_tools', 'caido_plugins'):
+    for name, info in sorted((reg.get(section) or {}).items()):
+        desc = info.get('description') or (f"Go tool from {info.get('repo','')}" if section == 'pdtm_tools' else '')
+        searchable = f"{name} {desc} {' '.join(info.get('tags',[]))}".lower()
+        if not query or query in searchable:
+            typ = info.get('type', 'go-tool' if section == 'pdtm_tools' else '?')
+            size = info.get('size','?')
+            trust = 'strict' if section == 'caido_plugins' else ('pinned' if info.get('release') or info.get('commit') or (section == 'pdtm_tools' and info.get('version') != 'latest') else 'mutable')
+            print(f'  \033[1m{name:25s}\033[0m {typ:20s} {size:>8s}  {trust:8s}  {desc[:52]}')
 PYEOF
 }
 
@@ -230,16 +355,24 @@ import yaml, os
 name = os.environ['CSBX_NAME']
 with open(os.environ['CSBX_REGISTRY']) as f:
     reg = yaml.safe_load(f)
-p = reg.get('plugins', {}).get(name)
+p = None
+section = ''
+for candidate in ('plugins', 'pdtm_tools', 'caido_plugins'):
+    if name in (reg.get(candidate) or {}):
+        p, section = reg[candidate][name], candidate
+        break
 if not p:
     print(f'\033[31m[x]\033[0m Plugin "{name}" not in registry')
 else:
     print(f"\033[1m {name} \033[0m")
     print(f"  Type:        {p.get('type','?')}")
+    print(f"  Section:     {section}")
     print(f"  Description: {p.get('description','?')}")
     print(f"  Repo:        {p.get('repo','?')}")
     print(f"  Size:        {p.get('size','?')}")
     print(f"  Tags:        {', '.join(p.get('tags',[]))}")
+    print(f"  Trust:       {'strict signed release' if section == 'caido_plugins' else 'standard'}")
+    print(f"  Pinned:      {'yes' if p.get('release') or p.get('commit') or (section == 'pdtm_tools' and p.get('version') != 'latest') else 'no'}")
 
     installed_file = os.environ['CSBX_INSTALLED']
     if os.path.exists(installed_file):
@@ -256,26 +389,48 @@ PYEOF
 # ── Install ──────────────────────────────────────────────────
 cmd_install() {
   local input="$1"
-  local name="" repo_url="" plugin_type=""
+  local name="" repo_url="" plugin_type="" source_ref="" pin_kind="" registry_entry="false"
 
   # Determine if input is a name (from registry) or a URL
-  if [[ "$input" == http* || "$input" == git@* ]]; then
+  if [[ "$input" == https://* || "$input" == git@* ]]; then
     repo_url="$input"
     name=$(basename "$repo_url" .git)
     validate_name "$name" || return 1
     warn "Installing unregistered plugin — review csbx.yaml before trusting"
+    if ! confirm_action "Clone and inspect unregistered source ${repo_url}?"; then
+      warn "Install cancelled"
+      return 1
+    fi
+  elif [[ "$input" == http://* ]]; then
+    err "Unregistered repositories must use HTTPS or an SSH Git remote"
+    return 1
   else
+    registry_entry="true"
     name="$input"
     validate_name "$name" || return 1
     [[ ! -f "$CSBX_REGISTRY" ]] && registry_sync
-    repo_url=$(yaml_get "$CSBX_REGISTRY" "plugins.${name}.repo")
+    repo_url=$(registry_get plugins "$name" repo 2>/dev/null || true)
     if [[ -z "$repo_url" ]]; then
       err "Plugin \"${name}\" not found in registry"
       echo "  Try: csbx search ${name}"
       echo "  Or:  csbx install https://github.com/user/repo"
       return 1
     fi
-    plugin_type=$(yaml_get "$CSBX_REGISTRY" "plugins.${name}.type")
+    plugin_type=$(registry_get plugins "$name" type)
+    source_ref=$(registry_get plugins "$name" commit 2>/dev/null || true)
+    if [[ -n "$source_ref" ]]; then
+      pin_kind="commit"
+    else
+      source_ref=$(registry_get plugins "$name" release 2>/dev/null || true)
+      [[ -n "$source_ref" ]] && pin_kind="release"
+    fi
+    if [[ -z "$source_ref" ]]; then
+      warn "${name} is a mutable standard-tier entry; the registry does not pin a release or commit"
+      if ! confirm_action "Install mutable source ${repo_url} at its current default branch?"; then
+        warn "Install cancelled"
+        return 1
+      fi
+    fi
   fi
 
   # Check if already installed
@@ -292,11 +447,29 @@ PYEOF
 
   info "Installing ${name} from ${repo_url}..."
 
-  # Clone (shallow)
+  # Clone into a disposable staging directory. Commit pins are checked out by
+  # object ID instead of being treated as branch names.
   local tmp_dir
   tmp_dir=$(mktemp -d)
-  if ! git clone --depth 1 "$repo_url" "$tmp_dir" 2>/dev/null; then
+  local clone_args=(--depth 1)
+  if [[ "$pin_kind" == "release" ]]; then clone_args+=(--branch "$source_ref"); fi
+  if ! git clone "${clone_args[@]}" "$repo_url" "$tmp_dir" 2>/dev/null; then
     err "Failed to clone ${repo_url}"
+    rm -rf "$tmp_dir"
+    return 1
+  fi
+  if [[ "$pin_kind" == "commit" ]]; then
+    if ! git -C "$tmp_dir" fetch --depth 1 origin "$source_ref" >/dev/null 2>&1 ||
+       ! git -C "$tmp_dir" checkout --detach "$source_ref" >/dev/null 2>&1; then
+      err "Registry commit pin could not be checked out: ${source_ref}"
+      rm -rf "$tmp_dir"
+      return 1
+    fi
+  fi
+  local resolved_commit
+  resolved_commit=$(git -C "$tmp_dir" rev-parse HEAD 2>/dev/null || true)
+  if [[ "$pin_kind" == "commit" && "$resolved_commit" != "$source_ref"* ]]; then
+    err "Resolved commit does not match registry pin"
     rm -rf "$tmp_dir"
     return 1
   fi
@@ -307,32 +480,74 @@ PYEOF
     plugin_type=$(yaml_get "$manifest" "type")
   fi
   plugin_type="${plugin_type:-tool}"
+  if [[ ! "$plugin_type" =~ ^(tool|wordlist|nuclei-templates|yara-rules|sigma|threat-intel|theme|config)$ ]]; then
+    err "Unsupported plugin type in manifest: ${plugin_type}"
+    rm -rf "$tmp_dir"
+    return 1
+  fi
 
-  # Move to final location
+  # Run the build hook in staging. A failed hook never replaces an existing
+  # plugin or produces an installed record.
   local target_dir="${CSBX_PLUGINS}/${plugin_type}/${name}"
-  mkdir -p "$(dirname "$target_dir")"
-  [[ -d "$target_dir" ]] && rm -rf "$target_dir"
-  mv "$tmp_dir" "$target_dir"
-
-  # Run install hook
-  if [[ -f "${target_dir}/csbx.yaml" ]]; then
+  if [[ -f "${tmp_dir}/csbx.yaml" ]]; then
     local install_script
-    install_script=$(yaml_get_block "${target_dir}/csbx.yaml" "install")
+    install_script=$(yaml_get_block "${tmp_dir}/csbx.yaml" "install")
     if [[ -n "$install_script" && "$install_script" != "None" ]]; then
       if confirm_hook "install" "$install_script"; then
         info "Running install hook..."
-        export CSBX_PLUGIN_DIR="$target_dir"
+        export CSBX_PLUGIN_DIR="$tmp_dir"
         export CSBX_WORDLISTS CSBX_TEMPLATES CSBX_BIN
-        (cd "$target_dir" && bash -c "$install_script") || warn "Install hook had errors"
+        if ! (cd "$tmp_dir" && bash -c "$install_script"); then
+          err "Install hook failed; no files were activated"
+          rm -rf "$tmp_dir"
+          return 1
+        fi
       else
-        warn "Install hook skipped"
+        err "Install hook was not approved; installation cancelled"
+        rm -rf "$tmp_dir"
+        return 1
       fi
     fi
+  fi
+
+  local binary
+  if [[ -f "${tmp_dir}/csbx.yaml" ]]; then
+    while IFS= read -r binary; do
+      [[ -z "$binary" ]] && continue
+      if ! safe_plugin_file "$tmp_dir" "$binary"; then
+        err "Manifest binary path is unsafe or missing: ${binary}"
+        rm -rf "$tmp_dir"
+        return 1
+      fi
+      local destination="${CSBX_BIN}/$(basename "$binary")"
+      if [[ -e "$destination" || -L "$destination" ]]; then
+        err "Binary name collision: ${destination} already exists"
+        rm -rf "$tmp_dir"
+        return 1
+      fi
+    done < <(yaml_list "${tmp_dir}/csbx.yaml" "binaries")
+  fi
+
+  mkdir -p "$(dirname "$target_dir")"
+  local backup=""
+  if [[ -e "$target_dir" ]]; then
+    backup="${target_dir}.backup.$(date +%s).$$"
+    mv "$target_dir" "$backup"
+  fi
+  if ! mv "$tmp_dir" "$target_dir"; then
+    [[ -n "$backup" ]] && mv "$backup" "$target_dir"
+    err "Failed to activate plugin"
+    return 1
+  fi
+
+  local linked=()
+  if [[ -f "${target_dir}/csbx.yaml" ]]; then
 
     # Symlink binaries
     while IFS= read -r bin; do
       [[ -z "$bin" ]] && continue
       ln -sf "${target_dir}/${bin}" "${CSBX_BIN}/$(basename "$bin")"
+      linked+=("${CSBX_BIN}/$(basename "$bin")")
       ok "Linked: $(basename "$bin")"
     done < <(yaml_list "${target_dir}/csbx.yaml" "binaries")
 
@@ -342,29 +557,39 @@ PYEOF
     if [[ -n "$post_script" && "$post_script" != "None" ]]; then
       if confirm_hook "post_install" "$post_script"; then
         export CSBX_PLUGIN_DIR="$target_dir"
-        (cd "$target_dir" && bash -c "$post_script") || true
+        if ! (cd "$target_dir" && bash -c "$post_script"); then
+          err "post_install hook failed; restoring previous state"
+          for binary in "${linked[@]}"; do rm -f "$binary"; done
+          rm -rf "$target_dir"
+          [[ -n "$backup" ]] && mv "$backup" "$target_dir"
+          return 1
+        fi
       else
-        warn "post_install hook skipped"
+        warn "post_install hook skipped; the plugin itself is installed"
       fi
     fi
   fi
 
-  # Record installation
-  CSBX_INSTALLED="$CSBX_INSTALLED" CSBX_NAME="$name" CSBX_TYPE="$plugin_type" \
-    CSBX_REPO="$repo_url" CSBX_TARGET="$target_dir" python3 - <<'PYEOF' 2>/dev/null
-import yaml, datetime, os
-installed = os.environ['CSBX_INSTALLED']
-with open(installed) as f:
-    d = yaml.safe_load(f) or {'plugins': {}}
-d.setdefault('plugins', {})[os.environ['CSBX_NAME']] = {
-    'type': os.environ['CSBX_TYPE'],
-    'repo': os.environ['CSBX_REPO'],
-    'installed_at': datetime.datetime.now().isoformat(),
-    'path': os.environ['CSBX_TARGET']
-}
-with open(installed, 'w') as f:
-    yaml.dump(d, f, default_flow_style=False)
+  local record
+  record=$(CSBX_TYPE="$plugin_type" CSBX_REPO="$repo_url" CSBX_TARGET="$target_dir" \
+    CSBX_REF="$source_ref" CSBX_COMMIT="$resolved_commit" CSBX_REGISTERED="$registry_entry" python3 - <<'PYEOF'
+import json, os
+print(json.dumps({
+    "type": os.environ["CSBX_TYPE"], "repo": os.environ["CSBX_REPO"],
+    "path": os.environ["CSBX_TARGET"], "source": "registry" if os.environ["CSBX_REGISTERED"] == "true" else "direct",
+    "source_ref": os.environ["CSBX_REF"], "resolved_commit": os.environ["CSBX_COMMIT"],
+    "mutable_source": not bool(os.environ["CSBX_REF"]),
+}))
 PYEOF
+)
+  if ! CSBX_RECORD_NAME="$name" CSBX_RECORD="$record" record_install; then
+    err "Could not record installation; restoring previous state"
+    for binary in "${linked[@]}"; do rm -f "$binary"; done
+    rm -rf "$target_dir"
+    [[ -n "$backup" ]] && mv "$backup" "$target_dir"
+    return 1
+  fi
+  [[ -n "$backup" ]] && rm -rf "$backup"
 
   ok "${name} installed → ${target_dir}"
 }
@@ -389,6 +614,14 @@ PYEOF
     err "${name} is not installed"
     return 1
   fi
+  local real_path real_plugins real_caido
+  real_path=$(realpath "$path")
+  real_plugins=$(realpath "$CSBX_PLUGINS")
+  real_caido=$(realpath -m "${CAIDO_PLUGIN_HOME:-$HOME/.caido/plugins}")
+  if [[ "$real_path" != "$real_plugins"/* && "$real_path" != "$real_caido"/* ]]; then
+    err "Refusing to remove path outside managed plugin roots: ${path}"
+    return 1
+  fi
 
   # Run uninstall hook
   if [[ -f "${path}/csbx.yaml" ]]; then
@@ -408,23 +641,17 @@ PYEOF
     # Remove binary symlinks
     while IFS= read -r bin; do
       [[ -z "$bin" ]] && continue
-      rm -f "${CSBX_BIN}/$(basename "$bin")"
+      local link="${CSBX_BIN}/$(basename "$bin")"
+      if [[ -L "$link" && "$(realpath "$link" 2>/dev/null || true)" == "$real_path"/* ]]; then
+        rm -f "$link"
+      fi
     done < <(yaml_list "${path}/csbx.yaml" "binaries")
   fi
 
   # Delete plugin directory
   rm -rf "$path"
 
-  # Remove from installed.yaml
-  CSBX_INSTALLED="$CSBX_INSTALLED" CSBX_NAME="$name" python3 - <<'PYEOF' 2>/dev/null
-import yaml, os
-installed = os.environ['CSBX_INSTALLED']
-with open(installed) as f:
-    d = yaml.safe_load(f) or {'plugins': {}}
-d.get('plugins', {}).pop(os.environ['CSBX_NAME'], None)
-with open(installed, 'w') as f:
-    yaml.dump(d, f, default_flow_style=False)
-PYEOF
+  remove_install_record "$name"
 
   ok "${name} removed"
 }
@@ -453,21 +680,54 @@ PYEOF
   validate_name "$name" || return 1
 
   local path
-  path=$(CSBX_INSTALLED="$CSBX_INSTALLED" CSBX_NAME="$name" python3 - <<'PYEOF' 2>/dev/null
-import yaml, os
-with open(os.environ['CSBX_INSTALLED']) as f:
-    d = yaml.safe_load(f) or {}
-print(d.get('plugins', {}).get(os.environ['CSBX_NAME'], {}).get('path', ''))
-PYEOF
-)
+  path=$(installed_field "$name" path)
 
   if [[ -z "$path" || ! -d "$path" ]]; then
     err "${name} is not installed"
     return 1
   fi
 
+  local source type source_ref
+  source=$(installed_field "$name" source)
+  type=$(installed_field "$name" type)
+  source_ref=$(installed_field "$name" source_ref)
+  if [[ "$source" == "pdtm" ]]; then cmd_pdtm "$name"; return; fi
+  if [[ "$type" == "caido-plugin" ]]; then cmd_caido install "$name"; return; fi
+
+  if [[ -n "$(git -C "$path" status --porcelain 2>/dev/null)" ]]; then
+    err "${name} has local changes; refusing to overwrite them"
+    return 1
+  fi
+  local previous_commit
+  previous_commit=$(git -C "$path" rev-parse HEAD 2>/dev/null || true)
   info "Updating ${name}..."
-  if git -C "$path" pull --ff-only 2>/dev/null; then
+  local updated=false
+  if [[ -n "$source_ref" ]]; then
+    [[ ! -f "$CSBX_REGISTRY" ]] && registry_sync
+    local registry_ref registry_commit
+    registry_commit=$(registry_get plugins "$name" commit 2>/dev/null || true)
+    registry_ref="$registry_commit"
+    [[ -z "$registry_ref" ]] && registry_ref=$(registry_get plugins "$name" release 2>/dev/null || true)
+    if [[ -z "$registry_ref" ]]; then
+      err "Installed plugin is pinned, but its registry entry no longer has a pin"
+      return 1
+    fi
+    if git -C "$path" fetch --depth 1 origin "$registry_ref" >/dev/null 2>&1 &&
+       git -C "$path" checkout --detach FETCH_HEAD >/dev/null 2>&1; then
+      local candidate_commit
+      candidate_commit=$(git -C "$path" rev-parse HEAD 2>/dev/null || true)
+      if [[ -n "$registry_commit" && "$candidate_commit" != "$registry_commit"* ]]; then
+        err "Fetched commit does not match the registry pin; restoring ${previous_commit}"
+        git -C "$path" checkout --detach "$previous_commit" >/dev/null 2>&1 || true
+        return 1
+      fi
+      updated=true
+      source_ref="$registry_ref"
+    fi
+  elif git -C "$path" pull --ff-only 2>/dev/null; then
+    updated=true
+  fi
+  if [[ "$updated" == "true" ]]; then
     # Re-run install hook if manifest exists
     if [[ -f "${path}/csbx.yaml" ]]; then
       local install_script
@@ -475,15 +735,33 @@ PYEOF
       if [[ -n "$install_script" && "$install_script" != "None" ]]; then
         if confirm_hook "install" "$install_script"; then
           export CSBX_PLUGIN_DIR="$path"
-          (cd "$path" && bash -c "$install_script") || true
+          if ! (cd "$path" && bash -c "$install_script"); then
+            err "Install hook failed; restoring ${previous_commit}"
+            git -C "$path" checkout --detach "$previous_commit" >/dev/null 2>&1 || true
+            return 1
+          fi
         else
           warn "install hook skipped"
         fi
       fi
     fi
-    ok "${name} updated"
+    local new_commit record
+    new_commit=$(git -C "$path" rev-parse HEAD)
+    record=$(CSBX_TYPE="$type" CSBX_REPO="$(installed_field "$name" repo)" CSBX_TARGET="$path" \
+      CSBX_SOURCE="$source" CSBX_REF="$source_ref" CSBX_COMMIT="$new_commit" python3 - <<'PYEOF'
+import json, os
+print(json.dumps({
+    "type": os.environ["CSBX_TYPE"], "repo": os.environ["CSBX_REPO"], "path": os.environ["CSBX_TARGET"],
+    "source": os.environ["CSBX_SOURCE"], "source_ref": os.environ["CSBX_REF"],
+    "resolved_commit": os.environ["CSBX_COMMIT"], "mutable_source": not bool(os.environ["CSBX_REF"]),
+}))
+PYEOF
+)
+    CSBX_RECORD_NAME="$name" CSBX_RECORD="$record" record_install
+    ok "${name} updated → ${new_commit:0:12}"
   else
-    warn "${name} update failed — try: csbx remove ${name} && csbx install ${name}"
+    err "${name} update failed; existing checkout was left unchanged"
+    return 1
   fi
 }
 
@@ -592,6 +870,13 @@ cmd_pdtm() {
     install_type=$(yaml_get "$input" "install_type")
     go_path=$(yaml_get "$input" "go_install_path")
     version=$(yaml_get "$input" "version")
+  elif [[ "$input" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+    [[ ! -f "$CSBX_REGISTRY" ]] && registry_sync
+    name="$input"
+    repo=$(registry_get pdtm_tools "$name" repo)
+    install_type=$(registry_get pdtm_tools "$name" install_type)
+    go_path=$(registry_get pdtm_tools "$name" go_install_path)
+    version=$(registry_get pdtm_tools "$name" version)
   elif [[ "$input" == *"/"*"/"* ]] || [[ "$input" == "github.com/"* ]]; then
     # Raw go install path
     go_path="$input"
@@ -606,6 +891,13 @@ cmd_pdtm() {
   validate_name "$name" || return 1
   install_type="${install_type:-go}"
   version="${version:-latest}"
+  if [[ "$go_path" == *@* ]]; then
+    version="${go_path##*@}"
+    go_path="${go_path%@*}"
+  fi
+  if [[ "$version" == "latest" ]]; then
+    warn "${name} resolves to @latest and is not reproducible; the installed module version will be recorded"
+  fi
 
   case "$install_type" in
     go)
@@ -618,8 +910,32 @@ cmd_pdtm() {
         return 1
       fi
       info "Installing ${name} via: go install ${go_path}@${version}"
-      if ! GOBIN="${CSBX_BIN}" go install "${go_path}@${version}"; then
+      local go_stage
+      go_stage=$(mktemp -d)
+      if ! GOBIN="$go_stage" go install "${go_path}@${version}"; then
+        rm -rf "$go_stage"
         err "go install failed"
+        return 1
+      fi
+      local built_binary="${go_stage}/${name}"
+      if [[ ! -f "$built_binary" ]]; then
+        local built_files=("${go_stage}"/*)
+        if [[ ${#built_files[@]} -ne 1 || ! -f "${built_files[0]}" ]]; then
+          rm -rf "$go_stage"
+          err "go install did not produce one executable"
+          return 1
+        fi
+        built_binary="${built_files[0]}"
+      fi
+      local binary_backup=""
+      if [[ -e "${CSBX_BIN}/${name}" || -L "${CSBX_BIN}/${name}" ]]; then
+        binary_backup="${go_stage}/previous"
+        mv "${CSBX_BIN}/${name}" "$binary_backup"
+      fi
+      if ! mv "$built_binary" "${CSBX_BIN}/${name}"; then
+        [[ -n "$binary_backup" ]] && mv "$binary_backup" "${CSBX_BIN}/${name}"
+        rm -rf "$go_stage"
+        err "Could not activate ${name}"
         return 1
       fi
       ;;
@@ -633,26 +949,103 @@ cmd_pdtm() {
       ;;
   esac
 
-  # Record installation
-  CSBX_INSTALLED="$CSBX_INSTALLED" CSBX_NAME="$name" CSBX_TYPE="tool" \
-    CSBX_REPO="${repo:-${go_path%%/cmd*}}" CSBX_TARGET="${CSBX_BIN}/${name}" \
-    CSBX_SOURCE="pdtm" python3 - <<'PYEOF' 2>/dev/null
-import yaml, datetime, os
-installed = os.environ['CSBX_INSTALLED']
-with open(installed) as f:
-    d = yaml.safe_load(f) or {'plugins': {}}
-d.setdefault('plugins', {})[os.environ['CSBX_NAME']] = {
-    'type': 'tool',
-    'source': 'pdtm',
-    'repo': os.environ['CSBX_REPO'],
-    'installed_at': datetime.datetime.now().isoformat(),
-    'path': os.environ['CSBX_TARGET']
-}
-with open(installed, 'w') as f:
-    yaml.dump(d, f, default_flow_style=False)
+  local record
+  record=$(CSBX_REPO="${repo:-${go_path%%/cmd*}}" CSBX_TARGET="${CSBX_BIN}/${name}" \
+    CSBX_VERSION="$version" CSBX_GO_PATH="$go_path" python3 - <<'PYEOF'
+import json, os
+print(json.dumps({"type": "tool", "source": "pdtm", "repo": os.environ["CSBX_REPO"],
+                  "path": os.environ["CSBX_TARGET"], "version": os.environ["CSBX_VERSION"],
+                  "go_install_path": os.environ["CSBX_GO_PATH"], "mutable_source": os.environ["CSBX_VERSION"] == "latest"}))
 PYEOF
+)
+  if ! CSBX_RECORD_NAME="$name" CSBX_RECORD="$record" record_install; then
+    rm -f "${CSBX_BIN}/${name}"
+    [[ -n "${binary_backup:-}" && -e "$binary_backup" ]] && mv "$binary_backup" "${CSBX_BIN}/${name}"
+    [[ -n "${go_stage:-}" ]] && rm -rf "$go_stage"
+    err "Could not record PDTM install; previous binary restored"
+    return 1
+  fi
+  [[ -n "${go_stage:-}" ]] && rm -rf "$go_stage"
 
   ok "${name} installed → ${CSBX_BIN}/${name}"
+}
+
+cmd_plan() {
+  local section="plugins" name="${1:?Usage: csbx plan [--pdtm|--caido] <name>}"
+  if [[ "$name" == "--pdtm" ]]; then section="pdtm_tools"; name="${2:?missing name}"; fi
+  if [[ "$name" == "--caido" ]]; then section="caido_plugins"; name="${2:?missing name}"; fi
+  [[ ! -f "$CSBX_REGISTRY" ]] && registry_sync
+  registry_plan "$section" "$name"
+}
+
+cmd_caido() {
+  local operation="$1" name="$2"
+  validate_name "$name" || return 1
+  [[ ! -f "$CSBX_REGISTRY" ]] && registry_sync
+  local manifest release target_dir temporary artifact stage verification
+  manifest=$(registry_get caido_plugins "$name" manifest)
+  release=$(registry_get caido_plugins "$name" release)
+  temporary=$(mktemp -d)
+  artifact="${temporary}/plugin.zip"
+  if ! verification=$(CSBX_REGISTRY="$CSBX_REGISTRY" "$CSBX_REGISTRY_HELPER" verify-caido "$name" --output "$artifact"); then
+    rm -rf "$temporary"
+    return 1
+  fi
+  echo "$verification"
+  if [[ "$operation" == "verify" ]]; then
+    rm -rf "$temporary"
+    ok "${name}@${release} signature verified"
+    return 0
+  fi
+  if ! confirm_action "Install verified ${name}@${release} into ~/.caido/plugins/${name}?"; then
+    rm -rf "$temporary"
+    warn "Install cancelled"
+    return 1
+  fi
+  stage="${temporary}/stage"
+  local extract_json plugin_root
+  if ! extract_json=$(CSBX_REGISTRY="$CSBX_REGISTRY" "$CSBX_REGISTRY_HELPER" extract-caido "$artifact" "$stage" "$manifest"); then
+    rm -rf "$temporary"
+    return 1
+  fi
+  plugin_root=$(CSBX_EXTRACT_JSON="$extract_json" python3 - <<'PYEOF'
+import json, os
+print(json.loads(os.environ["CSBX_EXTRACT_JSON"])["plugin_root"])
+PYEOF
+)
+  [[ "$plugin_root" == "$stage" || "$plugin_root" == "$stage"/* ]] || {
+    rm -rf "$temporary"; err "Extractor returned an unsafe plugin root"; return 1;
+  }
+  target_dir="${CAIDO_PLUGIN_HOME:-$HOME/.caido/plugins}/${name}"
+  mkdir -p "$(dirname "$target_dir")"
+  local backup=""
+  if [[ -e "$target_dir" ]]; then backup="${target_dir}.backup.$(date +%s)"; mv "$target_dir" "$backup"; fi
+  if ! mv "$plugin_root" "$target_dir"; then
+    [[ -n "$backup" ]] && mv "$backup" "$target_dir"
+    rm -rf "$temporary"
+    err "Failed to activate ${name}; previous version restored"
+    return 1
+  fi
+  local record
+  record=$(CSBX_TARGET="$target_dir" CSBX_RELEASE="$release" CSBX_VERIFY_JSON="$verification" python3 - <<'PYEOF'
+import json, os
+verified = json.loads(os.environ["CSBX_VERIFY_JSON"])
+print(json.dumps({"type": "caido-plugin", "source": "signed-release",
+                  "version": os.environ["CSBX_RELEASE"], "path": os.environ["CSBX_TARGET"],
+                  "sha256": verified["sha256"], "signature": verified["signature_method"],
+                  "mutable_source": False}))
+PYEOF
+)
+  if ! CSBX_RECORD_NAME="$name" CSBX_RECORD="$record" record_install; then
+    rm -rf "$target_dir"
+    [[ -n "$backup" ]] && mv "$backup" "$target_dir"
+    rm -rf "$temporary"
+    err "Could not record signed plugin; previous version restored"
+    return 1
+  fi
+  [[ -n "$backup" ]] && rm -rf "$backup"
+  rm -rf "$temporary"
+  ok "${name}@${release} installed → ${target_dir}"
 }
 
 # ── Verify (supply-chain) ────────────────────────────────────
@@ -905,15 +1298,20 @@ COMMANDS:
   search [query]        Search available plugins
   info <plugin>         Show plugin details
   install <plugin>      Install from registry
+  install --caido <id>  Verify and install a signed Caido release
   install <git-url>     Install from any git URL
   remove <plugin>       Uninstall a plugin
-  update <plugin>       Update a plugin (git pull)
+  update <plugin>       Update without overwriting local changes
   update --all          Update all plugins
   list                  List installed plugins
   list --available      List all registry plugins
   sync                  Force re-fetch registry
-  pdtm <manifest|path>  Install a pdtm-format Go tool (projectdiscovery-compatible)
-  verify [flags]        Verify cosign signature, SBOM, Rekor entry on a pulled image
+  pdtm <name|path>      Install a named registry tool or Go module path
+  plan [flags] <name>   Print the resolved install plan without changing state
+  verify-plugin --caido <id>
+                        Download and verify a signed Caido release
+  verify-image [flags]  Verify image signature, SBOM, and Rekor entry
+  verify [flags]        Compatibility alias for verify-image
   doctor                Health check
 
 PLUGIN TYPES:
@@ -926,6 +1324,8 @@ PLUGIN TYPES:
 EXAMPLES:
   csbx install seclists
   csbx install payloadsallthethings
+  csbx pdtm subfinder
+  csbx plan --pdtm nuclei
   csbx install https://github.com/someone/custom-tool
   csbx search xss
   csbx list
@@ -934,6 +1334,10 @@ EXAMPLES:
 ENVIRONMENT:
   CSBX_HOME             Plugin root (default: ~/.csbx)
   CSBX_REGISTRY_URL     Registry URL (default: ProwlrBot/csbx-registry)
+  CSBX_YES=1            Accept non-hook confirmations
+  CSBX_ACCEPT_HOOKS=1   With CSBX_YES=1, approve displayed hooks
+  CAIDO_PLUGIN_HOME     Caido plugin directory (default: ~/.caido/plugins)
+  NO_COLOR=1            Disable terminal colors
 EOF
   exit 0
 }
@@ -941,15 +1345,26 @@ EOF
 ensure_dirs
 
 case "${1:-}" in
-  search)   require_yaml && cmd_search "${2:-}" ;;
-  info)     require_yaml && cmd_info "${2:?Usage: csbx info <plugin>}" ;;
-  install)  require_yaml && cmd_install "${2:?Usage: csbx install <plugin|url>}" ;;
-  remove)   require_yaml && cmd_remove "${2:?Usage: csbx remove <plugin>}" ;;
-  update)   require_yaml && cmd_update "${2:?Usage: csbx update <plugin|--all>}" ;;
-  list)     require_yaml && cmd_list "${2:-}" ;;
-  sync)     registry_sync ;;
-  pdtm)     require_yaml && cmd_pdtm "${2:?Usage: csbx pdtm <manifest.yaml|go-install-path>}" ;;
-  verify)   shift; cmd_verify "$@" ;;
+  search)   require_yaml && require_registry_helper && cmd_search "${2:-}" ;;
+  info)     require_yaml && require_registry_helper && cmd_info "${2:?Usage: csbx info <plugin>}" ;;
+  install)
+    require_yaml && require_registry_helper && require_non_root_install && acquire_mutation_lock
+    shift
+    if [[ "${1:-}" == "--caido" ]]; then cmd_caido install "${2:?Usage: csbx install --caido <name>}"
+    else cmd_install "${1:?Usage: csbx install <plugin|url>}"; fi
+    ;;
+  remove)   require_yaml && require_non_root_install && acquire_mutation_lock && cmd_remove "${2:?Usage: csbx remove <plugin>}" ;;
+  update)   require_yaml && require_registry_helper && require_non_root_install && acquire_mutation_lock && cmd_update "${2:?Usage: csbx update <plugin|--all>}" ;;
+  list)     require_yaml && require_registry_helper && cmd_list "${2:-}" ;;
+  sync)     require_registry_helper && acquire_mutation_lock && registry_sync ;;
+  pdtm)     require_yaml && require_registry_helper && require_non_root_install && acquire_mutation_lock && cmd_pdtm "${2:?Usage: csbx pdtm <name|manifest.yaml|go-install-path>}" ;;
+  plan)     require_yaml && require_registry_helper && shift && cmd_plan "$@" ;;
+  verify-plugin)
+    require_yaml && require_registry_helper
+    [[ "${2:-}" == "--caido" ]] || { err "Usage: csbx verify-plugin --caido <name>"; exit 2; }
+    cmd_caido verify "${3:?Usage: csbx verify-plugin --caido <name>}"
+    ;;
+  verify-image|verify) shift; cmd_verify "$@" ;;
   doctor)   cmd_doctor ;;
   -h|--help|help|"") usage ;;
   *)        err "Unknown command: $1"; usage ;;

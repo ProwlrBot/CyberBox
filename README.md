@@ -116,11 +116,22 @@ csbx search xss
 csbx install seclists
 csbx install gf-patterns
 csbx pdtm subfinder
+csbx plan seclists
+csbx plan --pdtm subfinder
 csbx list
 ```
 
 The community registry lives in
-[ProwlrBot/csbx-registry](https://github.com/ProwlrBot/csbx-registry).
+[ProwlrBot/csbx-registry](https://github.com/ProwlrBot/csbx-registry). CyberBox
+validates the registry version and intake policy before replacing its local
+copy. Standard plugins show whether their source is pinned. Caido entries use
+the stricter signed-release path and are verified before extraction.
+
+The Plugin Center shows the same resolved plan used by the CLI. It does not
+install silently: the final command is handed to the terminal, where mutable
+sources and install hooks still require confirmation. See the
+[CSBX registry guide](cybersandbox/docs/csbx-registry.md) for the trust model
+and non-interactive flags.
 
 ## Security model
 
@@ -161,6 +172,7 @@ platform/docs/       Browser Hunt and runtime notes
 caido-plugin/        Prowlr Caido plugin
 prowl/               pipeline, provider wrappers, patterns, and tests
 openshell/           optional OpenShell policy template
+plugins/scope-deck/  local target and scope research catalog
 ```
 
 The high-level system design is in [ARCHITECTURE.md](ARCHITECTURE.md). Extension

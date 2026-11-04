@@ -1,6 +1,6 @@
 # csbx — port audit (spec 018, phase 3-1)
 
-Inventory of `cybersandbox/prowl-bin/csbx` (946 bash lines) for the Go
+Inventory of the Bash implementation in `prowl/bin/csbx` for the Go
 port. This document is the contract that phases 3-2 and 3-3 verify
 against — every behaviour listed here must round-trip through the Go
 implementation, and the existing bash test suite (`prowl/tests/test_csbx.sh`)
@@ -8,7 +8,8 @@ is the regression baseline once the bash file becomes a shim.
 
 ## Source of truth
 
-- Canonical path: `cybersandbox/prowl-bin/csbx`
+- Canonical path: `prowl/bin/csbx`
+- Registry validation and signed-release handling: `prowl/bin/csbx-registry`
 - Mirror: `prowl/bin/csbx` (byte-identical at audit time, mtime-synced
   by the cybersandbox build; treat as a copy, NOT a separate target).
 - Mirror divergence is a build bug — surface to the user; do not port it

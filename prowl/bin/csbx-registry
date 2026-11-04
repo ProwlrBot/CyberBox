@@ -1,0 +1,418 @@
+#!/usr/bin/env python3
+"""Validate and resolve the csbx registry without executing plugin code."""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import shutil
+import stat
+import subprocess
+import sys
+import tempfile
+import urllib.error
+import urllib.parse
+import urllib.request
+import zipfile
+from pathlib import Path, PurePosixPath
+from typing import Any
+
+import yaml
+
+SUPPORTED_VERSION = 1
+SECTIONS = ("pdtm_tools", "plugins", "caido_plugins")
+PLUGIN_TYPES = {
+    "tool", "wordlist", "nuclei-templates", "yara-rules", "sigma",
+    "threat-intel", "theme", "config",
+}
+PLATFORMS = {
+    "linux-amd64", "linux-arm64", "darwin-amd64", "darwin-arm64",
+    "windows-amd64", "windows-arm64",
+}
+NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+REPO_RE = re.compile(r"^https://(?:github\.com|gitlab\.com|codeberg\.org)/[^/\s]+/[^/\s]+/?$")
+GO_RE = re.compile(r"^[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~+-]+)+$")
+MAX_REGISTRY_BYTES = 8 * 1024 * 1024
+MAX_ARTIFACT_BYTES = 512 * 1024 * 1024
+MAX_ARCHIVE_FILES = 20_000
+MAX_UNPACKED_BYTES = 1024 * 1024 * 1024
+
+
+class RegistryError(ValueError):
+    pass
+
+
+def _mapping(value: Any, label: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise RegistryError(f"{label} must be a mapping")
+    return value
+
+
+def _allowed(entry: dict[str, Any], allowed: set[str], label: str) -> None:
+    unknown = sorted(set(entry) - allowed)
+    if unknown:
+        raise RegistryError(f"{label} contains unsupported fields: {', '.join(unknown)}")
+
+
+def _required(entry: dict[str, Any], fields: set[str], label: str) -> None:
+    missing = sorted(fields - set(entry))
+    if missing:
+        raise RegistryError(f"{label} is missing: {', '.join(missing)}")
+
+
+def load_registry(path: Path) -> dict[str, Any]:
+    try:
+        if path.stat().st_size > MAX_REGISTRY_BYTES:
+            raise RegistryError("registry exceeds the 8 MiB size limit")
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        raise RegistryError(f"cannot read registry: {exc}") from exc
+    root = _mapping(data, "registry")
+    _allowed(root, {"version", "policy_version", "updated", *SECTIONS}, "registry")
+    if root.get("version") != SUPPORTED_VERSION:
+        raise RegistryError(
+            f"unsupported registry version {root.get('version')!r}; client supports {SUPPORTED_VERSION}"
+        )
+    policy = root.get("policy_version")
+    if not isinstance(policy, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", policy):
+        raise RegistryError("policy_version must be an ISO date")
+    updated = root.get("updated")
+    if updated is not None and (not isinstance(updated, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", updated)):
+        raise RegistryError("updated must be an ISO date when present")
+    for section in SECTIONS:
+        _mapping(root.get(section), section)
+    validate_registry(root)
+    return root
+
+
+def validate_registry(root: dict[str, Any]) -> None:
+    for name, raw in root["pdtm_tools"].items():
+        _validate_name(name)
+        entry = _mapping(raw, f"pdtm_tools.{name}")
+        label = f"pdtm_tools.{name}"
+        _required(entry, {"repo", "install_type", "go_install_path", "version"}, label)
+        _allowed(entry, {"repo", "install_type", "go_install_path", "version"}, label)
+        if entry["install_type"] != "go":
+            raise RegistryError(f"{label}.install_type must be go")
+        if not isinstance(entry["repo"], str) or not re.fullmatch(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+", entry["repo"]):
+            raise RegistryError(f"{label}.repo is invalid")
+        if not isinstance(entry["go_install_path"], str):
+            raise RegistryError(f"{label}.go_install_path is invalid")
+        if not isinstance(entry["version"], str) or not entry["version"]:
+            raise RegistryError(f"{label}.version is invalid")
+        _normalized_go_source(entry, label)
+
+    for name, raw in root["plugins"].items():
+        _validate_name(name)
+        entry = _mapping(raw, f"plugins.{name}")
+        label = f"plugins.{name}"
+        _required(entry, {"repo", "type", "description", "size", "tags"}, label)
+        _allowed(entry, {"repo", "type", "description", "size", "tags", "platforms", "release", "commit", "sha256"}, label)
+        _validate_common(entry, label)
+        if entry["type"] not in PLUGIN_TYPES:
+            raise RegistryError(f"{label}.type is unsupported")
+        _validate_pin(entry, label)
+
+    for name, raw in root["caido_plugins"].items():
+        _validate_name(name)
+        entry = _mapping(raw, f"caido_plugins.{name}")
+        label = f"caido_plugins.{name}"
+        _required(entry, {"repo", "type", "description", "size", "tags", "release", "manifest", "signature"}, label)
+        _allowed(entry, {"repo", "type", "description", "size", "tags", "release", "manifest", "signature", "platforms", "attestations", "behavioral_test", "asset"}, label)
+        _validate_common(entry, label)
+        if entry["type"] != "caido-plugin":
+            raise RegistryError(f"{label}.type must be caido-plugin")
+        if not isinstance(entry["release"], str) or not entry["release"]:
+            raise RegistryError(f"{label}.release is invalid")
+        _safe_relative(entry["manifest"], f"{label}.manifest")
+        signature = _mapping(entry["signature"], f"{label}.signature")
+        method = signature.get("method")
+        if method == "cosign":
+            _required(signature, {"method", "issuer", "identity"}, f"{label}.signature")
+            _allowed(signature, {"method", "issuer", "identity"}, f"{label}.signature")
+        elif method == "minisign":
+            _required(signature, {"method", "public_key"}, f"{label}.signature")
+            _allowed(signature, {"method", "public_key"}, f"{label}.signature")
+        else:
+            raise RegistryError(f"{label}.signature.method is unsupported")
+
+
+def _validate_name(name: Any) -> None:
+    if not isinstance(name, str) or not NAME_RE.fullmatch(name):
+        raise RegistryError(f"invalid registry entry name: {name!r}")
+
+
+def _validate_common(entry: dict[str, Any], label: str) -> None:
+    if not isinstance(entry["repo"], str) or not REPO_RE.fullmatch(entry["repo"]):
+        raise RegistryError(f"{label}.repo must use a supported HTTPS forge")
+    if not isinstance(entry["description"], str) or len(entry["description"]) < 10:
+        raise RegistryError(f"{label}.description is too short")
+    if not isinstance(entry["size"], str) or not entry["size"].strip():
+        raise RegistryError(f"{label}.size must be a non-empty string")
+    if not isinstance(entry["tags"], list) or not entry["tags"] or not all(isinstance(v, str) and v for v in entry["tags"]):
+        raise RegistryError(f"{label}.tags must be a non-empty string list")
+    platforms = entry.get("platforms")
+    if platforms is not None and (not isinstance(platforms, list) or not platforms or set(platforms) - PLATFORMS):
+        raise RegistryError(f"{label}.platforms contains unsupported values")
+
+
+def _validate_pin(entry: dict[str, Any], label: str) -> None:
+    if "commit" in entry and (not isinstance(entry["commit"], str) or not re.fullmatch(r"[0-9a-fA-F]{7,64}", entry["commit"])):
+        raise RegistryError(f"{label}.commit is invalid")
+    if "sha256" in entry and (not isinstance(entry["sha256"], str) or not re.fullmatch(r"[0-9a-fA-F]{64}", entry["sha256"])):
+        raise RegistryError(f"{label}.sha256 is invalid")
+
+
+def _normalized_go_source(entry: dict[str, Any], label: str) -> str:
+    path = entry["go_install_path"]
+    version = entry["version"]
+    if "@" in path:
+        path, embedded_version = path.rsplit("@", 1)
+        if not embedded_version or embedded_version != version:
+            raise RegistryError(f"{label}.go_install_path version conflicts with version")
+    if not GO_RE.fullmatch(path):
+        raise RegistryError(f"{label}.go_install_path is invalid")
+    return f"{path}@{version}"
+
+
+def _safe_relative(value: Any, label: str) -> PurePosixPath:
+    if not isinstance(value, str) or not value:
+        raise RegistryError(f"{label} must be a relative path")
+    path = PurePosixPath(value)
+    if path.is_absolute() or ".." in path.parts or "" in path.parts:
+        raise RegistryError(f"{label} is unsafe")
+    return path
+
+
+def resolve(root: dict[str, Any], section: str, name: str) -> dict[str, Any]:
+    if section not in SECTIONS:
+        raise RegistryError(f"unknown section: {section}")
+    _validate_name(name)
+    entry = root[section].get(name)
+    if not isinstance(entry, dict):
+        raise RegistryError(f"{name!r} not found in {section}")
+    return entry
+
+
+def plan(root: dict[str, Any], section: str, name: str) -> dict[str, Any]:
+    entry = resolve(root, section, name)
+    base: dict[str, Any] = {
+        "registry_version": root["version"], "policy_version": root["policy_version"],
+        "section": section, "name": name, "entry": entry,
+    }
+    if section == "pdtm_tools":
+        base.update({"trust_tier": "standard", "source": _normalized_go_source(entry, f"pdtm_tools.{name}"),
+                     "reproducible": entry["version"] != "latest", "requires_confirmation": True})
+    elif section == "caido_plugins":
+        base.update({"trust_tier": "strict", "source": f"{entry['repo']}@{entry['release']}",
+                     "reproducible": True, "signature": entry["signature"], "requires_confirmation": True})
+    else:
+        pin = entry.get("commit") or entry.get("release")
+        base.update({"trust_tier": "standard", "source": entry["repo"], "source_ref": pin,
+                     "reproducible": bool(pin), "mutable_source": not bool(pin), "requires_confirmation": True})
+    return base
+
+
+def catalog(root: dict[str, Any]) -> list[dict[str, Any]]:
+    return [plan(root, section, name) for section in SECTIONS for name in sorted(root[section])]
+
+
+def _github_slug(repo: str) -> str:
+    match = re.fullmatch(r"https://github\.com/([^/]+/[^/]+)/?", repo)
+    if not match:
+        raise RegistryError("signed Caido installation currently requires a GitHub repository")
+    return match.group(1)
+
+
+def _request_json(url: str) -> dict[str, Any]:
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "CyberBox-csbx"}
+    token = os.environ.get("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    request = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            if int(response.headers.get("Content-Length", "0") or 0) > 4 * 1024 * 1024:
+                raise RegistryError("release metadata exceeds size limit")
+            return _mapping(json.loads(response.read(4 * 1024 * 1024)), "release metadata")
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        raise RegistryError(f"release metadata request failed: {exc}") from exc
+
+
+def _download(url: str, destination: Path) -> None:
+    _validate_download_url(url)
+    request = urllib.request.Request(url, headers={"User-Agent": "CyberBox-csbx"})
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response, destination.open("wb") as handle:
+            _validate_download_url(response.geturl())
+            total = 0
+            while chunk := response.read(64 * 1024):
+                total += len(chunk)
+                if total > MAX_ARTIFACT_BYTES:
+                    raise RegistryError("release artifact exceeds 512 MiB")
+                handle.write(chunk)
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        destination.unlink(missing_ok=True)
+        raise RegistryError(f"artifact download failed: {exc}") from exc
+
+
+def _download_small(url: str, destination: Path, limit: int = 64 * 1024) -> None:
+    _validate_download_url(url)
+    request = urllib.request.Request(url, headers={"User-Agent": "CyberBox-csbx"})
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            _validate_download_url(response.geturl())
+            blob = response.read(limit + 1)
+        if len(blob) > limit:
+            raise RegistryError("verification key exceeds size limit")
+        destination.write_bytes(blob)
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        destination.unlink(missing_ok=True)
+        raise RegistryError(f"verification key download failed: {exc}") from exc
+
+
+def _validate_download_url(url: str) -> None:
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+        raise RegistryError("release downloads must use HTTPS URLs without credentials")
+
+
+def _asset_urls(entry: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any] | None]:
+    slug = _github_slug(entry["repo"])
+    metadata = _request_json(f"https://api.github.com/repos/{slug}/releases/tags/{entry['release']}")
+    assets = [item for item in metadata.get("assets", []) if isinstance(item, dict)]
+    explicit = entry.get("asset")
+    primary = [item for item in assets if item.get("name") == explicit] if explicit else [
+        item for item in assets if str(item.get("name", "")).lower().endswith(".zip")
+    ]
+    if len(primary) != 1:
+        raise RegistryError("release must contain exactly one primary asset or declare the asset name")
+    chosen = primary[0]
+    name = str(chosen.get("name", ""))
+    method = entry["signature"]["method"]
+    suffix = ".minisig" if method == "minisign" else ".sig"
+    sigs = [item for item in assets if item.get("name") == name + suffix]
+    certs = [item for item in assets if item.get("name") == name + ".pem"] if method == "cosign" else []
+    if len(sigs) != 1 or (method == "cosign" and len(certs) != 1):
+        raise RegistryError("release signature sidecars must match the primary asset name")
+    return chosen, sigs[0], certs[0] if certs else None
+
+
+def verify_caido(root: dict[str, Any], name: str, output: Path | None = None) -> dict[str, Any]:
+    entry = resolve(root, "caido_plugins", name)
+    primary, signature, certificate = _asset_urls(entry)
+    with tempfile.TemporaryDirectory(prefix="csbx-caido-") as temporary:
+        directory = Path(temporary)
+        artifact = directory / str(primary["name"])
+        sig_file = directory / str(signature["name"])
+        _download(str(primary["browser_download_url"]), artifact)
+        _download(str(signature["browser_download_url"]), sig_file)
+        method = entry["signature"]["method"]
+        if method == "cosign":
+            if not shutil.which("cosign"):
+                raise RegistryError("cosign is required to verify this plugin")
+            assert certificate is not None
+            cert_file = directory / str(certificate["name"])
+            _download(str(certificate["browser_download_url"]), cert_file)
+            command = ["cosign", "verify-blob", "--certificate-identity", entry["signature"]["identity"],
+                       "--certificate-oidc-issuer", entry["signature"]["issuer"], "--signature", str(sig_file),
+                       "--certificate", str(cert_file), str(artifact)]
+        else:
+            if not shutil.which("minisign"):
+                raise RegistryError("minisign is required to verify this plugin")
+            public_key = entry["signature"]["public_key"]
+            if public_key.startswith("https://"):
+                key_file = directory / "minisign.pub"
+                _download_small(public_key, key_file)
+                command = ["minisign", "-Vm", str(artifact), "-x", str(sig_file), "-p", str(key_file)]
+            elif re.fullmatch(r"R[WU][A-Za-z0-9+/=]{40,}", public_key):
+                command = ["minisign", "-Vm", str(artifact), "-x", str(sig_file), "-P", public_key]
+            else:
+                raise RegistryError("minisign public_key must be an inline key or HTTPS URL")
+        result = subprocess.run(command, capture_output=True, text=True, timeout=60, check=False)
+        if result.returncode:
+            raise RegistryError(f"signature verification failed: {(result.stderr or result.stdout)[:500]}")
+        digest_hash = hashlib.sha256()
+        with artifact.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest_hash.update(chunk)
+        digest = digest_hash.hexdigest()
+        if output:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(artifact, output)
+        return {"name": name, "release": entry["release"], "asset": artifact.name,
+                "sha256": digest, "signature_method": method, "verified": True}
+
+
+def safe_extract_zip(archive: Path, destination: Path, manifest: str) -> Path:
+    manifest_path = _safe_relative(manifest, "manifest")
+    try:
+        with zipfile.ZipFile(archive) as bundle:
+            members = bundle.infolist()
+            if len(members) > MAX_ARCHIVE_FILES:
+                raise RegistryError("archive contains too many files")
+            total = sum(item.file_size for item in members)
+            if total > MAX_UNPACKED_BYTES:
+                raise RegistryError("archive expands beyond 1 GiB")
+            for item in members:
+                path = _safe_relative(item.filename.rstrip("/"), "archive member") if item.filename.rstrip("/") else None
+                mode = item.external_attr >> 16
+                if path and stat.S_ISLNK(mode):
+                    raise RegistryError("archive symlinks are not allowed")
+                if path and stat.S_IFMT(mode) not in (0, stat.S_IFREG, stat.S_IFDIR):
+                    raise RegistryError("archive contains a special file")
+            bundle.extractall(destination)
+    except (zipfile.BadZipFile, OSError) as exc:
+        raise RegistryError(f"invalid plugin archive: {exc}") from exc
+    matches = list(destination.rglob(manifest_path.as_posix()))
+    if len(matches) != 1:
+        if matches:
+            raise RegistryError(f"declared manifest {manifest} is ambiguous in the archive")
+        raise RegistryError(f"declared manifest {manifest} was not found in the archive")
+    return matches[0].parent
+
+
+def _write_json(value: Any) -> None:
+    print(json.dumps(value, indent=2, sort_keys=True))
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(prog="csbx-registry")
+    parser.add_argument("--registry", default=os.environ.get("CSBX_REGISTRY", str(Path.home() / ".csbx/registry.yaml")))
+    commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("validate")
+    resolve_parser = commands.add_parser("resolve"); resolve_parser.add_argument("section", choices=SECTIONS); resolve_parser.add_argument("name")
+    plan_parser = commands.add_parser("plan"); plan_parser.add_argument("section", choices=SECTIONS); plan_parser.add_argument("name")
+    commands.add_parser("catalog")
+    get_parser = commands.add_parser("get"); get_parser.add_argument("section", choices=SECTIONS); get_parser.add_argument("name"); get_parser.add_argument("field")
+    verify_parser = commands.add_parser("verify-caido"); verify_parser.add_argument("name"); verify_parser.add_argument("--output", type=Path)
+    extract_parser = commands.add_parser("extract-caido"); extract_parser.add_argument("archive", type=Path); extract_parser.add_argument("destination", type=Path); extract_parser.add_argument("manifest")
+    args = parser.parse_args()
+    try:
+        root = load_registry(Path(args.registry))
+        if args.command == "validate":
+            _write_json({"ok": True, "version": root["version"], "policy_version": root["policy_version"],
+                         "counts": {section: len(root[section]) for section in SECTIONS}})
+        elif args.command == "resolve": _write_json(resolve(root, args.section, args.name))
+        elif args.command == "plan": _write_json(plan(root, args.section, args.name))
+        elif args.command == "catalog": _write_json(catalog(root))
+        elif args.command == "get":
+            value: Any = resolve(root, args.section, args.name)
+            for key in args.field.split("."):
+                value = value[key]
+            print(json.dumps(value) if isinstance(value, (dict, list)) else value)
+        elif args.command == "verify-caido": _write_json(verify_caido(root, args.name, args.output))
+        elif args.command == "extract-caido":
+            args.destination.mkdir(parents=True, exist_ok=False)
+            plugin_root = safe_extract_zip(args.archive, args.destination, args.manifest)
+            _write_json({"ok": True, "destination": str(args.destination), "plugin_root": str(plugin_root)})
+        return 0
+    except (RegistryError, KeyError) as exc:
+        print(f"csbx-registry: {exc}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

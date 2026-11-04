@@ -67,7 +67,9 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     go install github.com/ffuf/ffuf/v2@v2.1.0; \
     # gitleaks built from source (inherits pinned Go toolchain → picks up
     # stdlib CVE fixes).
-    go install github.com/zricethezav/gitleaks/v8@v8.30.1
+    go install github.com/zricethezav/gitleaks/v8@v8.30.1; \
+    # Used by csbx for strict-tier Caido release verification.
+    go install github.com/sigstore/cosign/v2/cmd/cosign@v2.4.3
 
 # trufflehog from release tarball (replace directives block `go install`).
 ARG TRUFFLEHOG_VER=v3.94.3
@@ -113,7 +115,7 @@ RUN set -eux; \
       zsh tmux socat netcat-openbsd \
       python3-venv \
       mitmproxy tcpdump tshark \
-      gnupg ca-certificates \
+      gnupg ca-certificates minisign \
       crystal; \
     # Aggressive cleanup — apt cache, lists, docs, locales we don't ship.
     apt-get clean; \
@@ -167,20 +169,21 @@ RUN nuclei -update-templates 2>/dev/null || true
 # ── Prowl CLI (invoke-claude, invoke-ollama, prowl) ──
 # Project-local files placed last so a churn here only invalidates the
 # tail of the layer cache.
-COPY prowl-bin/ /usr/local/bin/
-COPY mcp-hub-cyber.json /opt/cybersandbox/mcp-hub-cyber.json
-COPY entrypoint-cyber.sh /opt/cybersandbox/entrypoint-cyber.sh
-COPY workspace-migrate.sh /opt/cybersandbox/workspace-migrate.sh
-COPY healthcheck.sh /opt/cybersandbox/healthcheck.sh
-COPY plugin-center/ /opt/cybersandbox/plugin-center/
-COPY plugin-center/nginx.conf /opt/gem/nginx/csbx.conf
-COPY plugin-center/supervisor.conf /opt/gem/supervisord/csbx-ui.conf
+COPY prowl/bin/ /usr/local/bin/
+COPY cybersandbox/mcp-hub-cyber.json /opt/cybersandbox/mcp-hub-cyber.json
+COPY cybersandbox/entrypoint-cyber.sh /opt/cybersandbox/entrypoint-cyber.sh
+COPY cybersandbox/workspace-migrate.sh /opt/cybersandbox/workspace-migrate.sh
+COPY cybersandbox/healthcheck.sh /opt/cybersandbox/healthcheck.sh
+COPY cybersandbox/plugin-center/ /opt/cybersandbox/plugin-center/
+COPY cybersandbox/plugin-center/nginx.conf /opt/gem/nginx/csbx.conf
+COPY cybersandbox/plugin-center/supervisor.conf /opt/gem/supervisord/csbx-ui.conf
 
 RUN set -eux; \
     chmod +x /usr/local/bin/invoke-claude \
              /usr/local/bin/invoke-ollama \
              /usr/local/bin/prowl \
              /usr/local/bin/csbx \
+             /usr/local/bin/csbx-registry \
              /opt/cybersandbox/entrypoint-cyber.sh \
              /opt/cybersandbox/workspace-migrate.sh \
              /opt/cybersandbox/healthcheck.sh; \

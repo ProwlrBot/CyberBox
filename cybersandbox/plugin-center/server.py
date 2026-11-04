@@ -13,7 +13,7 @@ import socket
 import base64
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
 
 import yaml
@@ -262,17 +262,36 @@ def state() -> dict:
     registry = load_yaml(REGISTRY)
     installed = load_yaml(INSTALLED).get("plugins", {})
     plugins = []
-    for name, item in sorted(registry.get("plugins", {}).items()):
-        if not NAME.fullmatch(name) or not isinstance(item, dict):
-            continue
-        current = installed.get(name)
-        plugin_type = item.get("type", "other")
-        plugins.append({"name": name, "type": plugin_type,
-                        "description": item.get("description", ""), "size": item.get("size", "?"),
-                        "tags": item.get("tags", []), "repo": item.get("repo", ""),
-                        "installed": bool(current), "installed_info": current,
-                        "profiles": [profile for profile, types in PROFILE_TYPES.items()
-                                     if plugin_type in types]})
+    sections = (
+        ("plugins", "standard"), ("pdtm_tools", "standard"),
+        ("caido_plugins", "strict"),
+    )
+    for section, trust_tier in sections:
+        for name, item in sorted(registry.get(section, {}).items()):
+            if not NAME.fullmatch(name) or not isinstance(item, dict):
+                continue
+            current = installed.get(name)
+            plugin_type = item.get("type", "go-tool" if section == "pdtm_tools" else "other")
+            pinned = bool(item.get("commit") or item.get("release") or
+                          (section == "pdtm_tools" and item.get("version") != "latest"))
+            if section == "pdtm_tools":
+                command = f"csbx pdtm {name}"
+                description = f"Go tool from {item.get('repo', '')}"
+            elif section == "caido_plugins":
+                command = f"csbx install --caido {name}"
+                description = item.get("description", "")
+            else:
+                command = f"csbx install {name}"
+                description = item.get("description", "")
+            plugins.append({"name": name, "section": section, "type": plugin_type,
+                            "description": description, "size": item.get("size", "?"),
+                            "tags": item.get("tags", []), "repo": item.get("repo", ""),
+                            "installed": bool(current), "installed_info": current,
+                            "trust_tier": trust_tier, "pinned": pinned,
+                            "signature_method": (item.get("signature") or {}).get("method"),
+                            "platforms": item.get("platforms", []), "command": command,
+                            "profiles": [profile for profile, types in PROFILE_TYPES.items()
+                                         if plugin_type in types]})
     previews = [{**preview, "available": bool(
                     (preview.get("binary") and shutil.which(preview["binary"])) or
                     (preview.get("plugin") and preview["plugin"] in installed))}
@@ -285,6 +304,39 @@ def state() -> dict:
                          "updated": registry.get("updated")},
             "paths": {"home": str(HOME), "registry": str(REGISTRY),
                       "installed": str(INSTALLED)}}
+
+
+def install_plan(name: str) -> dict:
+    if not NAME.fullmatch(name):
+        raise ValueError("invalid plugin name")
+    registry = load_yaml(REGISTRY)
+    for section in ("plugins", "pdtm_tools", "caido_plugins"):
+        entry = registry.get(section, {}).get(name)
+        if not isinstance(entry, dict):
+            continue
+        if section == "pdtm_tools":
+            source_ref = entry.get("version", "")
+            command = f"csbx pdtm {name}"
+            reproducible = source_ref != "latest"
+        elif section == "caido_plugins":
+            source_ref = entry.get("release", "")
+            command = f"csbx install --caido {name}"
+            reproducible = bool(source_ref)
+        else:
+            source_ref = entry.get("commit") or entry.get("release") or ""
+            command = f"csbx install {name}"
+            reproducible = bool(source_ref)
+        return {
+            "name": name, "section": section, "command": command,
+            "repo": entry.get("repo", ""), "source_ref": source_ref,
+            "registry_version": registry.get("version"),
+            "policy_version": registry.get("policy_version"),
+            "trust_tier": "strict" if section == "caido_plugins" else "standard",
+            "signature": entry.get("signature") if section == "caido_plugins" else None,
+            "reproducible": reproducible, "mutable_source": not reproducible,
+            "requires_confirmation": True,
+        }
+    raise KeyError(name)
 
 
 def health(*, opener=urlopen, runner=subprocess.run, finder=shutil.which,
@@ -553,7 +605,8 @@ class Handler(BaseHTTPRequestHandler):
         return json.loads(self.rfile.read(length).decode())
 
     def do_GET(self) -> None:  # noqa: N802
-        path = urlparse(self.path).path
+        parsed_request = urlparse(self.path)
+        path = parsed_request.path
         if path == "/api/state":
             self.send_json(200, state())
             return
@@ -562,6 +615,15 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/runtime":
             self.send_json(200, runtime())
+            return
+        if path == "/api/plan":
+            name = parse_qs(parsed_request.query).get("name", [""])[0]
+            try:
+                self.send_json(200, install_plan(name))
+            except ValueError as exc:
+                self.send_json(400, {"ok": False, "error": str(exc)})
+            except KeyError:
+                self.send_json(404, {"ok": False, "error": "plugin not found"})
             return
         match = re.fullmatch(r"/api/services/([a-z0-9-]+)/logs", path)
         if match:
@@ -696,4 +758,10 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     HOME.mkdir(parents=True, exist_ok=True)
-    ThreadingHTTPServer(("127.0.0.1", 8199), Handler).serve_forever()
+    server = ThreadingHTTPServer(("127.0.0.1", 8199), Handler)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
