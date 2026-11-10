@@ -30,11 +30,13 @@ interface ProfileCtx {
   setActiveProfile: (id: string) => void;
   firstLaunch: boolean;
   completeFirstLaunch: () => void;
+  reloadProfiles: () => Promise<void>;
 }
 
 const Ctx = createContext<ProfileCtx>({
   profiles: [], activeProfile: null, activeProfileId: "",
   setActiveProfile: () => undefined, firstLaunch: false, completeFirstLaunch: () => undefined,
+  reloadProfiles: async () => undefined,
 });
 
 export function ProfileProvider({ children }: { children: ReactNode }) {
@@ -60,10 +62,15 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(FIRST_LAUNCH_KEY, "done");
   }
 
+  async function reloadProfiles() {
+    const data = await fetchProfilesFromApi();
+    setProfiles(data);
+  }
+
   const activeProfile = profiles.find((p) => p.id === activeProfileId) ?? profiles[0] ?? null;
 
   return (
-    <Ctx.Provider value={{ profiles, activeProfile, activeProfileId, setActiveProfile, firstLaunch, completeFirstLaunch }}>
+    <Ctx.Provider value={{ profiles, activeProfile, activeProfileId, setActiveProfile, firstLaunch, completeFirstLaunch, reloadProfiles }}>
       {children}
     </Ctx.Provider>
   );
