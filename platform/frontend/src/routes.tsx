@@ -7,6 +7,7 @@ import {
   Plug, Wrench, Bot, Cpu, Brain,
   Monitor, Terminal, BookOpen, FolderOpen, FileCode2, ScrollText, Compass,
   Radio, Heart, ShieldAlert, KeyRound, Settings, ShieldCheck, ListTodo,
+  Crosshair,
 } from "lucide-react";
 import { StubPage } from "./pages/_stubs/StubPage";
 
@@ -19,6 +20,8 @@ const Traffic      = lazy(() => import("./pages/hunt/Traffic"));
 const Evidence     = lazy(() => import("./pages/hunt/Evidence"));
 const Workflows    = lazy(() => import("./pages/hunt/Workflows"));
 const Reports      = lazy(() => import("./pages/hunt/Reports"));
+const Campaigns    = lazy(() => import("./pages/hunt/Campaigns"));
+const CampaignDetail = lazy(() => import("./pages/hunt/CampaignDetail"));
 const SettingsPage = lazy(() => import("./pages/settings/Settings"));
 const BrowserHunt  = lazy(() => import("./pages/workspace/BrowserHunt"));
 const HQ           = lazy(() => import("./pages/workspace/HQ"));
@@ -64,6 +67,7 @@ export const NAV_SECTIONS: NavSection[] = [
     { label: "Evidence",  path: "/hunt/evidence",  Icon: Archive },
     { label: "Workflows", path: "/hunt/workflows", Icon: Workflow },
     { label: "Reports",   path: "/hunt/reports",   Icon: BarChart2 },
+    { label: "Campaigns", path: "/hunt/campaigns", Icon: Crosshair },
   ]},
   { id: "source", label: "SOURCE", items: [
     { label: "Raptor",       path: "/source/raptor",    Icon: Code2 },
@@ -125,8 +129,10 @@ export const appRoutes: RouteObject[] = [
   { path: "hunt/findings",  element: <Suspense fallback={null}><Findings /></Suspense> },
   { path: "hunt/cve-intel", element: <Suspense fallback={null}><CveIntel /></Suspense> },
   { path: "hunt/evidence",  element: <Suspense fallback={null}><Evidence /></Suspense> },
-  { path: "hunt/workflows", element: <Suspense fallback={null}><Workflows /></Suspense> },
-  { path: "hunt/reports",   element: <Suspense fallback={null}><Reports /></Suspense> },
+  { path: "hunt/workflows",    element: <Suspense fallback={null}><Workflows /></Suspense> },
+  { path: "hunt/reports",     element: <Suspense fallback={null}><Reports /></Suspense> },
+  { path: "hunt/campaigns",   element: <Suspense fallback={null}><Campaigns /></Suspense> },
+  { path: "hunt/campaigns/:id", element: <Suspense fallback={null}><CampaignDetail /></Suspense> },
   // Source
   { path: "source/raptor",    element: <Suspense fallback={null}><Raptor /></Suspense> },
   { path: "source/repos",     element: <Suspense fallback={null}><Repositories /></Suspense> },

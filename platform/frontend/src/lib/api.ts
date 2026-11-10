@@ -147,3 +147,30 @@ export async function fetchProviders(): Promise<Array<{
   const r = await fetch("/api/v1/providers", { headers: headers() });
   return r.ok ? r.json() : [];
 }
+
+export async function fetchCampaign(id: string): Promise<{
+  id: string; name: string; target_url: string; hunt_type: string; status: string;
+  phase: string | null; progress: number; findings_count: number; agent_ids: string | null;
+  started_at: string | null; finished_at: string | null; created_at: string; error: string | null;
+  report_md: string | null;
+} | null> {
+  const r = await fetch(`/api/v1/campaigns/${encodeURIComponent(id)}`, { headers: headers() });
+  return r.ok ? r.json() : null;
+}
+
+export async function cancelCampaign(id: string): Promise<void> {
+  await fetch(`/api/v1/campaigns/${encodeURIComponent(id)}`, { method: "DELETE", headers: headers() });
+}
+
+export async function fetchCampaignEvents(id: string): Promise<Array<{
+  id: number; phase: string | null; event_type: string; summary: string;
+  detail: unknown; occurred_at: string;
+}>> {
+  const r = await fetch(`/api/v1/campaigns/${encodeURIComponent(id)}/events`, { headers: headers() });
+  return r.ok ? r.json() : [];
+}
+
+export async function fetchCampaignReport(id: string): Promise<{ report_md: string | null }> {
+  const r = await fetch(`/api/v1/campaigns/${encodeURIComponent(id)}/report`, { headers: headers() });
+  return r.ok ? r.json() : { report_md: null };
+}
