@@ -38,8 +38,8 @@ if _frontend_dist.is_dir():
     app.mount("/app", StaticFiles(directory=_frontend_dist, html=True), name="workspace")
 
 
-@app.get("/", response_class=HTMLResponse)
-def root() -> HTMLResponse | RedirectResponse:
+@app.get("/", response_model=None)
+def root():
     if _frontend_dist.is_dir():
         return RedirectResponse(url="/app/", status_code=302)
     settings = get_settings()
