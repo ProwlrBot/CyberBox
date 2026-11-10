@@ -2,11 +2,11 @@ import { lazy, Suspense } from "react";
 import type { RouteObject } from "react-router-dom";
 import {
   Target, Search, Activity, Flag, Archive, Workflow, BarChart2,
-  Code2, GitBranch, Network,
-  FlaskConical, Globe, Container, Zap,
+  Code2, GitBranch, Network, GitMerge, Layers, GitFork,
+  FlaskConical, Globe, Container, Zap, Package, LayoutGrid, Server,
   Plug, Wrench, Bot, Cpu, Brain,
-  Monitor, Terminal, BookOpen, FolderOpen,
-  Radio, Heart, ShieldAlert, KeyRound, Settings,
+  Monitor, Terminal, BookOpen, FolderOpen, FileCode2, ScrollText, Compass,
+  Radio, Heart, ShieldAlert, KeyRound, Settings, ShieldCheck, ListTodo,
 } from "lucide-react";
 import { StubPage } from "./pages/_stubs/StubPage";
 
@@ -30,6 +30,7 @@ const PatchIntel      = lazy(() => import("./pages/source/PatchIntel"));
 const GitLabProfile   = lazy(() => import("./pages/source/GitLabProfile"));
 const VercelProfile   = lazy(() => import("./pages/source/VercelProfile"));
 const WordPressProfile = lazy(() => import("./pages/source/WordPressProfile"));
+const VariantHunt  = lazy(() => import("./pages/source/VariantHunt"));
 const LabManager   = lazy(() => import("./pages/labs/LabManager"));
 const WordPress    = lazy(() => import("./pages/labs/WordPress"));
 const GitLabLab    = lazy(() => import("./pages/labs/GitLab"));
@@ -41,6 +42,10 @@ const Plugins      = lazy(() => import("./pages/tools/Plugins"));
 const MCPCenter    = lazy(() => import("./pages/tools/MCP"));
 const ModelsPage   = lazy(() => import("./pages/tools/Models"));
 const Scripts      = lazy(() => import("./pages/workspace/Scripts"));
+const CodePage     = lazy(() => import("./pages/workspace/Code"));
+const TerminalPage = lazy(() => import("./pages/workspace/Terminal"));
+const JupyterPage  = lazy(() => import("./pages/workspace/Jupyter"));
+const FilesPage    = lazy(() => import("./pages/workspace/Files"));
 const ActivityPage = lazy(() => import("./pages/system/Activity"));
 const HealthPage   = lazy(() => import("./pages/system/Health"));
 const ScopeGuard   = lazy(() => import("./pages/system/ScopeGuard"));
@@ -64,16 +69,16 @@ export const NAV_SECTIONS: NavSection[] = [
     { label: "Raptor",       path: "/source/raptor",    Icon: Code2 },
     { label: "Repositories", path: "/source/repos",     Icon: GitBranch },
     { label: "Source Graph", path: "/source/graph",     Icon: Network },
-    { label: "Patch Intel",  path: "/source/patch",     Icon: Activity },
-    { label: "Variant Hunt", path: "/source/variants",  Icon: Search },
-    { label: "GitLab",       path: "/source/gitlab",    Icon: GitBranch },
+    { label: "Patch Intel",  path: "/source/patch",     Icon: GitMerge },
+    { label: "Variant Hunt", path: "/source/variants",  Icon: Layers },
+    { label: "GitLab",       path: "/source/gitlab",    Icon: GitFork },
     { label: "Vercel Hunt",  path: "/source/vercel",    Icon: Globe },
-    { label: "WordPress",    path: "/source/wordpress", Icon: Globe },
+    { label: "WordPress",    path: "/source/wordpress", Icon: Package },
   ]},
   { id: "labs", label: "LABS", items: [
     { label: "Lab Manager", path: "/labs/manager",    Icon: FlaskConical },
-    { label: "WordPress",   path: "/labs/wordpress",  Icon: Globe },
-    { label: "GitLab",      path: "/labs/gitlab",     Icon: GitBranch },
+    { label: "WordPress",   path: "/labs/wordpress",  Icon: LayoutGrid },
+    { label: "GitLab",      path: "/labs/gitlab",     Icon: Server },
     { label: "Vercel",      path: "/labs/vercel",     Icon: Zap },
     { label: "Containers",  path: "/labs/containers", Icon: Container },
   ]},
@@ -85,21 +90,21 @@ export const NAV_SECTIONS: NavSection[] = [
     { label: "AI Models",     path: "/tools/models",    Icon: Brain },
   ]},
   { id: "workspace", label: "WORKSPACE", items: [
-    { label: "HQ",          path: "/workspace/hq",      Icon: Monitor },
-    { label: "Code",        path: "/workspace/code",    Icon: Code2 },
-    { label: "Browser Hunt", path: "/workspace/browser", Icon: Monitor },
-    { label: "Scripts",     path: "/workspace/scripts", Icon: Code2 },
-    { label: "Terminal", path: "/workspace/terminal", Icon: Terminal },
-    { label: "Jupyter",  path: "/workspace/jupyter",  Icon: BookOpen },
-    { label: "Files",    path: "/workspace/files",    Icon: FolderOpen },
+    { label: "HQ",           path: "/workspace/hq",       Icon: Monitor },
+    { label: "Code",         path: "/workspace/code",     Icon: FileCode2 },
+    { label: "Browser Hunt", path: "/workspace/browser",  Icon: Compass },
+    { label: "Scripts",      path: "/workspace/scripts",  Icon: ScrollText },
+    { label: "Terminal",     path: "/workspace/terminal", Icon: Terminal },
+    { label: "Jupyter",      path: "/workspace/jupyter",  Icon: BookOpen },
+    { label: "Files",        path: "/workspace/files",    Icon: FolderOpen },
   ]},
   { id: "system", label: "SYSTEM", items: [
-    { label: "Jobs",       path: "/system/jobs",    Icon: Cpu },
-    { label: "Activity",   path: "/system/activity",Icon: Radio },
-    { label: "Health",     path: "/system/health",  Icon: Heart },
-    { label: "ScopeGuard", path: "/system/scope",   Icon: ShieldAlert },
-    { label: "Secrets",    path: "/system/secrets", Icon: KeyRound },
-    { label: "Settings",   path: "/settings",       Icon: Settings },
+    { label: "Jobs",       path: "/system/jobs",     Icon: ListTodo },
+    { label: "Activity",   path: "/system/activity", Icon: Radio },
+    { label: "Health",     path: "/system/health",   Icon: Heart },
+    { label: "ScopeGuard", path: "/system/scope",    Icon: ShieldCheck },
+    { label: "Secrets",    path: "/system/secrets",  Icon: KeyRound },
+    { label: "Settings",   path: "/settings",        Icon: Settings },
   ]},
 ];
 
@@ -127,7 +132,7 @@ export const appRoutes: RouteObject[] = [
   { path: "source/repos",     element: <Suspense fallback={null}><Repositories /></Suspense> },
   { path: "source/graph",     element: <Suspense fallback={null}><SourceGraph /></Suspense> },
   { path: "source/patch",     element: <Suspense fallback={null}><PatchIntel /></Suspense> },
-  { path: "source/variants",  element: S("Variant Hunt") },
+  { path: "source/variants",  element: <Suspense fallback={null}><VariantHunt /></Suspense> },
   { path: "source/gitlab",    element: <Suspense fallback={null}><GitLabProfile /></Suspense> },
   { path: "source/vercel",    element: <Suspense fallback={null}><VercelProfile /></Suspense> },
   { path: "source/wordpress", element: <Suspense fallback={null}><WordPressProfile /></Suspense> },
@@ -150,6 +155,10 @@ export const appRoutes: RouteObject[] = [
   { path: "workspace/hq",      element: <Suspense fallback={null}><HQ /></Suspense> },
   { path: "workspace/browser", element: <Suspense fallback={null}><BrowserHunt /></Suspense> },
   { path: "workspace/scripts", element: <Suspense fallback={null}><Scripts /></Suspense> },
+  { path: "workspace/code",     element: <Suspense fallback={null}><CodePage /></Suspense> },
+  { path: "workspace/terminal", element: <Suspense fallback={null}><TerminalPage /></Suspense> },
+  { path: "workspace/jupyter",  element: <Suspense fallback={null}><JupyterPage /></Suspense> },
+  { path: "workspace/files",    element: <Suspense fallback={null}><FilesPage /></Suspense> },
   { path: "workspace/*",       element: S("Workspace") },
   // System
   { path: "system/jobs",      element: <Suspense fallback={null}><Jobs /></Suspense> },
