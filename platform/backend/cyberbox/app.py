@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import db, seed
@@ -39,87 +39,34 @@ if _frontend_dist.is_dir():
 
 
 @app.get("/", response_class=HTMLResponse)
-def root() -> str:
+def root() -> HTMLResponse | RedirectResponse:
+    if _frontend_dist.is_dir():
+        return RedirectResponse(url="/app/", status_code=302)
     settings = get_settings()
     base = f"http://{settings.host}:{settings.port}"
-    return f"""<!doctype html>
+    return HTMLResponse(f"""<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{TITLE}</title>
   <style>
-    :root {{
-      --cb-ink: #0b0f17;
-      --cb-violet-500: #8b5cf6;
-      --cb-violet-400: #a78bfa;
-      --cb-violet-200: #ddd6fe;
-    }}
-    body {{
-      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-      max-width: 52rem;
-      margin: 3rem auto;
-      padding: 0 1rem;
-      color: var(--cb-violet-200);
-      background: var(--cb-ink);
-      line-height: 1.5;
-    }}
-    h1 {{
-      color: var(--cb-violet-400);
-      letter-spacing: -0.02em;
-      font-weight: 700;
-    }}
-    a {{ color: var(--cb-violet-500); }}
-    a:hover {{ color: var(--cb-violet-400); }}
-    code {{
-      background: #111827;
-      padding: 0.1rem 0.35rem;
-      border-radius: 0.25rem;
-      font-family: "JetBrains Mono", ui-monospace, monospace;
-    }}
-    .card {{
-      background: #111827;
-      border: 1px solid #1f2937;
-      border-radius: 0.75rem;
-      padding: 1rem 1.25rem;
-      margin: 1rem 0;
-    }}
-    .tag {{
-      display: inline-block;
-      font-size: 0.75rem;
-      font-weight: 600;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      color: var(--cb-violet-500);
-      margin-bottom: 0.5rem;
-    }}
+    body{{font-family:Inter,ui-sans-serif,system-ui,sans-serif;max-width:52rem;margin:3rem auto;padding:0 1rem;color:#ddd6fe;background:#0b0f17;line-height:1.5}}
+    h1{{color:#a78bfa;letter-spacing:-.02em;font-weight:700}}
+    a{{color:#8b5cf6}}code{{background:#111827;padding:.1rem .35rem;border-radius:.25rem;font-family:"JetBrains Mono",ui-monospace,monospace}}
+    .card{{background:#111827;border:1px solid #1f2937;border-radius:.75rem;padding:1rem 1.25rem;margin:1rem 0}}
   </style>
 </head>
 <body>
-  <p class="tag">Local platform</p>
-  <h1>{TITLE}</h1>
-  <p>Local-first security testing platform. API is running.</p>
-  <div class="card">
-    <p><strong>Quick links</strong></p>
-    <ul>
-      <li><a href="{base}/health">Health</a></li>
-      <li><a href="{base}/docs">API docs</a></li>
-      <li><a href="{base}/app/">Research workspace</a></li>
-      <li><a href="{base}/redoc">ReDoc</a></li>
-      <li><a href="{base}/ws">WebSocket hub</a> (connect from client)</li>
-    </ul>
-  </div>
-  <div class="card">
-    <p><strong>Auth</strong></p>
-    <p>Send your admin key as <code>X-Api-Key</code> or <code>Authorization: Bearer …</code>.</p>
-    <p>Key file: <code>~/.cyberbox/admin.key</code></p>
-  </div>
-  <div class="card">
-    <p><strong>Start from repo</strong></p>
-    <pre><code>./bin/cyberbox start</code></pre>
-  </div>
+  <h1>{TITLE} — control plane</h1>
+  <p>Frontend not built. Run <code>cd platform/frontend && npm run build</code> first.</p>
+  <div class="card"><ul>
+    <li><a href="{base}/health">Health</a></li>
+    <li><a href="{base}/docs">API docs</a></li>
+    <li><a href="{base}/redoc">ReDoc</a></li>
+  </ul></div>
 </body>
-</html>"""
+</html>""")
 
 
 @app.get("/health")
