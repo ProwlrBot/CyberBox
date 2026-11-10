@@ -21,6 +21,7 @@ from .. import db
 from ..auth import current_user, require_internal_service
 from ..config import get_settings
 from ..services import analytics, artifacts, bundles, capabilities, events, executions, knowledge, memory, playbooks, policy, project_templates, research, triage, wordfence
+from ..services import gori as gori_svc
 
 router = APIRouter(prefix="/api/v1", tags=["api"])
 
@@ -1086,3 +1087,63 @@ def list_executions(limit: int = 50, _user: dict = Depends(current_user)) -> lis
 def hunt_dashboard() -> FileResponse:
     path = os.path.join(os.path.dirname(__file__), "..", "static", "hunt_dashboard.html")
     return FileResponse(os.path.abspath(path))
+
+
+@router.get("/gori/status")
+def gori_status(_user: dict = Depends(current_user)) -> dict:
+    """Return whether Caido is reachable and which project is active."""
+    s = get_settings()
+    info = gori_svc.get_project_info(s)
+    return {
+        "reachable": bool(info),
+        "gori_url": s.gori_url,
+        "pat_configured": bool(s.gori_pat),
+        "caido_project": info,
+    }
+
+
+@router.post("/projects/{project_id}/gori/import")
+def gori_import(project_id: str, _user: dict = Depends(current_user)) -> dict:
+    """Pull Caido findings and store them as hypotheses on this project."""
+    if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
+        raise HTTPException(status_code=404, detail="project not found")
+    s = get_settings()
+    issues = gori_svc.get_issues(s)
+    imported = 0
+    for issue in issues:
+        hyp_id = "hyp_" + str(uuid.uuid4()).replace("-", "")[:16]
+        title = issue.get("title") or "Caido finding"
+        desc = issue.get("description") or ""
+        severity = issue.get("severity", "unknown").lower()
+        evidence = json.dumps({
+            "source": "caido",
+            "caido_id": issue.get("id"),
+            "request_url": issue.get("request_url"),
+            "method": issue.get("method"),
+        })
+        try:
+            db.execute(
+                "INSERT OR IGNORE INTO hypotheses "
+                "(id, project_id, title, description, severity, status, evidence, created_at) "
+                "VALUES (?,?,?,?,?,?,?,?)",
+                [hyp_id, project_id, title, desc, severity, "open", evidence, _now()],
+            )
+            imported += 1
+        except Exception:
+            pass
+    return {"imported": imported, "total_caido_issues": len(issues)}
+
+
+@router.get("/projects/{project_id}/gori/flows")
+def gori_flows(
+    project_id: str,
+    host: str | None = None,
+    limit: int = 100,
+    _user: dict = Depends(current_user),
+) -> list[dict]:
+    """Return recent HTTP flows from Caido for a given host."""
+    if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
+        raise HTTPException(status_code=404, detail="project not found")
+    s = get_settings()
+    limit = min(max(limit, 1), 500)
+    return gori_svc.get_recent_flows(s, limit=limit, host_filter=host)

@@ -36,6 +36,8 @@ class Settings:
             "nuclei": os.environ.get("CYBERBOX_NUCLEI", os.environ.get("NEO_NUCLEI", "nuclei")),
         }
     )
+    gori_url: str = os.environ.get("CYBERBOX_GORI_URL", "http://127.0.0.1:8080")
+    gori_pat: str = os.environ.get("CYBERBOX_GORI_PAT", os.environ.get("CAIDO_PAT", ""))
 
     @property
     def db_path(self) -> Path:
@@ -75,7 +77,8 @@ class Settings:
 
     def save_yaml(self) -> None:
         snapshot = {"host": self.host, "port": self.port,
-                    "sla_defaults": self.sla_defaults, "tools": self.tools}
+                    "sla_defaults": self.sla_defaults, "tools": self.tools,
+                    "gori_url": self.gori_url}
         self.config_path.write_text(yaml.safe_dump(snapshot, sort_keys=False))
 
 
