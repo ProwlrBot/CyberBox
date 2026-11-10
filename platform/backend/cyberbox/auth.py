@@ -43,6 +43,13 @@ def bootstrap_admin() -> dict:
             migrated = authenticate_key(key_file.read_text().strip())
             if migrated:
                 return migrated
+        # Key file missing or stale — regenerate so server is always usable
+        api_key = "cbx_" + secrets.token_urlsafe(32)
+        db.execute("UPDATE users SET api_key=? WHERE id=?", [_key_digest(api_key), existing["id"]])
+        key_file = get_settings().home / "admin.key"
+        key_file.write_text(api_key)
+        key_file.chmod(0o600)
+        print(f"[cyberbox] admin API key regenerated → {key_file}")
         return dict(existing)
     api_key = "cbx_" + secrets.token_urlsafe(32)
     user = {"id": str(uuid.uuid4()), "email": "admin@localhost", "name": "Administrator",
