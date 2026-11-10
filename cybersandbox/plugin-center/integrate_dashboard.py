@@ -20,6 +20,10 @@ if 'data-panel="csbx"' not in text:
             <button class="panel-toggle" data-panel="csbx">
                 <span class="indicator"></span>
                 Plugins
+            </button>
+            <button class="panel-toggle" data-panel="platform">
+                <span class="indicator"></span>
+                CyberBox
             </button>''')
     panel_marker = '''                    jupyter: {
                         title: 'Jupyter',
@@ -32,6 +36,13 @@ if 'data-panel="csbx"' not in text:
                     csbx: {
                         title: 'Plugin Center',
                         baseUrl: '/csbx/',
+                        active: false,
+                        enabled: true,
+                        element: null
+                    },
+                    platform: {
+                        title: 'CyberBox',
+                        baseUrl: '/app/',
                         active: false,
                         enabled: true,
                         element: null
