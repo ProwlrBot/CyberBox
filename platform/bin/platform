@@ -5,6 +5,143 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BACKEND="${ROOT}/backend"
 HOST="${CYBERBOX_HOST:-${NEO_HOST:-127.0.0.1}}"
 PORT="${CYBERBOX_PORT:-${NEO_PORT:-8787}}"
+BASE_URL="http://${HOST}:${PORT}"
 
-cd "${BACKEND}"
-exec uv run uvicorn cyberbox.app:app --host "${HOST}" --port "${PORT}" --reload
+usage() {
+  cat <<EOF
+platform — CyberBox control-plane dev runner
+
+Commands:
+  start    (default) Start uvicorn dev server
+  setup    First-run wizard: verify DB, print admin key, test connection
+  status   Print health + admin key location
+
+Env:
+  CYBERBOX_HOST  Bind host (default: 127.0.0.1)
+  CYBERBOX_PORT  Bind port (default: 8787)
+EOF
+}
+
+cmd_start() {
+  cd "${BACKEND}"
+  exec uv run uvicorn cyberbox.app:app --host "${HOST}" --port "${PORT}" --reload
+}
+
+cmd_status() {
+  local key_file="${CYBERBOX_HOME:-${HOME}/.cyberbox}/admin.key"
+  echo "Control plane: ${BASE_URL}"
+  if curl -fsS "${BASE_URL}/health" >/dev/null 2>&1; then
+    echo "Status:        UP"
+    curl -s "${BASE_URL}/health"
+    echo
+  else
+    echo "Status:        DOWN (run: ./platform/bin/platform start)"
+  fi
+  if [[ -f "${key_file}" ]]; then
+    echo "Admin key:     ${key_file}  ($(wc -c < "${key_file}" | tr -d ' ') bytes)"
+  else
+    echo "Admin key:     not found — start the server once to generate it"
+  fi
+}
+
+cmd_setup() {
+  local key_file="${CYBERBOX_HOME:-${HOME}/.cyberbox}/admin.key"
+
+  echo "=== CyberBox Control Plane Setup ==="
+  echo ""
+
+  # 1. Check if already running
+  if curl -fsS "${BASE_URL}/health" >/dev/null 2>&1; then
+    echo "[ok] Server already running at ${BASE_URL}"
+  else
+    echo "[..] Server not running — starting in background..."
+    cd "${BACKEND}"
+    uv run uvicorn cyberbox.app:app --host "${HOST}" --port "${PORT}" --reload \
+      > /tmp/cyberbox-platform.log 2>&1 &
+    local server_pid=$!
+    echo "     PID ${server_pid} — log: /tmp/cyberbox-platform.log"
+    echo "[..] Waiting for startup (up to 30s)..."
+    local attempt
+    for attempt in $(seq 1 15); do
+      sleep 2
+      if curl -fsS "${BASE_URL}/health" >/dev/null 2>&1; then
+        echo "[ok] Server up"
+        break
+      fi
+      if ! kill -0 "${server_pid}" 2>/dev/null; then
+        echo "[!!] Server process exited. Check /tmp/cyberbox-platform.log"
+        exit 1
+      fi
+    done
+    if ! curl -fsS "${BASE_URL}/health" >/dev/null 2>&1; then
+      echo "[!!] Server did not come up. Check /tmp/cyberbox-platform.log"
+      exit 1
+    fi
+  fi
+
+  # 2. Verify/show admin key
+  if [[ -f "${key_file}" ]]; then
+    echo "[ok] Admin key: ${key_file}"
+  else
+    echo "[!!] Admin key not found at ${key_file}"
+    echo "     The server should have created it on startup. Check server logs."
+    exit 1
+  fi
+
+  # 3. Test auth
+  local health
+  health=$(curl -fsS "${BASE_URL}/health" 2>/dev/null)
+  local db_status
+  db_status=$(echo "${health}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('database','?'))" 2>/dev/null || echo "?")
+  echo "[ok] Database: ${db_status}"
+
+  # 4. List existing projects
+  local projects
+  projects=$(curl -fsS "${BASE_URL}/api/v1/projects" \
+    -H "X-Api-Key: $(tr -d '[:space:]' < "${key_file}")" 2>/dev/null || echo "[]")
+  local project_count
+  project_count=$(echo "${projects}" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "?")
+  echo "[ok] Projects: ${project_count} existing"
+
+  echo ""
+  echo "=== Setup complete ==="
+  echo ""
+  echo "Export these in every hunt pane (or add to ~/.zshrc / .env.cyberbox):"
+  echo ""
+  echo "  export CYBERBOX_URL=${BASE_URL}"
+  echo "  export CYBERBOX_API_KEY=\$(< ${key_file})"
+  echo ""
+  if [[ "${project_count}" == "0" ]]; then
+    echo "Create a project:"
+    echo "  curl -s -X POST ${BASE_URL}/api/v1/projects \\"
+    echo "    -H 'Content-Type: application/json' \\"
+    echo "    -H \"X-Api-Key: \$(< ${key_file})\" \\"
+    echo "    -d '{\"name\":\"my-program\"}'"
+    echo ""
+  else
+    echo "Existing projects:"
+    echo "${projects}" | python3 -c "
+import sys,json
+for p in json.load(sys.stdin):
+    print(f\"  {p['id']}  {p['name']}\")
+" 2>/dev/null || true
+    echo ""
+    echo "  export CYBERBOX_PROJECT_ID=<id from above>"
+  fi
+  echo "Then run: python tools/cyberbox_runner.py setup"
+}
+
+CMD="${1:-start}"
+shift || true
+
+case "${CMD}" in
+  start)   cmd_start "$@" ;;
+  setup)   cmd_setup "$@" ;;
+  status)  cmd_status "$@" ;;
+  -h|--help|help) usage ;;
+  *)
+    echo "Unknown command: ${CMD}" >&2
+    usage >&2
+    exit 1
+    ;;
+esac
