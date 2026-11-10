@@ -10,13 +10,29 @@ import {
 } from "lucide-react";
 import { StubPage } from "./pages/_stubs/StubPage";
 
-const Dashboard   = lazy(() => import("./pages/dashboard/Dashboard"));
-const Targets     = lazy(() => import("./pages/hunt/Targets"));
-const Findings    = lazy(() => import("./pages/hunt/Findings"));
-const CveIntel    = lazy(() => import("./pages/hunt/CveIntel"));
-const Jobs        = lazy(() => import("./pages/hunt/Jobs"));
+const Dashboard    = lazy(() => import("./pages/dashboard/Dashboard"));
+const Targets      = lazy(() => import("./pages/hunt/Targets"));
+const Findings     = lazy(() => import("./pages/hunt/Findings"));
+const CveIntel     = lazy(() => import("./pages/hunt/CveIntel"));
+const Jobs         = lazy(() => import("./pages/hunt/Jobs"));
+const Traffic      = lazy(() => import("./pages/hunt/Traffic"));
+const Evidence     = lazy(() => import("./pages/hunt/Evidence"));
+const Workflows    = lazy(() => import("./pages/hunt/Workflows"));
+const Reports      = lazy(() => import("./pages/hunt/Reports"));
 const SettingsPage = lazy(() => import("./pages/settings/Settings"));
 const BrowserHunt  = lazy(() => import("./pages/workspace/BrowserHunt"));
+const Raptor       = lazy(() => import("./pages/source/Raptor"));
+const Repositories = lazy(() => import("./pages/source/Repositories"));
+const SourceGraph  = lazy(() => import("./pages/source/SourceGraph"));
+const PatchIntel   = lazy(() => import("./pages/source/PatchIntel"));
+const LabManager   = lazy(() => import("./pages/labs/LabManager"));
+const WordPress    = lazy(() => import("./pages/labs/WordPress"));
+const ToolCenter   = lazy(() => import("./pages/tools/ToolCenter"));
+const Providers    = lazy(() => import("./pages/tools/Providers"));
+const ActivityPage = lazy(() => import("./pages/system/Activity"));
+const HealthPage   = lazy(() => import("./pages/system/Health"));
+const ScopeGuard   = lazy(() => import("./pages/system/ScopeGuard"));
+const Secrets      = lazy(() => import("./pages/system/Secrets"));
 
 export interface NavItem { label: string; path: string; Icon: React.FC<{ size?: number }> }
 export interface NavSection { id: string; label: string; items: NavItem[] }
@@ -80,20 +96,46 @@ function S(label: string) {
 
 export const appRoutes: RouteObject[] = [
   { index: true, element: <Suspense fallback={null}><Dashboard /></Suspense> },
+  // Hunt
   { path: "hunt/targets",   element: <Suspense fallback={null}><Targets /></Suspense> },
+  { path: "hunt/recon",     element: S("Recon") },
+  { path: "hunt/traffic",   element: <Suspense fallback={null}><Traffic /></Suspense> },
   { path: "hunt/findings",  element: <Suspense fallback={null}><Findings /></Suspense> },
   { path: "hunt/cve-intel", element: <Suspense fallback={null}><CveIntel /></Suspense> },
-  { path: "hunt/recon",     element: S("Recon") },
-  { path: "hunt/traffic",   element: S("Traffic Workbench") },
-  { path: "hunt/evidence",  element: S("Evidence Center") },
-  { path: "hunt/workflows", element: S("Workflows") },
-  { path: "hunt/reports",   element: S("Reports") },
-  { path: "source/*",       element: S("Source") },
-  { path: "labs/*",         element: S("Labs") },
-  { path: "tools/*",        element: S("Tools") },
+  { path: "hunt/evidence",  element: <Suspense fallback={null}><Evidence /></Suspense> },
+  { path: "hunt/workflows", element: <Suspense fallback={null}><Workflows /></Suspense> },
+  { path: "hunt/reports",   element: <Suspense fallback={null}><Reports /></Suspense> },
+  // Source
+  { path: "source/raptor",    element: <Suspense fallback={null}><Raptor /></Suspense> },
+  { path: "source/repos",     element: <Suspense fallback={null}><Repositories /></Suspense> },
+  { path: "source/graph",     element: <Suspense fallback={null}><SourceGraph /></Suspense> },
+  { path: "source/patch",     element: <Suspense fallback={null}><PatchIntel /></Suspense> },
+  { path: "source/variants",  element: S("Variant Hunt") },
+  { path: "source/*",         element: S("Source") },
+  // Labs
+  { path: "labs/manager",     element: <Suspense fallback={null}><LabManager /></Suspense> },
+  { path: "labs/wordpress",   element: <Suspense fallback={null}><WordPress /></Suspense> },
+  { path: "labs/gitlab",      element: S("GitLab Lab") },
+  { path: "labs/vercel",      element: S("Vercel Lab") },
+  { path: "labs/containers",  element: S("Containers") },
+  { path: "labs/*",           element: S("Labs") },
+  // Tools
+  { path: "tools/tools",      element: <Suspense fallback={null}><ToolCenter /></Suspense> },
+  { path: "tools/providers",  element: <Suspense fallback={null}><Providers /></Suspense> },
+  { path: "tools/plugins",    element: S("Plugin Center") },
+  { path: "tools/mcp",        element: S("MCP Center") },
+  { path: "tools/models",     element: S("AI Models") },
+  { path: "tools/*",          element: S("Tools") },
+  // Workspace
   { path: "workspace/browser", element: <Suspense fallback={null}><BrowserHunt /></Suspense> },
-  { path: "workspace/*",    element: S("Workspace") },
-  { path: "system/jobs",    element: <Suspense fallback={null}><Jobs /></Suspense> },
-  { path: "system/*",       element: S("System") },
-  { path: "settings/*",     element: <Suspense fallback={null}><SettingsPage /></Suspense> },
+  { path: "workspace/*",       element: S("Workspace") },
+  // System
+  { path: "system/jobs",      element: <Suspense fallback={null}><Jobs /></Suspense> },
+  { path: "system/activity",  element: <Suspense fallback={null}><ActivityPage /></Suspense> },
+  { path: "system/health",    element: <Suspense fallback={null}><HealthPage /></Suspense> },
+  { path: "system/scope",     element: <Suspense fallback={null}><ScopeGuard /></Suspense> },
+  { path: "system/secrets",   element: <Suspense fallback={null}><Secrets /></Suspense> },
+  { path: "system/*",         element: S("System") },
+  // Settings
+  { path: "settings/*",       element: <Suspense fallback={null}><SettingsPage /></Suspense> },
 ];
