@@ -504,6 +504,20 @@ def check_policy(engagement_id: str, body: PolicyCheck,
     return policy.evaluate(engagement_id, body.url, body.method, body.risk_class)
 
 
+class ScopeEvaluateRequest(BaseModel):
+    engagement_id: str
+    url: str = Field(min_length=1, max_length=2048)
+    method: str = Field(default="GET", max_length=16)
+    risk_class: str = Field(default="low-impact", pattern=(
+        "^(passive|low-impact|state-changing|credential-sensitive|high-volume|destructive|prohibited)$"))
+
+
+@router.post("/scope/evaluate")
+def scope_evaluate(body: ScopeEvaluateRequest, _user: dict = Depends(current_user)) -> dict:
+    """Convenience endpoint for cyberbox_runner: engagement_id in body."""
+    return policy.evaluate(body.engagement_id, body.url, body.method, body.risk_class)
+
+
 @router.post("/projects/{project_id}/scans", status_code=202)
 def start_scan(project_id: str, body: ScanCreate, _user: dict = Depends(current_user)) -> dict:
     if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
