@@ -59,6 +59,13 @@
       ],
       "description": "Metrics from running the same eval suite against agent-infra/sandbox. Null until phase-3 (upstream comparison runner) lands or for runs where MCP_SERVER_URL pointed at a non-upstream target."
     },
+    "security": {
+      "oneOf": [
+        { "$ref": "#/$defs/security_metrics" },
+        { "type": "null" }
+      ],
+      "description": "Security-specific benchmark metrics. Populated only when eval_file is evaluation_security_*.xml. Null for generic sandbox tool evals."
+    },
     "per_task": {
       "type": "array",
       "description": "Optional per-task drill-down. The leaderboard page does not require this column but it is the breadcrumb a hunter follows from a leaderboard row to the failing task.",
@@ -124,6 +131,53 @@
           "type": ["integer", "null"],
           "minimum": 0,
           "description": "Total output tokens produced. Null until LangGraph/Azure usage tracking is wired into agent_loop.py."
+        }
+      }
+    },
+    "security_metrics": {
+      "type": "object",
+      "description": "Security-specific quality metrics collected from evaluation_security_*.xml runs.",
+      "additionalProperties": false,
+      "required": ["security_pass_rate", "tool_availability_rate", "pattern_validation_rate"],
+      "properties": {
+        "security_pass_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Pass rate across all security-category tasks only."
+        },
+        "tool_availability_rate": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of security tools (nuclei, httpx, subfinder, raptor) confirmed present and responsive."
+        },
+        "pattern_validation_rate": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of prowl pattern schema validations that passed. Measures whether the agent can generate schema-conforming output."
+        },
+        "cve_triage_exit_code_ok": {
+          "type": ["boolean", "null"],
+          "description": "Whether phase_recon pipeline completed with exit code 0 on the synthetic httpx fixture."
+        },
+        "hypothesis_generation_pass": {
+          "type": ["boolean", "null"],
+          "description": "Whether the agent successfully generated and validated a bola_idor pattern output."
+        },
+        "vuln_classes_tested": {
+          "type": ["array", "null"],
+          "description": "Vuln class slugs exercised by the eval run.",
+          "items": {
+            "type": "string",
+            "enum": ["bola_idor", "ssrf_chain", "cors_audit", "jwt_audit", "oauth_misconfig", "race_condition", "websocket_auth", "business_logic", "header_misconfig", "graphql_recon", "cve_triage", "source_analysis", "file_upload_chain", "mass_assignment", "bfla", "differential_auth"]
+          }
+        },
+        "patterns_available": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "Total prowl patterns with system.md found in this run's sandbox."
         }
       }
     },

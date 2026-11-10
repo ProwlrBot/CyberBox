@@ -1,0 +1,11 @@
+Feature: Subscription upgrade with promo code
+
+POST /api/v1/subscriptions/upgrade
+Body: {"plan":"pro","promo_code":"SAVE50","payment_method_id":"pm_123"}
+
+Rules:
+- A promo code gives 50% off the first month only.
+- A promo code can only be redeemed once per account.
+- Plan upgrade is atomic: downgrade is blocked for 30 days after upgrade.
+- Pro plan unlocks: 10 seats, API access, audit logs.
+- Billing is charged at upgrade time; refund requires support ticket.

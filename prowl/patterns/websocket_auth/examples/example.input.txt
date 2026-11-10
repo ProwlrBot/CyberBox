@@ -1,0 +1,15 @@
+WebSocket upgrade from captured traffic:
+
+GET /ws/notifications?token=eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjo3NzJ9.abc123 HTTP/1.1
+Host: app.example.com
+Upgrade: websocket
+Connection: Upgrade
+Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==
+Origin: https://app.example.com
+
+HTTP/1.1 101 Switching Protocols
+
+After connect, server immediately sends:
+{"type":"notification","user_id":772,"message":"Your invoice #1042 is due","unread":5}
+
+Channel model: each user gets a private notification channel identified by their user_id. Token is passed in query string. Connections persist for 2 hours.

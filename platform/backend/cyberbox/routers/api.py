@@ -71,6 +71,16 @@ class WordfenceRunCreate(BaseModel):
     idempotency_key: str | None = Field(default=None, max_length=160)
 
 
+class RaptorScanCreate(BaseModel):
+    protocol: str = Field(
+        description="Raptor scan protocol",
+        pattern="^(mcp|pkg|skill|pypi|go|gitlab|ruby|java|php|gha|github|js|crystal)$",
+    )
+    target_path: str = Field(min_length=1, max_length=4096,
+                              description="Absolute path to the directory or package to scan")
+    output_format: str = Field(default="jsonl", pattern="^(jsonl|text|sarif)$")
+
+
 class EngagementCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     profile_id: str = "bug-bounty"
@@ -551,6 +561,30 @@ def start_wordfence_run(project_id: str, body: WordfenceRunCreate,
                                       risk_class="passive", idempotency_key=body.idempotency_key)
         executions.dispatch(execution["id"])
         return execution
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/projects/{project_id}/raptor-scan", status_code=202)
+def start_raptor_scan(project_id: str, body: RaptorScanCreate,
+                      user: dict = Depends(current_user)) -> dict:
+    if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
+        raise HTTPException(status_code=404, detail="project not found")
+    engagement = db.query_one(
+        "SELECT id FROM engagements WHERE project_id=? AND status IN "
+        "('active','authorized','local-laboratory','ctf') ORDER BY created_at DESC LIMIT 1",
+        [project_id],
+    )
+    if not engagement:
+        raise HTTPException(status_code=409, detail="active engagement required for raptor scan")
+    try:
+        result = scanner.run_raptor_scan(
+            project_id, engagement["id"], body.protocol, body.target_path,
+            user["id"], body.output_format,
+        )
+        return result
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

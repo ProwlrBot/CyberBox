@@ -1,0 +1,71 @@
+{
+  "feature": "Subscription upgrade with promo code",
+  "invariants": [
+    {
+      "id": "promo_single_use",
+      "statement": "A promo code can only be redeemed once per account",
+      "category": "price_integrity",
+      "monetizable": true,
+      "tests": [
+        {
+          "attack_name": "promo_double_redeem",
+          "sequence": [
+            "POST /api/v1/subscriptions/upgrade {plan:pro, promo_code:SAVE50} as Account_A — expect 200 with discounted price",
+            "POST /api/v1/subscriptions/upgrade {plan:enterprise, promo_code:SAVE50} as Account_A — expect 400 promo already redeemed",
+            "Check invoice amount for second upgrade to confirm discount was not applied"
+          ],
+          "preconditions": [
+            "Account_A has not previously used SAVE50",
+            "Account_A is on a plan eligible for upgrade"
+          ],
+          "oracle": "Second upgrade invoice amount equals full price (no discount applied)",
+          "exploit_value": "high",
+          "tooling_hint": "sequential-manual"
+        },
+        {
+          "attack_name": "promo_race_double_redeem",
+          "sequence": [
+            "Fire two simultaneous POST /api/v1/subscriptions/upgrade requests with promo_code:SAVE50 from Account_A",
+            "Check both response invoice amounts — if both show discounted price the race won"
+          ],
+          "preconditions": [
+            "Account_A has not previously used SAVE50",
+            "Two concurrent sessions available for Account_A"
+          ],
+          "oracle": "Both responses return discounted invoice amount (50% off applied twice total)",
+          "exploit_value": "high",
+          "tooling_hint": "single-packet"
+        }
+      ]
+    },
+    {
+      "id": "downgrade_lockout",
+      "statement": "Downgrade is blocked for 30 days after an upgrade",
+      "category": "state_machine",
+      "monetizable": false,
+      "tests": [
+        {
+          "attack_name": "immediate_downgrade",
+          "sequence": [
+            "POST /api/v1/subscriptions/upgrade {plan:pro} as Account_A — expect 200",
+            "Immediately POST /api/v1/subscriptions/downgrade {plan:basic} — expect 400 or 403 with lockout message",
+            "If 200 returned, GET /api/v1/subscriptions — confirm plan is basic and billing cycle restarted"
+          ],
+          "preconditions": [
+            "Account_A is on basic plan before test"
+          ],
+          "oracle": "Downgrade POST returns 200 and account plan changes to basic within seconds of upgrade",
+          "exploit_value": "medium",
+          "tooling_hint": "sequential-manual"
+        }
+      ]
+    }
+  ],
+  "untestable": [
+    {
+      "invariant": "Billing charge is accurate to the cent",
+      "reason": "Requires payment processor integration; sandbox environment may not charge real amounts"
+    }
+  ],
+  "summary": "Account_A can redeem promo code SAVE50 twice via a race condition in the upgrade endpoint, achieving 50% discount on two billing cycles"
+}

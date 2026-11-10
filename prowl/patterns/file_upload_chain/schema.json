@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "file_upload_chain",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["endpoint", "storage_backend", "served_path", "mime_enforcement", "post_processing", "chain_steps", "execution_surfaces", "path_traversal_risk", "path_traversal_note", "stop_conditions", "summary"],
+  "properties": {
+    "endpoint": { "type": "string", "minLength": 4, "maxLength": 400 },
+    "storage_backend": {
+      "type": "string",
+      "enum": ["local_disk", "s3", "gcs", "azure_blob", "cdn", "unknown"]
+    },
+    "served_path": { "type": "string", "minLength": 1, "maxLength": 400 },
+    "mime_enforcement": {
+      "type": "string",
+      "enum": ["none", "content_type_header_only", "magic_bytes", "extension_allowlist", "extension_blocklist", "both"]
+    },
+    "post_processing": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 4, "maxLength": 240 }
+    },
+    "chain_steps": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["step", "technique", "request_mutation", "gate_to_pass", "next_step_requires", "exploit_value", "cwe"],
+        "properties": {
+          "step": { "type": "integer", "minimum": 1, "maximum": 8 },
+          "technique": {
+            "type": "string",
+            "enum": [
+              "double_extension",
+              "null_byte_injection",
+              "polyglot_file",
+              "path_traversal_filename",
+              "metadata_injection",
+              "svg_xss",
+              "zip_slip",
+              "ssrf_via_url_upload",
+              "content_type_confusion",
+              "archive_bomb",
+              "htaccess_upload",
+              "php_phar_deserialization",
+              "other"
+            ]
+          },
+          "request_mutation": { "type": "string", "minLength": 8, "maxLength": 500 },
+          "gate_to_pass": { "type": "string", "minLength": 8, "maxLength": 400 },
+          "next_step_requires": { "type": "string", "minLength": 4, "maxLength": 400 },
+          "exploit_value": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+          "cwe": {
+            "type": "string",
+            "enum": ["CWE-434", "CWE-22", "CWE-79", "CWE-918", "CWE-400", "CWE-116", "CWE-73", "CWE-502"]
+          }
+        }
+      }
+    },
+    "execution_surfaces": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 6, "maxLength": 300 }
+    },
+    "path_traversal_risk": { "type": "string", "enum": ["none", "low", "medium", "high"] },
+    "path_traversal_note": { "type": "string", "minLength": 4, "maxLength": 240 },
+    "stop_conditions": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 6, "maxLength": 300 }
+    },
+    "summary": { "type": "string", "minLength": 8, "maxLength": 400 }
+  }
+}

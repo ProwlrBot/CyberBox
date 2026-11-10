@@ -1,0 +1,60 @@
+{
+  "endpoint": "PATCH /api/v2/users/me",
+  "framework_hint": "express",
+  "observed_body_fields": ["display_name", "bio", "email"],
+  "response_fields": ["id", "display_name", "bio", "email", "role", "is_verified", "subscription_tier", "credit_balance", "created_at", "updated_at"],
+  "candidate_fields": [
+    {
+      "field": "role",
+      "source": "response_leak",
+      "expected_effect": "Elevate caller from 'user' to 'admin', granting access to admin panel routes and all user data",
+      "request_mutation": "Add \\\"role\\\": \\\"admin\\\" to PATCH /api/v2/users/me request body alongside existing fields",
+      "proof_of_acceptance": "Response body includes \\\"role\\\": \\\"admin\\\" and subsequent GET /api/v2/admin/users returns 200 instead of 403",
+      "proof_of_rejection": "Response body returns \\\"role\\\": \\\"user\\\" unchanged; or server returns 400 with field validation error naming 'role'",
+      "exploit_value": "critical",
+      "cwe": "CWE-269"
+    },
+    {
+      "field": "is_verified",
+      "source": "response_leak",
+      "expected_effect": "Mark account as verified, bypassing email verification gate and unlocking features that require verified status",
+      "request_mutation": "Add \\\"is_verified\\\": true to PATCH /api/v2/users/me request body",
+      "proof_of_acceptance": "Response body includes \\\"is_verified\\\": true; or features previously returning 403 'account not verified' now return 200",
+      "proof_of_rejection": "Response body returns \\\"is_verified\\\": false; or server ignores the field silently with no change in behavior",
+      "exploit_value": "high",
+      "cwe": "CWE-284"
+    },
+    {
+      "field": "subscription_tier",
+      "source": "response_leak",
+      "expected_effect": "Upgrade subscription from 'free' to 'pro' or 'enterprise' without payment, unlocking premium features and rate limit tiers",
+      "request_mutation": "Add \\\"subscription_tier\\\": \\\"enterprise\\\" to PATCH /api/v2/users/me request body",
+      "proof_of_acceptance": "Response body includes \\\"subscription_tier\\\": \\\"enterprise\\\"; or API rate limits increase and premium endpoints return 200",
+      "proof_of_rejection": "Response body returns \\\"subscription_tier\\\": \\\"free\\\" unchanged; premium endpoints still return 403",
+      "exploit_value": "high",
+      "cwe": "CWE-915"
+    },
+    {
+      "field": "credit_balance",
+      "source": "response_leak",
+      "expected_effect": "Set credit balance to arbitrary value, enabling free purchases or service usage worth real money",
+      "request_mutation": "Add \\\"credit_balance\\\": 99999 to PATCH /api/v2/users/me request body",
+      "proof_of_acceptance": "Response body includes \\\"credit_balance\\\": 99999; or checkout flow shows available credit equal to injected value",
+      "proof_of_rejection": "Response body returns \\\"credit_balance\\\": 0; or server returns 400 with error naming 'credit_balance'",
+      "exploit_value": "critical",
+      "cwe": "CWE-915"
+    }
+  ],
+  "nested_object_risk": "low",
+  "nested_object_note": "No nested objects observed in response — flat structure suggests simple model binding. Test {\\\"role\\\": {\\\"name\\\": \\\"admin\\\"}} as fallback if flat injection fails; Express body-parser handles nested objects by default.",
+  "secondary_endpoints": [
+    "POST /api/v2/users (registration) — same User model binding likely applies at account creation; test role/is_verified injection there",
+    "PUT /api/v2/users/:id/admin — admin panel endpoint in JS bundle; may expose the same model with fewer guards"
+  ],
+  "stop_conditions": [
+    "Role injection confirmed: response includes \\\"role\\\": \\\"admin\\\" and GET /api/v2/admin/users returns user list",
+    "Subscription injection confirmed: response includes \\\"subscription_tier\\\": \\\"enterprise\\\" and a premium API endpoint previously returning 403 now returns 200",
+    "Credit injection confirmed: response includes \\\"credit_balance\\\": 99999 and checkout flow reflects the injected balance"
+  ],
+  "summary": "Response leaks role, is_verified, subscription_tier, credit_balance — all writable via PATCH /api/v2/users/me if Express body binding lacks explicit allowlist; role='admin' injection gives full platform access"
+}

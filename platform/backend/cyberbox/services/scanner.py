@@ -2,15 +2,27 @@
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import subprocess
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from .. import db
 from ..config import get_settings
 from ..hub import hub
 from . import verify
+
+logger = logging.getLogger(__name__)
+
+RAPTOR_PROTOCOLS = frozenset([
+    "mcp", "pkg", "skill", "pypi", "go", "gitlab", "ruby",
+    "java", "php", "gha", "github", "js", "crystal",
+])
+
+# Default location; overridable via settings.tools["raptor"]
+_RAPTOR_DEFAULT = "/home/anon/raptor/raptor"
 
 
 def _now() -> str:
@@ -172,6 +184,105 @@ def run_nuclei(project_id: str, scan_id: str, task_id: str | None, targets: list
         if _ingest_finding(project_id, task_id, rec, scan_id):
             count += 1
     return count
+
+
+def run_raptor_scan(
+    project_id: str,
+    engagement_id: str,
+    protocol: str,
+    target_path: str,
+    created_by: str,
+    output_format: str = "jsonl",
+) -> dict:
+    """Run Raptor source scanner and return structured results.
+
+    Returns {"execution_id": str, "findings_count": int, "output_lines": list[str]}.
+    Raises RuntimeError if raptor binary is absent.
+    Raises ValueError for unknown protocol.
+    Raises PermissionError if the engagement is not in an authorized state.
+    """
+    if protocol not in RAPTOR_PROTOCOLS:
+        raise ValueError(
+            f"unknown raptor protocol {protocol!r}; "
+            f"valid: {', '.join(sorted(RAPTOR_PROTOCOLS))}"
+        )
+
+    engagement = db.query_one("SELECT status FROM engagements WHERE id=?", [engagement_id])
+    if not engagement:
+        raise ValueError(f"engagement not found: {engagement_id}")
+    if engagement["status"] not in ("active", "authorized", "local-laboratory", "ctf"):
+        raise PermissionError(
+            f"raptor scan blocked: engagement status is {engagement['status']!r}; "
+            "must be active, authorized, local-laboratory, or ctf"
+        )
+
+    raptor_bin = get_settings().tools.get("raptor", _RAPTOR_DEFAULT)
+    if not shutil.which(raptor_bin):
+        raise RuntimeError(
+            f"raptor binary not found: install raptor from /home/anon/raptor/ "
+            f"(looked for {raptor_bin!r})"
+        )
+
+    target_path = str(Path(target_path).resolve())
+
+    execution_id = str(uuid.uuid4())
+    db.insert("executions", {
+        "id": execution_id, "engagement_id": engagement_id, "project_id": project_id,
+        "kind": "raptor.scan", "status": "running", "risk_class": "passive",
+        "input": json.dumps({"protocol": protocol, "target_path": target_path,
+                              "output_format": output_format, "created_by": created_by},
+                             sort_keys=True),
+        "output": "{}", "budget": "{}", "idempotency_key": None,
+        "lease_owner": "raptor-worker", "lease_expires_at": None,
+        "attempt": 1, "error": None,
+        "started_at": _now(), "finished_at": None, "created_at": _now(),
+    })
+    hub.broadcast("raptor.scan.started", {
+        "execution_id": execution_id, "protocol": protocol, "target_path": target_path,
+    })
+
+    cmd = [raptor_bin, "scan", "-t", protocol, "-p", target_path, "-o", output_format]
+    logger.info("raptor: %s", " ".join(cmd))
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    except subprocess.TimeoutExpired:
+        db.execute(
+            "UPDATE executions SET status='failed', finished_at=?, error=? WHERE id=?",
+            [_now(), "raptor scan timed out after 300s", execution_id],
+        )
+        hub.broadcast("raptor.scan.done", {"execution_id": execution_id, "status": "failed"})
+        return {"execution_id": execution_id, "findings_count": 0, "output_lines": []}
+
+    if proc.returncode != 0:
+        stderr_tail = (proc.stderr or "").strip().splitlines()[-10:]
+        logger.warning("raptor exited %d: %s", proc.returncode, "\n".join(stderr_tail))
+
+    output_lines: list[str] = []
+    findings_count = 0
+    for line in proc.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        output_lines.append(line)
+        try:
+            json.loads(line)
+            findings_count += 1
+        except json.JSONDecodeError:
+            pass
+
+    result = {
+        "findings_count": findings_count,
+        "output_lines": output_lines[:50],
+        "exit_code": proc.returncode,
+    }
+    db.execute(
+        "UPDATE executions SET status='done', finished_at=?, output=? WHERE id=?",
+        [_now(), json.dumps(result, sort_keys=True), execution_id],
+    )
+    hub.broadcast("raptor.scan.done", {
+        "execution_id": execution_id, "status": "done", "findings_count": findings_count,
+    })
+    return {"execution_id": execution_id, **result}
 
 
 def run_full_scan(scan_id: str) -> None:

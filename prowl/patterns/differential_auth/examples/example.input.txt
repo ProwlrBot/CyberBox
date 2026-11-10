@@ -1,0 +1,27 @@
+SaaS team management app. Three roles: org_admin, member, anonymous.
+
+Endpoints observed:
+  GET  /api/v1/team                      — list all team members; observed 200 for admin with full member objects
+  GET  /api/v1/team/:user_id             — fetch individual member record
+  POST /api/v1/team/:user_id/role        — change a member's role; body: {"role":"admin"}
+  DELETE /api/v1/team/:user_id           — remove member from org
+  GET  /api/v1/billing                   — billing overview; returns stripe_customer_id, card_last4, next_invoice_amount
+  GET  /api/v1/audit-log                 — paginated audit log of all org actions
+
+Access rules (from product docs):
+  - org_admin: full access to all endpoints above
+  - member: may read /api/v1/team (own record only), cannot access /api/v1/billing or /api/v1/audit-log, cannot POST role or DELETE
+  - anonymous: no access to any endpoint
+
+Observed admin response for GET /api/v1/team/:user_id:
+{
+  "id": "usr_892",
+  "email": "alice@example.com",
+  "role": "member",
+  "joined_at": "2026-01-15",
+  "stripe_customer_id": "cus_Nxyz123",
+  "internal_notes": "flagged for churn risk",
+  "last_login_ip": "203.0.113.42"
+}
+
+Sessions: admin session cookie = "session=admin_tok_abc"; member session cookie = "session=member_tok_xyz"; no cookie = anonymous.

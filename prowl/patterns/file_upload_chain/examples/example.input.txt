@@ -1,0 +1,27 @@
+POST /api/v1/documents/upload HTTP/1.1
+Host: app.example.com
+Authorization: Bearer eyJhbGciOiJSUzI1NiJ9...
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary
+
+------WebKitFormBoundary
+Content-Disposition: form-data; name="file"; filename="report.pdf"
+Content-Type: application/pdf
+
+%PDF-1.4 ... (binary content)
+------WebKitFormBoundary--
+
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"id": "doc_8f3a2c", "filename": "report.pdf", "size": 48392, "url": "/documents/doc_8f3a2c/report.pdf", "status": "processing"}
+
+---
+
+Observations:
+- Files are served directly from /documents/<id>/<filename> with original filename preserved
+- Server checks Content-Type header, accepts application/pdf and image/* only
+- Thumbnails generated via ImageMagick after upload ("status":"processing" in response)
+- After ~3 seconds, status changes to "ready" and thumbnail appears at /documents/<id>/thumb.jpg
+- Extension check: server rejects .php, .jsp, .sh explicitly but allows .pdf, .jpg, .png, .gif, .svg
+- Storage appears to be local disk based on direct path serving
+- No Content-Disposition: attachment header on served files (served inline)

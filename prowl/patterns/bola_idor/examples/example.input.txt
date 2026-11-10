@@ -1,0 +1,10 @@
+GET /api/v1/invoices/1042 HTTP/1.1
+Host: app.example.com
+Cookie: session=eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjo3NzJ9.abc123
+
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"id":1042,"owner_id":772,"amount":4850.00,"currency":"USD","status":"unpaid","line_items":[{"desc":"Pro subscription","qty":1,"price":4850}],"billing_email":"alice@example.com","created_at":"2026-10-01"}
+
+Object type: invoice. The ID 1042 appears in the URL path and looks like a sequential integer. The session cookie belongs to Account_A (user_id 772).

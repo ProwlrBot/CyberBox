@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "bola_idor",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["endpoint", "object_type", "id_locations", "ownership_model", "test_matrix", "id_enumeration_risk", "id_enumeration_note", "async_surfaces", "stop_conditions", "summary"],
+  "properties": {
+    "endpoint": { "type": "string", "minLength": 4, "maxLength": 400 },
+    "object_type": { "type": "string", "minLength": 2, "maxLength": 120 },
+    "id_locations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["where", "param", "observed_value", "id_class"],
+        "properties": {
+          "where": { "type": "string", "enum": ["path", "query", "body", "header", "cookie"] },
+          "param": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "observed_value": { "type": "string", "minLength": 1, "maxLength": 240 },
+          "id_class": {
+            "type": "string",
+            "enum": ["sequential_int", "uuid_v4", "uuid_v1", "hash_opaque", "slug", "compound", "other"]
+          }
+        }
+      }
+    },
+    "ownership_model": {
+      "type": "string",
+      "enum": ["user_owns_object", "org_owns_object", "user_in_org", "shared_resource", "service_account", "unknown"]
+    },
+    "test_matrix": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["actor", "action", "target_owner", "request_mutation", "expected_blocked_response", "proof_of_bypass", "exploit_value", "cwe"],
+        "properties": {
+          "actor": {
+            "type": "string",
+            "enum": ["Account_B", "anonymous", "lower_role", "different_tenant", "expired_session", "service_account"]
+          },
+          "action": {
+            "type": "string",
+            "enum": ["read", "write", "delete", "export", "share", "transfer", "admin_action"]
+          },
+          "target_owner": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "request_mutation": { "type": "string", "minLength": 8, "maxLength": 500 },
+          "expected_blocked_response": { "type": "string", "minLength": 4, "maxLength": 240 },
+          "proof_of_bypass": { "type": "string", "minLength": 8, "maxLength": 400 },
+          "exploit_value": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+          "cwe": {
+            "type": "string",
+            "enum": ["CWE-639", "CWE-284", "CWE-285", "CWE-863", "CWE-200"]
+          }
+        }
+      }
+    },
+    "id_enumeration_risk": { "type": "string", "enum": ["none", "low", "medium", "high"] },
+    "id_enumeration_note": { "type": "string", "minLength": 4, "maxLength": 240 },
+    "async_surfaces": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 6, "maxLength": 300 }
+    },
+    "stop_conditions": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 6, "maxLength": 240 }
+    },
+    "summary": { "type": "string", "minLength": 8, "maxLength": 400 }
+  }
+}

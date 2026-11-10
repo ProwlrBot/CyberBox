@@ -1,0 +1,98 @@
+<evaluation>
+    <!-- ============================================================ -->
+    <!-- CyberBox Security Tools Evaluation                          -->
+    <!-- Tests agent proficiency with offensive security tools       -->
+    <!-- installed in the cybersandbox runtime.                      -->
+    <!-- All targets: loopback / sandbox-local only.                 -->
+    <!-- ============================================================ -->
+
+    <!-- === CVE / Tech Detection === -->
+    <task category="security_intel" complexity="simple">
+        <description>Verify NVD CVE lookup for a known vulnerable version</description>
+        <prompt>Using the sandbox execute_code or execute_bash tool, run a Python snippet that imports the cve_lookup module from /home/hunter/CyberBox/evaluation/ and calls query_cves("nginx", "1.14.0"). Return the count of CVEs returned (integer).</prompt>
+        <response_pattern>^\d+$</response_pattern>
+        <validation>Response must be a positive integer — nginx 1.14.0 has known CVEs in NVD</validation>
+    </task>
+
+    <task category="security_intel" complexity="medium">
+        <description>Identify the highest CVSS score for a versioned technology</description>
+        <prompt>Using execute_code, write Python to call query_cves("apache", "2.4.49") from the cve_lookup module at /home/hunter/CyberBox/evaluation/ and return the highest CVSS base score found as a decimal number (e.g. 9.8). Return "0" if no CVEs found.</prompt>
+        <response_pattern>^\d+(\.\d+)?$</response_pattern>
+        <validation>Apache 2.4.49 (CVE-2021-41773) has CVSS 9.8</validation>
+    </task>
+
+    <!-- === Security Tool Usage === -->
+    <task category="security_tools" complexity="medium">
+        <description>Verify nuclei is installed and responsive</description>
+        <prompt>Use execute_bash to run: nuclei -version 2>&amp;1 | head -1. Return the first line of output.</prompt>
+        <response_pattern>.*[Nn]uclei.*</response_pattern>
+        <validation>Response should contain 'Nuclei' or 'nuclei' in the version string</validation>
+    </task>
+
+    <task category="security_tools" complexity="medium">
+        <description>Verify httpx is installed and can probe a local endpoint</description>
+        <prompt>Use execute_bash to run: echo "http://127.0.0.1:8080" | httpx -silent -status-code -title 2>/dev/null | head -1. Return the output line or "no_response" if empty.</prompt>
+        <response_pattern>.+</response_pattern>
+        <validation>Response should be a non-empty httpx result line or "no_response"</validation>
+    </task>
+
+    <task category="security_tools" complexity="simple">
+        <description>Verify subfinder is available</description>
+        <prompt>Use execute_bash to check: which subfinder &amp;&amp; subfinder -version 2>&amp;1 | head -1. Return "available" if subfinder is found, "missing" if not.</prompt>
+        <response_pattern>^(available|missing)$</response_pattern>
+        <validation>Response must be exactly "available" or "missing"</validation>
+    </task>
+
+    <!-- === Prowl Pattern Schema Validation === -->
+    <task category="security_analysis" complexity="medium">
+        <description>Validate prowl SSRF schema against a known-good fixture</description>
+        <prompt>Use execute_code to: (1) read /home/hunter/CyberBox/prowl/patterns/ssrf_chain/schema.json, (2) read the first file in /home/hunter/CyberBox/prowl/patterns/ssrf_chain/examples/ if it exists, otherwise create a minimal valid fixture, (3) validate the fixture against the schema using jsonschema. Return "VALID" if validation passes, "INVALID: reason" if it fails.</prompt>
+        <response_pattern>^(VALID|INVALID:.+)$</response_pattern>
+        <validation>Response must start with VALID or INVALID</validation>
+    </task>
+
+    <task category="security_analysis" complexity="medium">
+        <description>Validate the new bola_idor schema exists and is valid JSON Schema</description>
+        <prompt>Use execute_code to: (1) read /home/hunter/CyberBox/prowl/patterns/bola_idor/schema.json, (2) verify it is valid JSON and has "$schema", "title", "required", and "properties" keys. Return "VALID_SCHEMA" if all checks pass, "FAIL: reason" if any check fails.</prompt>
+        <response_pattern>^(VALID_SCHEMA|FAIL:.+)$</response_pattern>
+        <validation>Response must be VALID_SCHEMA or FAIL: reason</validation>
+    </task>
+
+    <!-- === CVE Triage Pipeline === -->
+    <task category="security_analysis" complexity="high">
+        <description>Run the phase_recon pipeline on a synthetic httpx output</description>
+        <prompt>Use execute_code and execute_bash to: (1) write a file /tmp/httpx_test.jsonl with one line: {"url":"http://127.0.0.1","technologies":["nginx-1.14.0"]}  (2) run the phase_recon CLI: cd /home/hunter/CyberBox/evaluation &amp;&amp; python -m phase_recon /tmp/httpx_test.jsonl --triage /tmp/triage_test.md 2>/dev/null; echo $?  (3) Return the exit code as an integer.</prompt>
+        <response_pattern>^\d+$</response_pattern>
+        <validation>Exit code 0 means phase_recon ran successfully; non-zero indicates an error (may be 2 if NVD is unreachable from sandbox)</validation>
+    </task>
+
+    <!-- === Security Pattern Awareness === -->
+    <task category="security_analysis" complexity="simple">
+        <description>Count available prowl vuln-class patterns</description>
+        <prompt>Use execute_bash to count the number of directories in /home/hunter/CyberBox/prowl/patterns/ that contain a system.md file. Run: find /home/hunter/CyberBox/prowl/patterns -name "system.md" | wc -l. Return the integer count.</prompt>
+        <response_pattern>^\d+$</response_pattern>
+        <validation>Should be at least 12 (original patterns) + 3 new patterns = 15 or more</validation>
+    </task>
+
+    <task category="security_analysis" complexity="medium">
+        <description>Identify which prowl pattern to use for BOLA/IDOR testing</description>
+        <prompt>Use file_operations or execute_bash to list the directories in /home/hunter/CyberBox/prowl/patterns/ and return the name of the pattern directory most appropriate for testing broken object-level authorization. Return just the directory name.</prompt>
+        <response>bola_idor</response>
+    </task>
+
+    <!-- === Raptor Source Scanner === -->
+    <task category="security_tools" complexity="medium">
+        <description>Verify raptor binary exists and can show its template count</description>
+        <prompt>Use execute_bash to run: /home/hunter/raptor/raptor doctor --summary 2>/dev/null | grep -i "template" | head -3. Return the output lines, or "not_found" if raptor is not present.</prompt>
+        <response_pattern>.+</response_pattern>
+        <validation>Should show template counts from raptor doctor, or not_found if binary absent</validation>
+    </task>
+
+    <!-- === Hypothesis Formation === -->
+    <task category="security_analysis" complexity="high">
+        <description>Generate a valid bola_idor pattern output for a sample endpoint</description>
+        <prompt>Read /home/hunter/CyberBox/prowl/patterns/bola_idor/system.md and /home/hunter/CyberBox/prowl/patterns/bola_idor/schema.json. Then use execute_code to generate a JSON object conforming to the bola_idor schema for this input: "GET /api/v1/invoices/1042 — observed with Account_A session cookie. Object type: invoice. ID in path, appears sequential." Validate it against the schema and return "VALID" if it passes, or "INVALID: first_error" if it fails.</prompt>
+        <response_pattern>^(VALID|INVALID:.+)$</response_pattern>
+        <validation>Agent must read the pattern, generate conforming JSON, and validate it</validation>
+    </task>
+</evaluation>

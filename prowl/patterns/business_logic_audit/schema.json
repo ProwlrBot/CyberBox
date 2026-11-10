@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "business_logic_audit",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["feature", "invariants", "untestable", "summary"],
+  "properties": {
+    "feature": { "type": "string", "minLength": 4, "maxLength": 400 },
+    "invariants": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "statement", "category", "monetizable", "tests"],
+        "properties": {
+          "id": { "type": "string", "minLength": 2, "maxLength": 80 },
+          "statement": { "type": "string", "minLength": 10, "maxLength": 400 },
+          "category": {
+            "type": "string",
+            "enum": ["price_integrity", "quota_enforcement", "approval_order", "state_machine", "idempotency", "ownership_transfer", "privilege_boundary", "audit_completeness"]
+          },
+          "monetizable": { "type": "boolean" },
+          "tests": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["attack_name", "sequence", "preconditions", "oracle", "exploit_value", "tooling_hint"],
+              "properties": {
+                "attack_name": { "type": "string", "minLength": 2, "maxLength": 80 },
+                "sequence": {
+                  "type": "array",
+                  "minItems": 2,
+                  "items": { "type": "string", "minLength": 6, "maxLength": 500 }
+                },
+                "preconditions": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": { "type": "string", "minLength": 4, "maxLength": 300 }
+                },
+                "oracle": { "type": "string", "minLength": 8, "maxLength": 400 },
+                "exploit_value": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+                "tooling_hint": {
+                  "type": "string",
+                  "enum": ["turbo-intruder", "single-packet", "sequential-manual", "burp-macros", "state-refresh"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "untestable": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["invariant", "reason"],
+        "properties": {
+          "invariant": { "type": "string", "minLength": 4, "maxLength": 300 },
+          "reason": { "type": "string", "minLength": 4, "maxLength": 300 }
+        }
+      }
+    },
+    "summary": { "type": "string", "minLength": 8, "maxLength": 400 }
+  }
+}

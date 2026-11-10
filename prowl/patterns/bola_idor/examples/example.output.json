@@ -1,0 +1,54 @@
+{
+  "endpoint": "GET /api/v1/invoices/:id",
+  "object_type": "invoice",
+  "id_locations": [
+    {
+      "where": "path",
+      "param": "id",
+      "observed_value": "1042",
+      "id_class": "sequential_int"
+    }
+  ],
+  "ownership_model": "user_owns_object",
+  "test_matrix": [
+    {
+      "actor": "Account_B",
+      "action": "read",
+      "target_owner": "Account_A",
+      "request_mutation": "Replace Account_A session cookie with Account_B session cookie; keep path /api/v1/invoices/1042 unchanged",
+      "expected_blocked_response": "403 Forbidden or 404 Not Found",
+      "proof_of_bypass": "200 OK response body contains Account_A's invoice fields (amount, line_items, billing_address)",
+      "exploit_value": "high",
+      "cwe": "CWE-639"
+    },
+    {
+      "actor": "anonymous",
+      "action": "read",
+      "target_owner": "Account_A",
+      "request_mutation": "Remove Authorization/Cookie header entirely",
+      "expected_blocked_response": "401 Unauthorized",
+      "proof_of_bypass": "200 OK with invoice data returned to unauthenticated caller",
+      "exploit_value": "critical",
+      "cwe": "CWE-284"
+    },
+    {
+      "actor": "Account_B",
+      "action": "write",
+      "target_owner": "Account_A",
+      "request_mutation": "PATCH /api/v1/invoices/1042 with Account_B session; body: {\"status\":\"paid\"}",
+      "expected_blocked_response": "403 Forbidden",
+      "proof_of_bypass": "200 OK and Account_A invoice status changes to 'paid' in subsequent GET",
+      "exploit_value": "critical",
+      "cwe": "CWE-639"
+    }
+  ],
+  "id_enumeration_risk": "high",
+  "id_enumeration_note": "ID 1042 is a sequential integer \u2014 Account_B can enumerate IDs from 1 upward to harvest all invoices in the system.",
+  "async_surfaces": [
+    "POST /api/v1/invoices/:id/export \u2014 may generate a background PDF export job and email it; check whether the export job inherits the authorization check from the synchronous read path"
+  ],
+  "stop_conditions": [
+    "Account_B receives Account_A's invoice response body with private fields (amount, line_items, billing_address) \u2014 this is sufficient proof; do not proceed to write tests until read bypass is confirmed"
+  ],
+  "summary": "Account_B can read and potentially modify Account_A's invoices by substituting a sequential integer ID; async export endpoint may bypass the authorization check on the sync path"
+}

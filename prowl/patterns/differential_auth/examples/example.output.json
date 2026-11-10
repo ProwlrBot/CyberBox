@@ -1,0 +1,110 @@
+{
+  "endpoint": "GET /api/v1/team/:user_id  (and related team management endpoints)",
+  "feature": "Team management: list members, view profiles, change roles, remove members, access billing and audit log",
+  "actors": [
+    {
+      "id": "admin",
+      "role": "org_admin",
+      "session_context": "Login as org admin; use Cookie: session=admin_tok_abc",
+      "expected_access": "allow"
+    },
+    {
+      "id": "member",
+      "role": "member",
+      "session_context": "Login as a regular org member; use Cookie: session=member_tok_xyz",
+      "expected_access": "deny"
+    },
+    {
+      "id": "anonymous",
+      "role": "unauthenticated",
+      "session_context": "Send request with no Cookie or Authorization header",
+      "expected_access": "deny"
+    }
+  ],
+  "comparison_matrix": [
+    {
+      "actor_a": "admin",
+      "actor_b": "member",
+      "request": "GET /api/v1/billing  Cookie: <actor session>",
+      "actor_a_expected": "200 OK with stripe_customer_id, card_last4, next_invoice_amount",
+      "actor_b_expected": "403 Forbidden",
+      "oracle": "member receives 200 response body containing stripe_customer_id field",
+      "exploit_value": "critical"
+    },
+    {
+      "actor_a": "admin",
+      "actor_b": "anonymous",
+      "request": "GET /api/v1/billing  (no Cookie)",
+      "actor_a_expected": "200 OK with billing data",
+      "actor_b_expected": "401 Unauthorized",
+      "oracle": "anonymous receives 200 response body with any billing field present",
+      "exploit_value": "critical"
+    },
+    {
+      "actor_a": "admin",
+      "actor_b": "member",
+      "request": "GET /api/v1/audit-log  Cookie: <actor session>",
+      "actor_a_expected": "200 OK with paginated audit events",
+      "actor_b_expected": "403 Forbidden",
+      "oracle": "member receives 200 and response body contains events[] array with org-wide actions",
+      "exploit_value": "high"
+    },
+    {
+      "actor_a": "admin",
+      "actor_b": "member",
+      "request": "POST /api/v1/team/usr_892/role  Cookie: <actor session>  Body: {\"role\":\"admin\"}",
+      "actor_a_expected": "200 OK, target user role updated to admin",
+      "actor_b_expected": "403 Forbidden",
+      "oracle": "member receives 200 and subsequent GET /api/v1/team/usr_892 returns role:admin",
+      "exploit_value": "critical"
+    },
+    {
+      "actor_a": "admin",
+      "actor_b": "member",
+      "request": "DELETE /api/v1/team/usr_892  Cookie: <actor session>",
+      "actor_a_expected": "204 No Content, user removed from org",
+      "actor_b_expected": "403 Forbidden",
+      "oracle": "member receives 204 or 200 and subsequent GET /api/v1/team returns usr_892 absent from list",
+      "exploit_value": "high"
+    },
+    {
+      "actor_a": "admin",
+      "actor_b": "member",
+      "request": "GET /api/v1/team/usr_892  Cookie: <actor session>",
+      "actor_a_expected": "200 OK with full member object including stripe_customer_id and internal_notes",
+      "actor_b_expected": "200 OK but with stripped profile (no internal fields) or 403",
+      "oracle": "member response body contains stripe_customer_id or internal_notes fields",
+      "exploit_value": "high"
+    }
+  ],
+  "property_level_checks": [
+    {
+      "property": "stripe_customer_id",
+      "actor_should_see": "deny",
+      "actor_id": "member",
+      "test_request": "GET /api/v1/team/usr_892  Cookie: session=member_tok_xyz",
+      "oracle": "stripe_customer_id key present in response JSON for member actor proves property-level filtering is absent"
+    },
+    {
+      "property": "internal_notes",
+      "actor_should_see": "deny",
+      "actor_id": "member",
+      "test_request": "GET /api/v1/team/usr_892  Cookie: session=member_tok_xyz",
+      "oracle": "internal_notes key present in response JSON for member actor — exposes internal churn risk annotations to non-admin users"
+    },
+    {
+      "property": "last_login_ip",
+      "actor_should_see": "deny",
+      "actor_id": "member",
+      "test_request": "GET /api/v1/team/usr_892  Cookie: session=member_tok_xyz",
+      "oracle": "last_login_ip key present in response JSON for member actor — exposes PII of other members"
+    }
+  ],
+  "regression_triggers": [
+    "A new role (e.g. billing_viewer, security_auditor) is introduced to the permission model",
+    "Any refactor of the team management API serializer or permission middleware",
+    "API version bump (v2 endpoints) that may duplicate the team/billing routes without inheriting permission checks",
+    "SSO or SAML integration that may map external IdP roles to internal org_admin without review"
+  ],
+  "summary": "A member-role actor can escalate to org_admin by calling POST /api/v1/team/:user_id/role if the endpoint lacks role-based authorization, and can read full billing data including stripe_customer_id from /api/v1/billing"
+}

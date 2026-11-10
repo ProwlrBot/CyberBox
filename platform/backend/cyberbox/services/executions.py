@@ -97,6 +97,33 @@ def _run_wordfence(execution_id: str) -> None:
         transition(execution_id, "failed", error=str(exc)[:2000])
 
 
+def _run_raptor(execution_id: str) -> None:
+    execution = db.query_one("SELECT * FROM executions WHERE id=?", [execution_id])
+    if not execution or execution["status"] not in ("queued", "running"):
+        return
+    payload = json.loads(execution["input"])
+    lease_until = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+    db.execute("UPDATE executions SET lease_owner=?, lease_expires_at=? WHERE id=?",
+               ["raptor-worker", lease_until, execution_id])
+    # scanner.run_raptor_scan already created the execution record directly;
+    # here we only need to dispatch it as a background thread when called via the API route.
+    # The execution record is already in 'running' state from run_raptor_scan.
+    # This dispatcher is for queued retries / recovery.
+    transition(execution_id, "running")
+    try:
+        result = scanner.run_raptor_scan(
+            execution["project_id"],
+            execution["engagement_id"],
+            payload["protocol"],
+            payload["target_path"],
+            payload.get("created_by", "system"),
+            payload.get("output_format", "jsonl"),
+        )
+        transition(execution_id, "done", result)
+    except Exception as exc:  # noqa: BLE001
+        transition(execution_id, "failed", error=str(exc)[:2000])
+
+
 def dispatch(execution_id: str) -> None:
     execution = db.query_one("SELECT * FROM executions WHERE id=?", [execution_id])
     if not execution:
@@ -105,6 +132,8 @@ def dispatch(execution_id: str) -> None:
         worker = _run_scan
     elif execution["kind"] == "wordfence.local":
         worker = _run_wordfence
+    elif execution["kind"] == "raptor.scan":
+        worker = _run_raptor
     else:
         return
     threading.Thread(target=worker, args=(execution_id,), daemon=True,
@@ -112,7 +141,11 @@ def dispatch(execution_id: str) -> None:
 
 
 def recover() -> int:
-    rows = db.query("SELECT id FROM executions WHERE kind IN ('scan.full','wordfence.local') AND status IN ('queued','running')")
+    rows = db.query(
+        "SELECT id FROM executions "
+        "WHERE kind IN ('scan.full','wordfence.local','raptor.scan') "
+        "AND status IN ('queued','running')"
+    )
     for row in rows:
         if db.query_one("SELECT status FROM executions WHERE id=?", [row["id"]])["status"] == "running":
             db.execute("UPDATE executions SET status='queued', lease_owner=NULL, lease_expires_at=NULL WHERE id=?",

@@ -1,0 +1,315 @@
+#!/usr/bin/env python3
+"""
+sync-hunt-memory — import claude-bug-bounty hunt-memory markdown files
+                   into the CyberBox control-plane research_memory store.
+
+Flow per file:
+  1. Read .md file from hunt-memory/<target>/<topic>.md
+  2. Run prowl-guardrails redact (strip secrets from content)
+  3. POST /api/v1/projects/{project_id}/feedback  → creates memory_suggestion
+  4. POST /api/v1/memory/suggestions/{id}          → approves it → research_memory row
+
+Idempotency: a local state file (~/.cyberbox/hunt-memory-sync.json) tracks
+synced file paths by their sha256. Re-running skips unchanged files.
+
+Usage:
+  sync-hunt-memory \\
+      --hunt-memory /home/anon/claude-bug-bounty/hunt-memory \\
+      --project <project_id> \\
+      --url http://localhost:8080/control \\
+      --api-key <key> \\
+      [--dry-run] \\
+      [--target remitly]
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import pathlib
+import subprocess
+import sys
+from typing import Optional
+
+try:
+    import requests
+except ImportError:
+    print("error: 'requests' not installed — run: pip install requests", file=sys.stderr)
+    sys.exit(3)
+
+GUARDRAILS = pathlib.Path(__file__).parent / "prowl-guardrails"
+STATE_FILE = pathlib.Path.home() / ".cyberbox" / "hunt-memory-sync.json"
+MAX_NOTES = 7800  # leave headroom under the 8000-char API limit
+
+
+# ---------------------------------------------------------------------------
+# Guardrails
+# ---------------------------------------------------------------------------
+
+def _redact(content: str) -> str:
+    """Run prowl-guardrails redact. Falls back to raw content on any failure."""
+    if not GUARDRAILS.exists():
+        return content
+    try:
+        result = subprocess.run(
+            [str(GUARDRAILS), "redact"],
+            input=content, capture_output=True, text=True, timeout=10,
+        )
+        return result.stdout if result.returncode == 0 and result.stdout else content
+    except Exception as exc:
+        print(f"  warning: guardrails redact failed ({exc}), using raw content", file=sys.stderr)
+        return content
+
+
+# ---------------------------------------------------------------------------
+# State (idempotency)
+# ---------------------------------------------------------------------------
+
+def _load_state() -> dict:
+    if STATE_FILE.exists():
+        try:
+            return json.loads(STATE_FILE.read_text())
+        except Exception:
+            return {}
+    return {}
+
+
+def _save_state(state: dict) -> None:
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    STATE_FILE.write_text(json.dumps(state, indent=2))
+
+
+def _file_hash(content: str) -> str:
+    return hashlib.sha256(content.encode()).hexdigest()[:16]
+
+
+# ---------------------------------------------------------------------------
+# API calls
+# ---------------------------------------------------------------------------
+
+def _headers(api_key: str) -> dict:
+    return {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+
+
+def _post_feedback(base_url: str, api_key: str, project_id: str,
+                   subject_id: str, notes: str) -> dict:
+    url = f"{base_url.rstrip('/')}/api/v1/projects/{project_id}/feedback"
+    payload = {
+        "subject_type": "finding",
+        "subject_id": subject_id,
+        "disposition": "informative",
+        "notes": notes[:MAX_NOTES],
+    }
+    resp = requests.post(url, json=payload, headers=_headers(api_key), timeout=15)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _approve_suggestion(base_url: str, api_key: str, suggestion_id: str,
+                        title: str, lesson: str, tags: list[str]) -> dict:
+    url = f"{base_url.rstrip('/')}/api/v1/memory/suggestions/{suggestion_id}"
+    payload = {
+        "decision": "approved",
+        "title": title[:200],
+        "lesson": lesson[:MAX_NOTES],
+        "technology_tags": tags,
+    }
+    resp = requests.post(url, json=payload, headers=_headers(api_key), timeout=15)
+    resp.raise_for_status()
+    return resp.json()
+
+
+# ---------------------------------------------------------------------------
+# File discovery
+# ---------------------------------------------------------------------------
+
+def _collect_files(hunt_memory_dir: pathlib.Path,
+                   target_filter: Optional[str]) -> list[tuple[str, str, pathlib.Path]]:
+    """
+    Returns list of (target_name, topic_slug, file_path).
+    Skips binary files and non-.md files.
+    """
+    entries: list[tuple[str, str, pathlib.Path]] = []
+
+    # Also include .md files at the top level of hunt-memory (not in a subdir)
+    for item in sorted(hunt_memory_dir.iterdir()):
+        if item.is_file() and item.suffix == ".md":
+            if target_filter and target_filter != "_root":
+                continue
+            entries.append(("_root", item.stem, item))
+        elif item.is_dir():
+            target = item.name
+            if target_filter and target != target_filter:
+                continue
+            for md in sorted(item.rglob("*.md")):
+                # Use path relative to target dir as topic slug
+                rel = md.relative_to(item)
+                topic = str(rel).replace("/", "_").replace("\\", "_")
+                if topic.endswith(".md"):
+                    topic = topic[:-3]
+                entries.append((target, topic, md))
+
+    return entries
+
+
+# ---------------------------------------------------------------------------
+# Sync logic
+# ---------------------------------------------------------------------------
+
+def _derive_tags(target: str, content: str) -> list[str]:
+    """Best-effort technology tags from filename/content."""
+    tags = []
+    low = content.lower()
+    for kw in ("oauth", "jwt", "graphql", "ssrf", "cors", "idor", "xss",
+               "sqli", "rce", "websocket", "mobile", "android", "ios",
+               "s3", "aws", "gcp", "azure", "kubernetes"):
+        if kw in low:
+            tags.append(kw)
+    if target not in ("_root", "workflows"):
+        tags.append(f"target:{target}")
+    return sorted(set(tags))[:10]
+
+
+def sync_file(
+    file_path: pathlib.Path,
+    target: str,
+    topic: str,
+    project_id: str,
+    base_url: str,
+    api_key: str,
+    state: dict,
+    dry_run: bool,
+) -> str:
+    """
+    Returns: "synced" | "skipped" | "error:<msg>"
+    """
+    try:
+        raw_content = file_path.read_text(encoding="utf-8", errors="replace")
+    except Exception as exc:
+        return f"error:read:{exc}"
+
+    file_hash = _file_hash(raw_content)
+    state_key = str(file_path)
+
+    if state.get(state_key) == file_hash:
+        return "skipped"
+
+    content = _redact(raw_content)
+    subject_id = f"hunt-memory:{target}:{topic}"
+    title = f"[{target}] {topic.replace('_', ' ')}"
+    preview = content[:120].replace("\n", " ")
+
+    if dry_run:
+        print(f"  → {target}/{topic}.md  ({len(content)} chars)")
+        print(f"    subject_id: {subject_id}")
+        print(f"    preview:    {preview!r}")
+        print(f"    tags:       {_derive_tags(target, content)}")
+        return "dry_run"
+
+    try:
+        result = _post_feedback(base_url, api_key, project_id, subject_id, content)
+        suggestion_id = result["suggestion"]["id"]
+        tags = _derive_tags(target, content)
+        _approve_suggestion(base_url, api_key, suggestion_id, title, content, tags)
+        state[state_key] = file_hash
+        return "synced"
+    except requests.HTTPError as exc:
+        body = ""
+        try:
+            body = exc.response.text[:200]
+        except Exception:
+            pass
+        return f"error:api:{exc.response.status_code}:{body}"
+    except requests.RequestException as exc:
+        return f"error:network:{exc}"
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Sync claude-bug-bounty hunt-memory into CyberBox research_memory"
+    )
+    parser.add_argument(
+        "--hunt-memory",
+        default=os.getenv("HUNT_MEMORY_DIR",
+                          str(pathlib.Path.home() / "claude-bug-bounty" / "hunt-memory")),
+        help="Path to hunt-memory directory (default: ~/claude-bug-bounty/hunt-memory)",
+    )
+    parser.add_argument("--project", required=True, help="CyberBox project ID")
+    parser.add_argument(
+        "--url",
+        default=os.getenv("CYBERBOX_URL", "http://localhost:8080/control"),
+        help="CyberBox control plane base URL",
+    )
+    parser.add_argument(
+        "--api-key",
+        default=os.getenv("CYBERBOX_API_KEY"),
+        help="CyberBox API key (or set CYBERBOX_API_KEY)",
+    )
+    parser.add_argument("--target", default=None,
+                        help="Sync only this target directory (e.g. remitly)")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Print what would be synced; make no API calls")
+
+    args = parser.parse_args()
+
+    if not args.dry_run and not args.api_key:
+        print("error: --api-key or CYBERBOX_API_KEY required", file=sys.stderr)
+        return 3
+
+    hunt_memory_dir = pathlib.Path(args.hunt_memory)
+    if not hunt_memory_dir.exists():
+        print(f"error: hunt-memory directory not found: {hunt_memory_dir}", file=sys.stderr)
+        print("hint: set --hunt-memory or HUNT_MEMORY_DIR to the correct path", file=sys.stderr)
+        return 3
+
+    files = _collect_files(hunt_memory_dir, args.target)
+    if not files:
+        print(f"no .md files found under {hunt_memory_dir}"
+              + (f" (target filter: {args.target})" if args.target else ""))
+        return 0
+
+    state = {} if args.dry_run else _load_state()
+
+    counts = {"synced": 0, "skipped": 0, "dry_run": 0, "errors": 0}
+
+    for target, topic, file_path in files:
+        status = sync_file(
+            file_path, target, topic,
+            args.project, args.url, args.api_key,
+            state, args.dry_run,
+        )
+        if status == "skipped":
+            counts["skipped"] += 1
+        elif status == "dry_run":
+            counts["dry_run"] += 1
+        elif status == "synced":
+            counts["synced"] += 1
+            print(f"  synced: {target}/{topic}")
+        else:
+            counts["errors"] += 1
+            print(f"  error:  {target}/{topic} — {status}", file=sys.stderr)
+
+    if not args.dry_run:
+        _save_state(state)
+
+    if args.dry_run:
+        print(f"\ndry-run: {counts['dry_run']} files would be synced"
+              + (f", {counts['skipped']} already up-to-date" if counts['skipped'] else ""))
+    else:
+        print(f"\nsynced: {counts['synced']}, "
+              f"skipped: {counts['skipped']}, "
+              f"errors: {counts['errors']}")
+        if counts["synced"] > 0:
+            print(f"state saved to: {STATE_FILE}")
+
+    return 1 if counts["errors"] > 0 else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

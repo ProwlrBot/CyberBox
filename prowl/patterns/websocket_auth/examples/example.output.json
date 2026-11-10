@@ -1,0 +1,38 @@
+{
+  "upgrade_url": "/ws/notifications?token=<bearer>",
+  "auth_mechanism": "query_param_token",
+  "channel_model": "user_private",
+  "handshake_issues": [
+    {
+      "id": "token_in_query_string",
+      "severity": "medium",
+      "evidence": "GET /ws/notifications?token=eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjo3NzJ9.abc123",
+      "exploitation": "JWT token is logged by every proxy, CDN, load balancer, and server access log in the path. An attacker with read access to any log tier can harvest tokens. Impact: account takeover for any user whose session appears in logs."
+    }
+  ],
+  "message_auth_tests": [
+    {
+      "test_name": "subscribe_to_other_user_channel",
+      "framing": "{\"action\":\"subscribe\",\"channel\":\"notifications\",\"user_id\":773}",
+      "actor": "Account_B",
+      "target_resource": "Account_A (user_id 772) notification channel",
+      "expected_blocked": "Server sends error frame or closes connection with 4003 Forbidden",
+      "proof_of_bypass": "Server delivers notification messages containing user_id:772, invoice details, or unread count for Account_A to Account_B's connection",
+      "exploit_value": "high"
+    },
+    {
+      "test_name": "anonymous_connect",
+      "framing": "Connect without token query param: GET /ws/notifications HTTP/1.1",
+      "actor": "anonymous",
+      "target_resource": "Any user notification channel",
+      "expected_blocked": "HTTP 401 on upgrade handshake or close code 4001 immediately after connect",
+      "proof_of_bypass": "HTTP 101 returned and server pushes notification data to unauthenticated socket",
+      "exploit_value": "critical"
+    }
+  ],
+  "reconnect_attack": "Revoke Account_A's token (logout or token rotation endpoint). Verify whether the already-established WebSocket connection continues to receive notification events. If yes: session revocation does not close existing WS connections — attacker who captured the token before revocation retains persistent access.",
+  "stop_conditions": [
+    "Account_B receives a message frame containing user_id:772 or Account_A's private data — this is sufficient proof of channel isolation bypass"
+  ],
+  "summary": "JWT token in query string is logged on every hop; established connections survive token revocation; Account_B may subscribe to Account_A's notification channel by manipulating user_id in the subscribe frame"
+}
