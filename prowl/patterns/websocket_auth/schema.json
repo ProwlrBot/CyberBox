@@ -52,10 +52,9 @@
       }
     },
     "reconnect_attack": {
-      "oneOf": [
-        { "type": "string", "minLength": 8, "maxLength": 500 },
-        { "type": "null" }
-      ]
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 500
     },
     "stop_conditions": {
       "type": "array",
