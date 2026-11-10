@@ -13,6 +13,7 @@ import { StubPage } from "./pages/_stubs/StubPage";
 const Dashboard   = lazy(() => import("./pages/dashboard/Dashboard"));
 const Targets     = lazy(() => import("./pages/hunt/Targets"));
 const Findings    = lazy(() => import("./pages/hunt/Findings"));
+const CveIntel    = lazy(() => import("./pages/hunt/CveIntel"));
 const Jobs        = lazy(() => import("./pages/hunt/Jobs"));
 const SettingsPage = lazy(() => import("./pages/settings/Settings"));
 const BrowserHunt  = lazy(() => import("./pages/workspace/BrowserHunt"));
@@ -26,6 +27,7 @@ export const NAV_SECTIONS: NavSection[] = [
     { label: "Recon",     path: "/hunt/recon",     Icon: Search },
     { label: "Traffic",   path: "/hunt/traffic",   Icon: Activity },
     { label: "Findings",  path: "/hunt/findings",  Icon: Flag },
+    { label: "CVE Intel", path: "/hunt/cve-intel", Icon: ShieldAlert },
     { label: "Evidence",  path: "/hunt/evidence",  Icon: Archive },
     { label: "Workflows", path: "/hunt/workflows", Icon: Workflow },
     { label: "Reports",   path: "/hunt/reports",   Icon: BarChart2 },
@@ -80,6 +82,7 @@ export const appRoutes: RouteObject[] = [
   { index: true, element: <Suspense fallback={null}><Dashboard /></Suspense> },
   { path: "hunt/targets",   element: <Suspense fallback={null}><Targets /></Suspense> },
   { path: "hunt/findings",  element: <Suspense fallback={null}><Findings /></Suspense> },
+  { path: "hunt/cve-intel", element: <Suspense fallback={null}><CveIntel /></Suspense> },
   { path: "hunt/recon",     element: S("Recon") },
   { path: "hunt/traffic",   element: S("Traffic Workbench") },
   { path: "hunt/evidence",  element: S("Evidence Center") },
