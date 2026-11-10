@@ -118,3 +118,32 @@ export async function fetchPendingApprovals(): Promise<Array<{
   const r = await fetch("/api/v1/approvals?status=pending", { headers: headers() });
   return r.ok ? r.json() : [];
 }
+
+export async function fetchCampaigns(projectId: string): Promise<Array<{
+  id: string; name: string; target_url: string; hunt_type: string; status: string;
+  phase: string | null; progress: number; findings_count: number;
+  started_at: string | null; created_at: string;
+}>> {
+  const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/campaigns`, { headers: headers() });
+  return r.ok ? r.json() : [];
+}
+
+export async function createCampaign(projectId: string, body: {
+  name: string; target_url: string; hunt_type: string;
+  provider_id?: string; max_runtime?: number;
+}): Promise<{ id: string }> {
+  const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/campaigns`, {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+export async function fetchProviders(): Promise<Array<{
+  id: string; name: string; enabled: boolean;
+}>> {
+  const r = await fetch("/api/v1/providers", { headers: headers() });
+  return r.ok ? r.json() : [];
+}

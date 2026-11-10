@@ -613,3 +613,41 @@ CREATE INDEX IF NOT EXISTS idx_memory_suggestions_status ON memory_suggestions(s
 CREATE INDEX IF NOT EXISTS idx_endpoints_project ON endpoints(project_id, host, method);
 CREATE INDEX IF NOT EXISTS idx_endpoints_host ON endpoints(host, path);
 CREATE INDEX IF NOT EXISTS idx_model_providers_enabled ON model_providers(enabled);
+
+-- ── Campaigns (autonomous hunt runs) ──────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS campaigns (
+    id             TEXT PRIMARY KEY,
+    project_id     TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    name           TEXT NOT NULL,
+    target_url     TEXT NOT NULL,
+    hunt_type      TEXT NOT NULL DEFAULT 'full_auto',
+    -- full_auto | recon_only | api_fuzz | source_review
+    provider_id    TEXT,
+    status         TEXT NOT NULL DEFAULT 'queued',
+    -- queued | running | done | failed | cancelled
+    phase          TEXT,
+    -- current phase: recon | fuzz | validate | report
+    progress       INTEGER NOT NULL DEFAULT 0,
+    max_runtime    INTEGER NOT NULL DEFAULT 3600,
+    findings_count INTEGER NOT NULL DEFAULT 0,
+    agent_ids      TEXT NOT NULL DEFAULT '[]',
+    started_at     TEXT,
+    finished_at    TEXT,
+    error          TEXT,
+    report_md      TEXT,
+    created_at     TEXT NOT NULL,
+    UNIQUE (project_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_campaigns_project ON campaigns(project_id);
+CREATE INDEX IF NOT EXISTS idx_campaigns_status  ON campaigns(status);
+
+CREATE TABLE IF NOT EXISTS campaign_events (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id  TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+    phase        TEXT,
+    event_type   TEXT NOT NULL,
+    summary      TEXT NOT NULL,
+    detail       TEXT,
+    occurred_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_campaign_events_campaign ON campaign_events(campaign_id);

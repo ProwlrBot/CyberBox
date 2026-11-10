@@ -13,7 +13,7 @@ import urllib.request
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -25,6 +25,7 @@ from ..services import gori as gori_svc
 from ..services import cve as cve_svc
 from ..services import model as model_svc
 from ..services import api_genome as genome_svc
+from ..services import campaign as campaign_svc
 
 router = APIRouter(prefix="/api/v1", tags=["api"])
 
@@ -1751,3 +1752,94 @@ def ingest_caido_findings_batch(
         result = ingest_caido_finding(project_id, item, _user)
         (created if result["status"] == "created" else skipped).append(result["id"])
     return {"created": len(created), "skipped": len(skipped), "ids": created}
+
+
+# ── Campaigns ─────────────────────────────────────────────────────────────────
+
+class CampaignCreate(BaseModel):
+    name: str
+    target_url: str
+    hunt_type: str = "full_auto"
+    provider_id: str | None = None
+    max_runtime: int = 3600
+
+
+@router.post("/projects/{project_id}/campaigns", status_code=202)
+async def create_campaign(
+    project_id: str,
+    body: CampaignCreate,
+    background_tasks: BackgroundTasks,
+    _user: dict = Depends(current_user),
+) -> dict:
+    """Create a campaign and immediately launch it as a background task."""
+    _require_project(project_id)
+    if body.hunt_type not in campaign_svc.HUNT_PHASES:
+        raise HTTPException(422, f"hunt_type must be one of: {list(campaign_svc.HUNT_PHASES)}")
+    campaign = campaign_svc.create_campaign(
+        project_id=project_id,
+        name=body.name[:200],
+        target_url=body.target_url[:1024],
+        hunt_type=body.hunt_type,
+        provider_id=body.provider_id,
+        max_runtime=body.max_runtime,
+    )
+    background_tasks.add_task(campaign_svc.run_campaign, campaign["id"])
+    return campaign
+
+
+@router.get("/projects/{project_id}/campaigns")
+def list_campaigns(
+    project_id: str,
+    _user: dict = Depends(current_user),
+) -> list:
+    _require_project(project_id)
+    return campaign_svc.list_campaigns(project_id)
+
+
+@router.get("/campaigns/{campaign_id}")
+def get_campaign(
+    campaign_id: str,
+    _user: dict = Depends(current_user),
+) -> dict:
+    try:
+        return campaign_svc.get_campaign(campaign_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@router.delete("/campaigns/{campaign_id}", status_code=200)
+def cancel_campaign(
+    campaign_id: str,
+    _user: dict = Depends(current_user),
+) -> dict:
+    try:
+        return campaign_svc.cancel_campaign(campaign_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@router.get("/campaigns/{campaign_id}/events")
+def get_campaign_events(
+    campaign_id: str,
+    limit: int = 100,
+    _user: dict = Depends(current_user),
+) -> list:
+    rows = db.query(
+        "SELECT * FROM campaign_events WHERE campaign_id=? ORDER BY occurred_at DESC LIMIT ?",
+        [campaign_id, min(limit, 500)],
+    )
+    return [dict(r) for r in rows]
+
+
+@router.get("/campaigns/{campaign_id}/report")
+def get_campaign_report(
+    campaign_id: str,
+    _user: dict = Depends(current_user),
+) -> dict:
+    try:
+        row = campaign_svc.get_campaign(campaign_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    if not row.get("report_md"):
+        raise HTTPException(404, "report not yet generated")
+    return {"campaign_id": campaign_id, "report_md": row["report_md"]}
