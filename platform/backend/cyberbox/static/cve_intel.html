@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CyberBox · CVE Intel</title>
+<style>
+:root {
+  --bg:        #0a0c0f;
+  --surface:   #111418;
+  --surface2:  #181c22;
+  --surface3:  #1e242c;
+  --border:    rgba(200,241,53,.12);
+  --border-h:  rgba(200,241,53,.38);
+  --accent:    #c8f135;
+  --teal:      #00d4aa;
+  --orange:    #f5a623;
+  --danger:    #ff4444;
+  --danger-lo: rgba(255,68,68,.12);
+  --muted:     #5a6270;
+  --text:      #d8e0eb;
+  --mono:      'JetBrains Mono','Cascadia Code','Fira Code','Courier New',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:12px;min-height:100vh;display:flex;flex-direction:column;overflow-x:hidden}
+
+/* ── topbar ── */
+#topbar{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:10px 20px;
+  border-bottom:1px solid var(--border);
+  background:var(--surface);
+  flex-shrink:0;position:sticky;top:0;z-index:100;
+}
+.logo{color:var(--accent);font-size:13px;font-weight:700;letter-spacing:.1em;display:flex;align-items:center;gap:8px}
+.logo-mark{font-size:17px;line-height:1}
+.topbar-right{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+#utc-clock{color:var(--muted);font-size:11px;letter-spacing:.05em;min-width:120px;text-align:right}
+.live-pill{display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;border:1px solid var(--border);font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--teal);transition:all .3s}
+.live-pill.dead{color:var(--danger);border-color:rgba(255,68,68,.35)}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--teal);animation:blink 1.6s infinite}
+.live-pill.dead .live-dot{background:var(--danger);animation:none}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+
+/* ── stat row ── */
+#stats-row{
+  display:flex;gap:1px;background:var(--border);border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+.stat-cell{
+  flex:1;padding:10px 16px;background:var(--surface);
+  display:flex;flex-direction:column;gap:2px;
+}
+.stat-label{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.stat-value{font-size:20px;font-weight:700;line-height:1}
+.stat-value.red{color:var(--danger)}
+.stat-value.orange{color:var(--orange)}
+.stat-value.yellow{color:var(--accent)}
+.stat-value.teal{color:var(--teal)}
+
+/* ── controls ── */
+#controls{
+  display:flex;align-items:center;gap:10px;padding:12px 20px;
+  border-bottom:1px solid var(--border);background:var(--surface);
+  flex-wrap:wrap;flex-shrink:0;
+}
+.ctrl-label{color:var(--muted);font-size:10px;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
+select, input[type=text]{
+  background:var(--surface2);color:var(--text);border:1px solid var(--border);
+  border-radius:4px;padding:5px 9px;font-family:var(--mono);font-size:11px;
+  outline:none;transition:border-color .2s;
+}
+select:focus, input[type=text]:focus{border-color:var(--border-h)}
+.sep{width:1px;height:20px;background:var(--border)}
+.sev-chip{
+  padding:3px 10px;border-radius:12px;font-size:10px;font-weight:700;letter-spacing:.06em;
+  cursor:pointer;border:1px solid transparent;transition:all .15s;user-select:none;
+}
+.sev-chip.crit{color:var(--danger);border-color:rgba(255,68,68,.35)}
+.sev-chip.crit.active{background:var(--danger-lo);border-color:var(--danger)}
+.sev-chip.high{color:var(--orange);border-color:rgba(245,166,35,.35)}
+.sev-chip.high.active{background:rgba(245,166,35,.12);border-color:var(--orange)}
+.sev-chip.med{color:var(--accent);border-color:var(--border)}
+.sev-chip.med.active{background:rgba(200,241,53,.08);border-color:var(--accent)}
+.sev-chip.low{color:var(--muted);border-color:var(--border)}
+.sev-chip.low.active{background:var(--surface2);border-color:var(--muted)}
+.btn-sweep{
+  margin-left:auto;padding:5px 14px;border-radius:4px;font-family:var(--mono);font-size:11px;
+  font-weight:700;letter-spacing:.06em;cursor:pointer;transition:all .15s;
+  background:rgba(200,241,53,.12);color:var(--accent);border:1px solid var(--border-h);
+}
+.btn-sweep:hover{background:rgba(200,241,53,.2)}
+.btn-sweep:disabled{opacity:.4;cursor:not-allowed}
+
+/* ── sweep form overlay ── */
+#sweep-modal{
+  display:none;position:fixed;inset:0;z-index:200;background:rgba(10,12,15,.85);
+  align-items:center;justify-content:center;
+}
+#sweep-modal.open{display:flex}
+.modal-box{
+  background:var(--surface);border:1px solid var(--border-h);border-radius:8px;
+  width:min(560px,95vw);padding:24px;display:flex;flex-direction:column;gap:14px;
+}
+.modal-title{color:var(--accent);font-size:13px;font-weight:700;letter-spacing:.08em}
+.field-row{display:flex;flex-direction:column;gap:4px}
+.field-label{color:var(--muted);font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+textarea{
+  background:var(--surface2);color:var(--text);border:1px solid var(--border);
+  border-radius:4px;padding:8px;font-family:var(--mono);font-size:11px;
+  resize:vertical;min-height:60px;outline:none;
+}
+textarea:focus{border-color:var(--border-h)}
+.modal-row{display:flex;gap:10px}
+.modal-row input{flex:1}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:4px}
+.btn-cancel{padding:6px 14px;border-radius:4px;font-family:var(--mono);font-size:11px;cursor:pointer;background:transparent;color:var(--muted);border:1px solid var(--border)}
+.btn-run{padding:6px 14px;border-radius:4px;font-family:var(--mono);font-size:11px;cursor:pointer;font-weight:700;background:var(--accent);color:#000;border:none}
+.btn-run:disabled{opacity:.4;cursor:not-allowed}
+
+/* ── main feed ── */
+main{flex:1;padding:16px 20px;display:flex;flex-direction:column;gap:10px;overflow-y:auto}
+#empty-state{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:10px;color:var(--muted);padding:60px 0;
+}
+.empty-icon{font-size:40px;opacity:.4}
+.empty-text{font-size:12px;opacity:.6;text-align:center;max-width:320px;line-height:1.6}
+
+/* ── CVE card ── */
+.cve-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:6px;
+  padding:14px 16px;display:flex;flex-direction:column;gap:8px;
+  transition:border-color .2s;cursor:default;
+  border-left:3px solid var(--border);
+}
+.cve-card:hover{border-color:var(--border-h);border-left-color:inherit}
+.cve-card.sev-critical{border-left-color:var(--danger)}
+.cve-card.sev-high{border-left-color:var(--orange)}
+.cve-card.sev-medium{border-left-color:var(--accent)}
+.cve-card.sev-low{border-left-color:var(--muted)}
+.cve-card.sev-unknown{border-left-color:var(--muted)}
+
+.card-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.cve-id{
+  font-size:13px;font-weight:700;color:var(--text);letter-spacing:.03em;
+}
+.sev-badge{
+  font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  padding:2px 8px;border-radius:3px;
+}
+.sev-badge.sev-critical{background:rgba(255,68,68,.18);color:var(--danger);border:1px solid rgba(255,68,68,.4)}
+.sev-badge.sev-high{background:rgba(245,166,35,.14);color:var(--orange);border:1px solid rgba(245,166,35,.4)}
+.sev-badge.sev-medium{background:rgba(200,241,53,.08);color:var(--accent);border:1px solid rgba(200,241,53,.3)}
+.sev-badge.sev-low{background:var(--surface2);color:var(--muted);border:1px solid var(--border)}
+.sev-badge.sev-unknown{background:var(--surface2);color:var(--muted);border:1px solid var(--border)}
+
+.cvss-meter{
+  display:flex;align-items:center;gap:6px;margin-left:auto;
+}
+.cvss-label{color:var(--muted);font-size:9px;letter-spacing:.06em;text-transform:uppercase}
+.cvss-score{font-size:16px;font-weight:700;line-height:1;min-width:36px;text-align:right}
+.cvss-score.sev-critical{color:var(--danger)}
+.cvss-score.sev-high{color:var(--orange)}
+.cvss-score.sev-medium{color:var(--accent)}
+.cvss-score.sev-low{color:var(--muted)}
+.cvss-score.sev-unknown{color:var(--muted)}
+.cvss-bar{
+  width:72px;height:5px;background:var(--surface3);border-radius:3px;overflow:hidden;
+}
+.cvss-fill{height:100%;border-radius:3px;transition:width .4s ease}
+.cvss-fill.sev-critical{background:var(--danger)}
+.cvss-fill.sev-high{background:var(--orange)}
+.cvss-fill.sev-medium{background:var(--accent)}
+.cvss-fill.sev-low{background:var(--muted)}
+
+.card-tech{
+  display:flex;align-items:center;gap:6px;
+}
+.tech-tag{
+  font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  padding:2px 7px;border-radius:3px;background:var(--surface3);color:var(--teal);
+  border:1px solid rgba(0,212,170,.2);
+}
+.card-desc{
+  color:#8b96a8;font-size:11px;line-height:1.6;
+  overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
+}
+.card-desc.expanded{-webkit-line-clamp:unset}
+.card-footer{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:2px}
+.pub-date{color:var(--muted);font-size:10px}
+.vector-str{color:var(--muted);font-size:9px;letter-spacing:.03em;opacity:.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px}
+.card-actions{margin-left:auto;display:flex;gap:6px}
+.btn-expand{background:none;border:none;color:var(--muted);font-family:var(--mono);font-size:10px;cursor:pointer;padding:2px 6px;border-radius:3px;transition:color .15s}
+.btn-expand:hover{color:var(--text)}
+.btn-hunt{
+  padding:4px 11px;border-radius:4px;font-family:var(--mono);font-size:10px;font-weight:700;
+  letter-spacing:.05em;cursor:pointer;transition:all .15s;
+  background:rgba(0,212,170,.1);color:var(--teal);border:1px solid rgba(0,212,170,.3);
+}
+.btn-hunt:hover{background:rgba(0,212,170,.18);border-color:var(--teal)}
+.btn-hunt.hunted{background:rgba(200,241,53,.08);color:var(--accent);border-color:rgba(200,241,53,.3);cursor:default}
+
+/* ── refs expand ── */
+.card-refs{display:none;padding-top:6px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:4px}
+.card-refs a{color:var(--muted);font-size:10px;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:color .15s}
+.card-refs a:hover{color:var(--teal)}
+.refs-hidden{display:none}
+
+/* ── toast ── */
+#toast{
+  position:fixed;bottom:24px;right:24px;z-index:999;
+  padding:10px 18px;border-radius:6px;font-size:11px;font-weight:700;
+  background:var(--surface);border:1px solid var(--border-h);color:var(--accent);
+  transform:translateY(60px);opacity:0;transition:all .25s ease;pointer-events:none;
+}
+#toast.show{transform:translateY(0);opacity:1}
+#toast.error{color:var(--danger);border-color:rgba(255,68,68,.5)}
+
+/* ── footer ── */
+footer{padding:8px 20px;border-top:1px solid var(--border);color:var(--muted);font-size:9px;letter-spacing:.06em;display:flex;justify-content:space-between;flex-shrink:0}
+</style>
+</head>
+<body>
+
+<!-- topbar -->
+<div id="topbar">
+  <div class="logo">
+    <span class="logo-mark">◈</span>
+    CYBERBOX · CVE INTEL
+  </div>
+  <div class="topbar-right">
+    <select id="proj-select" title="project"></select>
+    <div class="sep"></div>
+    <span id="utc-clock">—</span>
+    <div class="live-pill" id="live-pill"><div class="live-dot"></div>LIVE</div>
+  </div>
+</div>
+
+<!-- stat row -->
+<div id="stats-row">
+  <div class="stat-cell">
+    <div class="stat-label">Critical</div>
+    <div class="stat-value red" id="stat-crit">—</div>
+  </div>
+  <div class="stat-cell">
+    <div class="stat-label">High</div>
+    <div class="stat-value orange" id="stat-high">—</div>
+  </div>
+  <div class="stat-cell">
+    <div class="stat-label">Medium</div>
+    <div class="stat-value yellow" id="stat-med">—</div>
+  </div>
+  <div class="stat-cell">
+    <div class="stat-label">Total CVEs</div>
+    <div class="stat-value teal" id="stat-total">—</div>
+  </div>
+  <div class="stat-cell">
+    <div class="stat-label">Hypotheses</div>
+    <div class="stat-value" id="stat-hyp">—</div>
+  </div>
+</div>
+
+<!-- controls -->
+<div id="controls">
+  <span class="ctrl-label">Severity</span>
+  <span class="sev-chip crit active" data-sev="CRITICAL">CRIT</span>
+  <span class="sev-chip high active" data-sev="HIGH">HIGH</span>
+  <span class="sev-chip med" data-sev="MEDIUM">MED</span>
+  <span class="sev-chip low" data-sev="LOW">LOW</span>
+  <div class="sep"></div>
+  <span class="ctrl-label">Search</span>
+  <input type="text" id="search-box" placeholder="filter by CVE ID or tech…" style="width:220px">
+  <button class="btn-sweep" id="btn-sweep-open">+ Run CVE Sweep</button>
+</div>
+
+<!-- sweep modal -->
+<div id="sweep-modal">
+  <div class="modal-box">
+    <div class="modal-title">◈ CVE SWEEP</div>
+    <div class="field-row">
+      <div class="field-label">Tech Stack (one per line, e.g. "wordpress 6.5")</div>
+      <textarea id="sweep-techs" placeholder="wordpress&#10;spring-boot&#10;next.js 14"></textarea>
+    </div>
+    <div class="modal-row">
+      <div class="field-row" style="flex:1">
+        <div class="field-label">Min CVSS</div>
+        <input type="text" id="sweep-cvss" value="7.0" style="width:80px">
+      </div>
+      <div class="field-row" style="flex:1">
+        <div class="field-label">Days back</div>
+        <input type="text" id="sweep-days" value="90" style="width:80px">
+      </div>
+      <div class="field-row" style="flex:2">
+        <div class="field-label">NVD API key (optional)</div>
+        <input type="text" id="sweep-apikey" placeholder="optional — raises rate limits">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" id="btn-sweep-cancel">Cancel</button>
+      <button class="btn-run" id="btn-sweep-run">Run Sweep</button>
+    </div>
+  </div>
+</div>
+
+<!-- feed -->
+<main id="feed">
+  <div id="empty-state">
+    <div class="empty-icon">◈</div>
+    <div class="empty-text">No CVE intel yet.<br>Select a project and run a sweep to populate the feed.</div>
+  </div>
+</main>
+
+<footer>
+  <span id="footer-ts">CyberBox CVE Intel</span>
+  <span>refreshes every 60s · <a href="/api/v1/dashboard" style="color:var(--muted)">hunt dashboard</a></span>
+</footer>
+
+<div id="toast"></div>
+
+<script>
+const API = '/api/v1';
+let _apiKey = '';
+let _projects = [];
+let _currentProjectId = '';
+let _allCves = [];
+let _activeSevs = new Set(['CRITICAL','HIGH']);
+let _searchQuery = '';
+let _refreshTimer = null;
+
+// ── init ──────────────────────────────────────────────────────────────────
+async function init() {
+  _apiKey = localStorage.getItem('cbx_api_key') || '';
+  if (!_apiKey) {
+    _apiKey = prompt('CyberBox API key (from ~/.cyberbox/admin.key):') || '';
+    if (_apiKey) localStorage.setItem('cbx_api_key', _apiKey);
+  }
+  startClock();
+  await loadProjects();
+  loadCves();
+  scheduleRefresh();
+}
+
+function startClock() {
+  function tick() {
+    document.getElementById('utc-clock').textContent =
+      new Date().toISOString().replace('T',' ').slice(0,19) + ' UTC';
+  }
+  tick();
+  setInterval(tick, 1000);
+}
+
+function scheduleRefresh() {
+  if (_refreshTimer) clearInterval(_refreshTimer);
+  _refreshTimer = setInterval(() => loadCves(), 60000);
+}
+
+// ── API helpers ───────────────────────────────────────────────────────────
+async function apiFetch(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json', 'X-Api-Key': _apiKey, ...opts.headers };
+  try {
+    const res = await fetch(API + path, { ...opts, headers });
+    setLive(res.ok);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    setLive(false);
+    return null;
+  }
+}
+
+function setLive(ok) {
+  const pill = document.getElementById('live-pill');
+  pill.classList.toggle('dead', !ok);
+}
+
+// ── projects ──────────────────────────────────────────────────────────────
+async function loadProjects() {
+  const projs = await apiFetch('/projects');
+  if (!projs) return;
+  _projects = projs;
+  const sel = document.getElementById('proj-select');
+  const saved = localStorage.getItem('cbx_project_id');
+  sel.innerHTML = projs.map(p =>
+    `<option value="${p.id}" ${p.id === saved ? 'selected' : ''}>${p.name}</option>`
+  ).join('') || '<option value="">No projects</option>';
+  _currentProjectId = sel.value;
+}
+
+document.getElementById('proj-select').addEventListener('change', e => {
+  _currentProjectId = e.target.value;
+  localStorage.setItem('cbx_project_id', _currentProjectId);
+  loadCves();
+});
+
+// ── CVE feed ──────────────────────────────────────────────────────────────
+async function loadCves() {
+  if (!_currentProjectId) return;
+  const data = await apiFetch(`/projects/${_currentProjectId}/cve-sweep`);
+  if (!data) return;
+  _allCves = data;
+  updateStats();
+  renderFeed();
+  document.getElementById('footer-ts').textContent =
+    `Last refresh: ${new Date().toISOString().slice(11,19)} UTC`;
+}
+
+function updateStats() {
+  const counts = { CRITICAL:0, HIGH:0, MEDIUM:0, LOW:0, UNKNOWN:0 };
+  for (const c of _allCves) {
+    const sev = (c.cve_meta?.severity || 'UNKNOWN').toUpperCase();
+    counts[sev] = (counts[sev] || 0) + 1;
+  }
+  document.getElementById('stat-crit').textContent  = counts.CRITICAL;
+  document.getElementById('stat-high').textContent  = counts.HIGH;
+  document.getElementById('stat-med').textContent   = counts.MEDIUM;
+  document.getElementById('stat-total').textContent = _allCves.length;
+  document.getElementById('stat-hyp').textContent   = _allCves.length;
+}
+
+function renderFeed() {
+  const feed = document.getElementById('feed');
+  const q = _searchQuery.toLowerCase();
+
+  const filtered = _allCves.filter(c => {
+    const sev = (c.cve_meta?.severity || 'UNKNOWN').toUpperCase();
+    if (!_activeSevs.has(sev)) return false;
+    if (q && !c.title.toLowerCase().includes(q) &&
+        !(c.cve_meta?.cve_id || '').toLowerCase().includes(q) &&
+        !(c.cve_meta?.tech || '').toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  if (!filtered.length) {
+    feed.innerHTML = `<div id="empty-state">
+      <div class="empty-icon">◈</div>
+      <div class="empty-text">${_allCves.length ? 'No CVEs match the current filter.' : 'No CVE intel yet.<br>Run a sweep above.'}</div>
+    </div>`;
+    return;
+  }
+
+  feed.innerHTML = filtered.map(c => buildCard(c)).join('');
+
+  // wire up expand and hunt buttons
+  feed.querySelectorAll('.btn-expand').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const card = btn.closest('.cve-card');
+      const desc = card.querySelector('.card-desc');
+      const refs = card.querySelector('.card-refs');
+      const expanded = desc.classList.toggle('expanded');
+      btn.textContent = expanded ? '▲ less' : '▼ more';
+      if (refs) refs.classList.toggle('refs-hidden', !expanded);
+    });
+  });
+  feed.querySelectorAll('.btn-hunt').forEach(btn => {
+    btn.addEventListener('click', () => huntCve(btn));
+  });
+}
+
+function buildCard(c) {
+  const meta = c.cve_meta || {};
+  const sevRaw = (meta.severity || 'UNKNOWN').toUpperCase();
+  const sevClass = 'sev-' + sevRaw.toLowerCase();
+  const score = meta.cvss_score;
+  const scoreDisplay = score != null ? score.toFixed(1) : '?';
+  const fillPct = score != null ? Math.round(score * 10) : 0;
+  const tech = meta.tech || '';
+  const published = meta.published ? meta.published.slice(0,10) : '';
+  const refs = (meta.references || []).slice(0,5);
+  const vector = meta.vector || '';
+  const desc = c.description || '';
+  const cveId = meta.cve_id || c.title;
+
+  return `<div class="cve-card ${sevClass}" data-id="${c.id}">
+  <div class="card-top">
+    <div class="cve-id">${cveId}</div>
+    <span class="sev-badge ${sevClass}">${sevRaw}</span>
+    ${tech ? `<div class="card-tech"><span class="tech-tag">${escHtml(tech)}</span></div>` : ''}
+    <div class="cvss-meter">
+      <span class="cvss-label">CVSS</span>
+      <div class="cvss-bar"><div class="cvss-fill ${sevClass}" style="width:${fillPct}%"></div></div>
+      <span class="cvss-score ${sevClass}">${scoreDisplay}</span>
+    </div>
+  </div>
+  <div class="card-desc">${escHtml(desc)}</div>
+  <div class="card-refs refs-hidden">
+    ${refs.map(r => `<a href="${escHtml(r)}" target="_blank" rel="noopener">${escHtml(r)}</a>`).join('')}
+  </div>
+  <div class="card-footer">
+    ${published ? `<span class="pub-date">${published}</span>` : ''}
+    ${vector ? `<span class="vector-str" title="${escHtml(vector)}">${escHtml(vector)}</span>` : ''}
+    <div class="card-actions">
+      ${(desc.length > 180 || refs.length) ? `<button class="btn-expand">▼ more</button>` : ''}
+      <button class="btn-hunt" data-hyp-id="${c.id}" data-cve="${escHtml(cveId)}">Hunt this</button>
+    </div>
+  </div>
+</div>`;
+}
+
+async function huntCve(btn) {
+  if (btn.classList.contains('hunted')) return;
+  const hypId = btn.dataset.hypId;
+  const cveId = btn.dataset.cve;
+  // promote hypothesis status to 'active'
+  await apiFetch(`/projects/${_currentProjectId}/hypotheses/${hypId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status: 'active' }),
+  });
+  btn.classList.add('hunted');
+  btn.textContent = '✓ Queued';
+  showToast(`${cveId} queued for hunt`);
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── severity filter chips ─────────────────────────────────────────────────
+document.querySelectorAll('.sev-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    const sev = chip.dataset.sev;
+    if (_activeSevs.has(sev)) _activeSevs.delete(sev);
+    else _activeSevs.add(sev);
+    chip.classList.toggle('active', _activeSevs.has(sev));
+    renderFeed();
+  });
+});
+
+// ── search ────────────────────────────────────────────────────────────────
+document.getElementById('search-box').addEventListener('input', e => {
+  _searchQuery = e.target.value;
+  renderFeed();
+});
+
+// ── sweep modal ───────────────────────────────────────────────────────────
+document.getElementById('btn-sweep-open').addEventListener('click', () => {
+  document.getElementById('sweep-modal').classList.add('open');
+});
+document.getElementById('btn-sweep-cancel').addEventListener('click', () => {
+  document.getElementById('sweep-modal').classList.remove('open');
+});
+document.getElementById('sweep-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('sweep-modal'))
+    document.getElementById('sweep-modal').classList.remove('open');
+});
+
+document.getElementById('btn-sweep-run').addEventListener('click', async () => {
+  if (!_currentProjectId) { showToast('Select a project first', true); return; }
+  const techText = document.getElementById('sweep-techs').value.trim();
+  if (!techText) { showToast('Enter at least one tech keyword', true); return; }
+  const techs = techText.split('\n').map(t => t.trim()).filter(Boolean);
+  const cvss_min = parseFloat(document.getElementById('sweep-cvss').value) || 7.0;
+  const days_back = parseInt(document.getElementById('sweep-days').value) || 90;
+  const nvd_api_key = document.getElementById('sweep-apikey').value.trim();
+
+  const btn = document.getElementById('btn-sweep-run');
+  btn.disabled = true;
+  btn.textContent = 'Running…';
+  showToast(`Querying NVD for ${techs.length} tech(s)…`);
+
+  const result = await apiFetch(`/projects/${_currentProjectId}/cve-sweep`, {
+    method: 'POST',
+    body: JSON.stringify({ techs, cvss_min, days_back, nvd_api_key }),
+  });
+
+  btn.disabled = false;
+  btn.textContent = 'Run Sweep';
+  document.getElementById('sweep-modal').classList.remove('open');
+
+  if (!result) { showToast('Sweep failed — check server logs', true); return; }
+  showToast(`${result.cves_found} CVEs found, ${result.hypotheses_created} hypotheses created`);
+  loadCves();
+});
+
+// ── toast ─────────────────────────────────────────────────────────────────
+let _toastTimer;
+function showToast(msg, isError = false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.toggle('error', isError);
+  t.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
+}
+
+// ── start ─────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>

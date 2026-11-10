@@ -22,6 +22,7 @@ from ..auth import current_user, require_internal_service
 from ..config import get_settings
 from ..services import analytics, artifacts, bundles, capabilities, events, executions, knowledge, memory, playbooks, policy, project_templates, research, triage, wordfence
 from ..services import gori as gori_svc
+from ..services import cve as cve_svc
 
 router = APIRouter(prefix="/api/v1", tags=["api"])
 
@@ -230,6 +231,43 @@ class FindingReviewCreate(BaseModel):
 
 class BundleCreate(BaseModel):
     finding_ids: list[str] = Field(min_length=1, max_length=100)
+
+
+class CveSweepCreate(BaseModel):
+    techs: list[str] = Field(min_length=1, max_length=20, description="Tech keywords, e.g. ['wordpress 6.5', 'spring-boot']")
+    cvss_min: float = Field(default=7.0, ge=0.0, le=10.0, description="Minimum CVSS score (7.0 = HIGH+)")
+    days_back: int = Field(default=90, ge=1, le=365)
+    nvd_api_key: str = Field(default="", description="Optional NVD API key for higher rate limits")
+
+
+class NucleiSweepCreate(BaseModel):
+    targets: list[str] = Field(min_length=1, max_length=50)
+    templates: str = Field(default="", description="Nuclei -t value, e.g. 'cves/' or a specific template path")
+    severity: str = Field(default="high,critical", description="Comma-separated severity filter")
+
+
+class PreflightCheckCreate(BaseModel):
+    handle: str = Field(min_length=1, max_length=200, description="Program handle, e.g. 'remitly'")
+    platform: str = Field(default="h1", pattern="^(h1|bc|intigriti|yeswehack)$")
+
+
+class DedupCheckCreate(BaseModel):
+    handle: str = Field(min_length=1, max_length=200)
+    platform: str = Field(default="h1")
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class HowtohuntSyncCreate(BaseModel):
+    target_url: str = Field(min_length=4, max_length=500)
+    tech_stack: list[str] = Field(default_factory=list, max_length=20)
+
+
+class LossCloseCreate(BaseModel):
+    handle: str = Field(min_length=1, max_length=200)
+    outcome: str = Field(pattern="^(win|loss|dup|bounced|informative|na)$")
+    bounty_usd: float = Field(default=0.0, ge=0.0)
+    notes: str = Field(default="", max_length=4000)
+    vuln_class: str = Field(default="", max_length=100)
 
 
 class KnowledgeSearch(BaseModel):
@@ -1147,3 +1185,346 @@ def gori_flows(
     s = get_settings()
     limit = min(max(limit, 1), 500)
     return gori_svc.get_recent_flows(s, limit=limit, host_filter=host)
+
+
+# ---------------------------------------------------------------------------
+# CVE intel sweep
+# ---------------------------------------------------------------------------
+
+def _insert_hypothesis(project_id: str, hyp: dict) -> str:
+    hyp_id = "hyp_" + str(uuid.uuid4()).replace("-", "")[:16]
+    try:
+        db.execute(
+            "INSERT OR IGNORE INTO hypotheses "
+            "(id, project_id, title, description, severity, status, evidence, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            [hyp_id, project_id, hyp.get("title", ""), hyp.get("description", ""),
+             hyp.get("severity", "unknown"), hyp.get("status", "open"),
+             hyp.get("evidence", "{}"), _now()],
+        )
+    except Exception:
+        pass
+    return hyp_id
+
+
+@router.post("/projects/{project_id}/cve-sweep", status_code=202)
+def cve_sweep(project_id: str, body: CveSweepCreate,
+              _user: dict = Depends(current_user)) -> dict:
+    """Query NVD for HIGH/CRITICAL CVEs matching the given tech stack and store as hypotheses."""
+    if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
+        raise HTTPException(status_code=404, detail="project not found")
+    s = get_settings()
+    api_key = body.nvd_api_key or os.environ.get("NVD_API_KEY", "")
+    hits = cve_svc.sweep(
+        body.techs,
+        cvss_min=body.cvss_min,
+        api_key=api_key,
+        days_back=body.days_back,
+    )
+    inserted = 0
+    for hit in hits:
+        hyp = hit.to_hypothesis_body(project_id)
+        _insert_hypothesis(project_id, hyp)
+        inserted += 1
+    return {
+        "techs": body.techs,
+        "cves_found": len(hits),
+        "hypotheses_created": inserted,
+        "results": [
+            {
+                "cve_id": h.cve_id,
+                "tech": h.tech,
+                "cvss_score": h.cvss_score,
+                "severity": h.severity,
+                "published": h.published,
+                "description": h.description[:200],
+            }
+            for h in hits
+        ],
+    }
+
+
+@router.get("/projects/{project_id}/cve-sweep")
+def cve_sweep_results(project_id: str, _user: dict = Depends(current_user)) -> list[dict]:
+    """Return hypotheses from past CVE sweeps for this project."""
+    if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
+        raise HTTPException(status_code=404, detail="project not found")
+    rows = db.query(
+        "SELECT id, title, description, severity, status, evidence, created_at "
+        "FROM hypotheses WHERE project_id=? AND evidence LIKE '%\"source\": \"cve_sweep\"%' "
+        "ORDER BY created_at DESC LIMIT 100",
+        [project_id],
+    )
+    result = []
+    for r in rows:
+        try:
+            ev = json.loads(r["evidence"])
+        except Exception:
+            ev = {}
+        result.append({**dict(r), "cve_meta": ev})
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Nuclei sweep → hypotheses
+# ---------------------------------------------------------------------------
+
+@router.post("/projects/{project_id}/nuclei-sweep", status_code=202)
+def nuclei_sweep(project_id: str, body: NucleiSweepCreate,
+                 _user: dict = Depends(current_user)) -> dict:
+    """Run nuclei against targets, post HIGH/CRITICAL findings as hypotheses."""
+    import shutil
+    import subprocess
+    import tempfile
+    if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
+        raise HTTPException(status_code=404, detail="project not found")
+    nuclei_bin = shutil.which("nuclei") or get_settings().tools.get("nuclei", "nuclei")
+    if not shutil.which(nuclei_bin):
+        raise HTTPException(status_code=503, detail="nuclei not found in PATH")
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tf:
+        tf.write("\n".join(body.targets))
+        targets_file = tf.name
+
+    cmd = [nuclei_bin, "-l", targets_file, "-json", "-silent",
+           "-severity", body.severity]
+    if body.templates:
+        cmd += ["-t", body.templates]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        output = proc.stdout
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=408, detail="nuclei scan timed out after 5 minutes")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"nuclei error: {exc}") from exc
+
+    inserted = 0
+    findings = []
+    for line in output.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            finding = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        info = finding.get("info", {})
+        sev = info.get("severity", "").lower()
+        if sev not in ("high", "critical"):
+            continue
+        name = info.get("name", "nuclei finding")
+        url = finding.get("matched-at", "")
+        cvss = info.get("classification", {}).get("cvss-score")
+        evidence = json.dumps({
+            "source": "nuclei_sweep",
+            "template_id": finding.get("template-id"),
+            "matched_at": url,
+            "cvss_score": cvss,
+            "nuclei_severity": sev,
+        })
+        hyp_id = _insert_hypothesis(project_id, {
+            "title": f"[nuclei] {name} — {url[:80]}",
+            "description": info.get("description", "")[:800],
+            "severity": sev,
+            "status": "open",
+            "evidence": evidence,
+        })
+        inserted += 1
+        findings.append({"template_id": finding.get("template-id"), "url": url, "severity": sev})
+
+    return {"targets": body.targets, "findings": len(findings),
+            "hypotheses_created": inserted, "results": findings}
+
+
+# ---------------------------------------------------------------------------
+# Hunt preflight check → engagement note
+# ---------------------------------------------------------------------------
+
+@router.post("/projects/{project_id}/preflight-check", status_code=202)
+def preflight_check(project_id: str, body: PreflightCheckCreate,
+                    _user: dict = Depends(current_user)) -> dict:
+    """Run hunt_preflight.py for a program and store the verdict as a hypothesis."""
+    import subprocess
+    import shutil
+    if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
+        raise HTTPException(status_code=404, detail="project not found")
+    # hunt_preflight.py lives in claude-bug-bounty/tools/ — locate it
+    preflight_candidates = [
+        os.path.expanduser("~/claude-bug-bounty/tools/hunt_preflight.py"),
+        os.path.join(os.path.dirname(__file__), "..", "..", "..", "..",
+                     "claude-bug-bounty", "tools", "hunt_preflight.py"),
+    ]
+    preflight_script = next((p for p in preflight_candidates if os.path.isfile(p)), None)
+    if not preflight_script:
+        raise HTTPException(status_code=503, detail="hunt_preflight.py not found")
+
+    try:
+        proc = subprocess.run(
+            ["python3", preflight_script, "--handle", body.handle,
+             "--platform", body.platform, "--json"],
+            capture_output=True, text=True, timeout=60,
+        )
+        try:
+            result = json.loads(proc.stdout)
+        except json.JSONDecodeError:
+            result = {"verdict": "ERROR", "reasons": [proc.stdout[:500] or proc.stderr[:500]]}
+    except subprocess.TimeoutExpired:
+        result = {"verdict": "TIMEOUT", "reasons": ["preflight timed out after 60s"]}
+    except Exception as exc:
+        result = {"verdict": "ERROR", "reasons": [str(exc)]}
+
+    verdict = result.get("verdict", "UNKNOWN")
+    reasons = result.get("reasons", [])
+    sev = "high" if verdict == "BLOCKED" else ("medium" if verdict == "WARN" else "info")
+    _insert_hypothesis(project_id, {
+        "title": f"[preflight] {body.handle} — {verdict}",
+        "description": "\n".join(reasons)[:800],
+        "severity": sev,
+        "status": "open",
+        "evidence": json.dumps({"source": "preflight_check", "handle": body.handle,
+                                "platform": body.platform, "verdict": verdict,
+                                "reasons": reasons}),
+    })
+    return {"handle": body.handle, "verdict": verdict, "reasons": reasons}
+
+
+# ---------------------------------------------------------------------------
+# Dedup check — query reports_db, return risk tier
+# ---------------------------------------------------------------------------
+
+@router.post("/projects/{project_id}/dedup-check")
+def dedup_check(project_id: str, body: DedupCheckCreate,
+                _user: dict = Depends(current_user)) -> dict:
+    """Query reports_db for prior reports on a program and store risk tier as a hypothesis."""
+    import subprocess
+    if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
+        raise HTTPException(status_code=404, detail="project not found")
+    reports_db_candidates = [
+        os.path.expanduser("~/claude-bug-bounty/tools/reports_db.py"),
+    ]
+    reports_db_script = next((p for p in reports_db_candidates if os.path.isfile(p)), None)
+    if not reports_db_script:
+        raise HTTPException(status_code=503, detail="reports_db.py not found")
+    try:
+        proc = subprocess.run(
+            ["python3", reports_db_script, "search",
+             "--program", body.handle, "--limit", str(body.limit)],
+            capture_output=True, text=True, timeout=30,
+        )
+        prior_reports = json.loads(proc.stdout) if proc.stdout.strip() else []
+    except Exception:
+        prior_reports = []
+
+    count = len(prior_reports)
+    risk_tier = "HIGH" if count >= 10 else ("MEDIUM" if count >= 3 else "LOW")
+
+    _insert_hypothesis(project_id, {
+        "title": f"[dedup] {body.handle} — {count} prior reports ({risk_tier} dup risk)",
+        "description": f"{count} prior public reports found for {body.handle}.",
+        "severity": "medium" if risk_tier == "HIGH" else "info",
+        "status": "open",
+        "evidence": json.dumps({"source": "dedup_check", "handle": body.handle,
+                                "prior_count": count, "risk_tier": risk_tier,
+                                "sample": prior_reports[:5]}),
+    })
+    return {"handle": body.handle, "prior_reports": count, "risk_tier": risk_tier,
+            "sample": prior_reports[:5]}
+
+
+# ---------------------------------------------------------------------------
+# Howtohunt sync — post technique cards as hypothesis set
+# ---------------------------------------------------------------------------
+
+@router.post("/projects/{project_id}/howtohunt-sync", status_code=202)
+def howtohunt_sync(project_id: str, body: HowtohuntSyncCreate,
+                   _user: dict = Depends(current_user)) -> dict:
+    """Run howtohunt_gen for a URL and post each technique card as a hypothesis."""
+    import subprocess
+    if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
+        raise HTTPException(status_code=404, detail="project not found")
+    gen_candidates = [
+        os.path.expanduser("~/claude-bug-bounty/tools/howtohunt_gen.py"),
+    ]
+    gen_script = next((p for p in gen_candidates if os.path.isfile(p)), None)
+    if not gen_script:
+        raise HTTPException(status_code=503, detail="howtohunt_gen.py not found")
+
+    cmd = ["python3", gen_script, "--url", body.target_url, "--json"]
+    if body.tech_stack:
+        cmd += ["--tech", ",".join(body.tech_stack)]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        cards = json.loads(proc.stdout) if proc.stdout.strip() else []
+        if not isinstance(cards, list):
+            cards = [cards]
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"howtohunt_gen error: {exc}") from exc
+
+    inserted = 0
+    for card in cards:
+        technique = card.get("technique", card.get("title", "technique"))
+        steps = card.get("steps", card.get("test_steps", []))
+        steps_text = "\n".join(f"- {s}" for s in steps) if steps else str(card)[:600]
+        _insert_hypothesis(project_id, {
+            "title": f"[howtohunt] {technique}",
+            "description": steps_text[:800],
+            "severity": card.get("severity", "medium"),
+            "status": "open",
+            "evidence": json.dumps({"source": "howtohunt_sync",
+                                    "target_url": body.target_url,
+                                    "technique": technique,
+                                    "card": card}),
+        })
+        inserted += 1
+    return {"target_url": body.target_url, "cards": len(cards), "hypotheses_created": inserted}
+
+
+# ---------------------------------------------------------------------------
+# Loss close — post hunt outcome to platform
+# ---------------------------------------------------------------------------
+
+@router.post("/projects/{project_id}/loss-close")
+def loss_close(project_id: str, body: LossCloseCreate,
+               _user: dict = Depends(current_user)) -> dict:
+    """Record a hunt outcome (win/loss/dup) as a closed hypothesis entry."""
+    if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
+        raise HTTPException(status_code=404, detail="project not found")
+    outcome_severity = {
+        "win": "info", "dup": "low", "bounced": "low",
+        "informative": "info", "loss": "info", "na": "info",
+    }
+    outcome_emoji = {
+        "win": "✓", "loss": "✗", "dup": "⊘",
+        "bounced": "↩", "informative": "ℹ", "na": "—",
+    }
+    emoji = outcome_emoji.get(body.outcome, "")
+    title = f"[outcome] {emoji} {body.handle} — {body.outcome.upper()}"
+    if body.vuln_class:
+        title += f" ({body.vuln_class})"
+    if body.bounty_usd > 0:
+        title += f" ${body.bounty_usd:.0f}"
+    _insert_hypothesis(project_id, {
+        "title": title,
+        "description": body.notes[:800],
+        "severity": outcome_severity.get(body.outcome, "info"),
+        "status": "done",
+        "evidence": json.dumps({
+            "source": "loss_close",
+            "handle": body.handle,
+            "outcome": body.outcome,
+            "bounty_usd": body.bounty_usd,
+            "vuln_class": body.vuln_class,
+            "notes": body.notes,
+        }),
+    })
+    return {"handle": body.handle, "outcome": body.outcome, "bounty_usd": body.bounty_usd}
+
+
+# ---------------------------------------------------------------------------
+# CVE intel page
+# ---------------------------------------------------------------------------
+
+@router.get("/cve-intel", include_in_schema=False)
+def cve_intel_dashboard() -> FileResponse:
+    path = os.path.join(os.path.dirname(__file__), "..", "static", "cve_intel.html")
+    return FileResponse(os.path.abspath(path))
