@@ -539,6 +539,52 @@ CREATE TABLE IF NOT EXISTS sla_policy (
     days        INTEGER NOT NULL
 );
 
+-- Model provider configuration (UI/API-managed, not hardcoded)
+CREATE TABLE IF NOT EXISTS model_providers (
+    id            TEXT PRIMARY KEY,
+    name          TEXT NOT NULL,
+    kind          TEXT NOT NULL DEFAULT 'openai_compat',
+    -- kind values: openai_compat | anthropic | ollama | custom
+    base_url      TEXT NOT NULL,
+    api_key_env   TEXT,
+    -- env var name to read the key from (e.g. OPENAI_API_KEY); NULL for local
+    default_model TEXT,
+    enabled       INTEGER NOT NULL DEFAULT 1,
+    local         INTEGER NOT NULL DEFAULT 0,
+    -- local=1 providers are always allowed; local=0 requires allow_external
+    metadata      TEXT NOT NULL DEFAULT '{}',
+    created_at    TEXT NOT NULL,
+    UNIQUE (name)
+);
+
+-- Normalized endpoint inventory — populated by HAR/OpenAPI/Burp/Caido ingest
+CREATE TABLE IF NOT EXISTS endpoints (
+    id               TEXT PRIMARY KEY,
+    project_id       TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    source           TEXT NOT NULL DEFAULT 'manual',
+    -- source values: har | openapi | burp | caido | manual
+    method           TEXT NOT NULL,
+    host             TEXT NOT NULL,
+    path             TEXT NOT NULL,
+    path_template    TEXT,
+    -- e.g. /api/users/{id} normalized from /api/users/123
+    params           TEXT NOT NULL DEFAULT '[]',
+    -- JSON: [{name, in, required, type}]
+    auth_required    INTEGER NOT NULL DEFAULT 0,
+    auth_schemes     TEXT NOT NULL DEFAULT '[]',
+    -- JSON: [bearer|cookie|apikey|basic]
+    content_types    TEXT NOT NULL DEFAULT '[]',
+    request_body_schema TEXT,
+    -- JSON Schema inferred from OpenAPI spec
+    status_codes     TEXT NOT NULL DEFAULT '[]',
+    tags             TEXT NOT NULL DEFAULT '[]',
+    drift_flags      TEXT NOT NULL DEFAULT '[]',
+    -- JSON: [{field, declared, observed}] drift between spec and traffic
+    first_seen_at    TEXT NOT NULL,
+    last_seen_at     TEXT NOT NULL,
+    UNIQUE (project_id, method, host, path)
+);
+
 CREATE INDEX IF NOT EXISTS idx_assets_project   ON assets(project_id);
 CREATE INDEX IF NOT EXISTS idx_vulns_project    ON vulnerabilities(project_id);
 CREATE INDEX IF NOT EXISTS idx_vulns_severity   ON vulnerabilities(severity);
@@ -564,3 +610,6 @@ CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_doc ON knowledge_chunks(document
 CREATE INDEX IF NOT EXISTS idx_feedback_project ON research_feedback(project_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_memory_profile ON research_memory(profile_id, active);
 CREATE INDEX IF NOT EXISTS idx_memory_suggestions_status ON memory_suggestions(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_endpoints_project ON endpoints(project_id, host, method);
+CREATE INDEX IF NOT EXISTS idx_endpoints_host ON endpoints(host, path);
+CREATE INDEX IF NOT EXISTS idx_model_providers_enabled ON model_providers(enabled);

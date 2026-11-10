@@ -23,6 +23,8 @@ from ..config import get_settings
 from ..services import analytics, artifacts, bundles, capabilities, events, executions, knowledge, memory, playbooks, policy, project_templates, research, triage, wordfence
 from ..services import gori as gori_svc
 from ..services import cve as cve_svc
+from ..services import model as model_svc
+from ..services import api_genome as genome_svc
 
 router = APIRouter(prefix="/api/v1", tags=["api"])
 
@@ -1528,3 +1530,131 @@ def loss_close(project_id: str, body: LossCloseCreate,
 def cve_intel_dashboard() -> FileResponse:
     path = os.path.join(os.path.dirname(__file__), "..", "static", "cve_intel.html")
     return FileResponse(os.path.abspath(path))
+
+
+# ---------------------------------------------------------------------------
+# Model providers — CRUD for AI provider configuration
+# ---------------------------------------------------------------------------
+
+class ProviderCreate(BaseModel):
+    name: str
+    kind: str = "openai_compat"
+    base_url: str
+    api_key_env: str | None = None
+    default_model: str | None = None
+    local: bool = False
+    enabled: bool = True
+    metadata: dict = {}
+
+
+@router.get("/providers")
+def list_providers(_user: dict = Depends(current_user)) -> list[dict]:
+    return model_svc.list_all_providers()
+
+
+@router.get("/providers/probe")
+def probe_all_providers(_user: dict = Depends(current_user)) -> list[dict]:
+    return model_svc.probe_all()
+
+
+@router.get("/providers/{provider_id}")
+def get_provider(provider_id: str, _user: dict = Depends(current_user)) -> dict:
+    try:
+        return model_svc.get_provider(provider_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@router.get("/providers/{provider_id}/probe")
+def probe_provider(provider_id: str, _user: dict = Depends(current_user)) -> dict:
+    return model_svc.probe(provider_id)
+
+
+@router.put("/providers/{provider_id}", status_code=200)
+def upsert_provider(provider_id: str, body: ProviderCreate,
+                    _user: dict = Depends(current_user)) -> dict:
+    try:
+        return model_svc.upsert_provider({"id": provider_id, **body.model_dump()})
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@router.post("/providers", status_code=201)
+def create_provider(body: ProviderCreate, _user: dict = Depends(current_user)) -> dict:
+    try:
+        return model_svc.upsert_provider(body.model_dump())
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@router.delete("/providers/{provider_id}", status_code=204)
+def delete_provider(provider_id: str, _user: dict = Depends(current_user)) -> None:
+    model_svc.delete_provider(provider_id)
+
+
+# ---------------------------------------------------------------------------
+# API Genome — HAR / OpenAPI / Burp / Caido ingest + endpoint inventory
+# ---------------------------------------------------------------------------
+
+def _require_project(project_id: str) -> None:
+    if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
+        raise HTTPException(status_code=404, detail="project not found")
+
+
+@router.get("/projects/{project_id}/genome")
+def genome_summary(project_id: str, _user: dict = Depends(current_user)) -> dict:
+    _require_project(project_id)
+    return genome_svc.get_summary(project_id)
+
+
+@router.get("/projects/{project_id}/genome/endpoints")
+def genome_endpoints(
+    project_id: str,
+    host: str | None = None,
+    source: str | None = None,
+    drift: bool = False,
+    _user: dict = Depends(current_user),
+) -> list[dict]:
+    _require_project(project_id)
+    return genome_svc.get_endpoints(project_id, host=host, source=source, with_drift=drift)
+
+
+@router.post("/projects/{project_id}/genome/ingest/har", status_code=202)
+def ingest_har(project_id: str, body: dict, _user: dict = Depends(current_user)) -> dict:
+    _require_project(project_id)
+    return genome_svc.ingest_har(project_id, body)
+
+
+@router.post("/projects/{project_id}/genome/ingest/openapi", status_code=202)
+def ingest_openapi(project_id: str, body: dict, _user: dict = Depends(current_user)) -> dict:
+    _require_project(project_id)
+    return genome_svc.ingest_openapi(project_id, body)
+
+
+@router.post("/projects/{project_id}/genome/ingest/burp", status_code=202)
+def ingest_burp(project_id: str, body: dict, _user: dict = Depends(current_user)) -> dict:
+    """Accepts {xml: "<burp export string>"} or {data: "<base64>"}."""
+    _require_project(project_id)
+    xml_text = body.get("xml") or ""
+    if not xml_text and body.get("data"):
+        import base64 as _b64
+        xml_text = _b64.b64decode(body["data"]).decode("utf-8", errors="replace")
+    if not xml_text:
+        raise HTTPException(422, "provide 'xml' or 'data' (base64)")
+    try:
+        return genome_svc.ingest_burp_xml(project_id, xml_text)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@router.post("/projects/{project_id}/genome/ingest/caido", status_code=202)
+def ingest_caido(project_id: str, body: dict, _user: dict = Depends(current_user)) -> dict:
+    # body may contain {"flows":[...]} or be passed as {"data":[...]}; genome service handles both
+    _require_project(project_id)
+    return genome_svc.ingest_caido(project_id, body)
+
+
+@router.post("/projects/{project_id}/genome/drift", status_code=200)
+def run_drift_detection(project_id: str, _user: dict = Depends(current_user)) -> list[dict]:
+    _require_project(project_id)
+    return genome_svc.detect_drift(project_id)

@@ -14,6 +14,7 @@ from .auth import authenticate_key, bootstrap_admin, current_user
 from .config import get_settings
 from .hub import hub
 from .services import executions
+from .services import model as model_svc
 from .routers import api
 from . import __version__
 
@@ -25,6 +26,7 @@ async def lifespan(_app: FastAPI):
     get_settings().ensure_dirs()
     db.init_db()
     seed.seed()
+    model_svc.seed_providers()
     bootstrap_admin()
     hub.bind_loop(asyncio.get_running_loop())
     executions.recover()
