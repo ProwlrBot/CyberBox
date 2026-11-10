@@ -14,6 +14,7 @@ const Commands = {
   analyzeRequest: "prowlr.analyze-request",
   checkScope: "prowlr.check-scope",
   exportFindings: "prowlr.export-findings",
+  pushAllToCyberBox: "prowlr.push-all-cyberbox",
 } as const;
 
 // ── HTML Escape (prevent XSS) ──────────────────────────────
@@ -61,6 +62,7 @@ function buildPage(sdk: ProwlrSDK): HTMLElement {
     <div class="prowlr-panel hidden" id="prowlr-findings">
       <div class="prowlr-findings-actions">
         <button id="prowlr-export-btn">Export to Obsidian</button>
+        <button id="prowlr-push-all-btn">Push All to CyberBox</button>
         <button id="prowlr-refresh-findings">Refresh</button>
       </div>
       <div id="prowlr-findings-list"></div>
@@ -138,6 +140,22 @@ function buildPage(sdk: ProwlrSDK): HTMLElement {
         </div>
       </div>
 
+      <h3>CyberBox Bridge</h3>
+      <div class="prowlr-setting">
+        <label>Control Plane URL</label>
+        <input type="text" id="prowlr-setting-cyberbox-url" placeholder="http://localhost:8787" />
+        <small class="prowlr-hint">Base URL of the CyberBox control plane</small>
+      </div>
+      <div class="prowlr-setting">
+        <label>API Key</label>
+        <input type="password" id="prowlr-setting-cyberbox-key" placeholder="(admin key from CyberBox)" />
+      </div>
+      <div class="prowlr-setting">
+        <label>Project ID</label>
+        <input type="text" id="prowlr-setting-cyberbox-project" placeholder="(paste CyberBox project UUID)" />
+        <small class="prowlr-hint">Copy from CyberBox → Projects → your project URL</small>
+      </div>
+
       <h3>Export</h3>
       <div class="prowlr-setting">
         <label>Export Path</label>
@@ -206,6 +224,16 @@ function buildPage(sdk: ProwlrSDK): HTMLElement {
     } else {
       sdk.window.showToast("Export issue — see output", { variant: "warning" });
     }
+  });
+
+  // Findings: push all to CyberBox
+  container.querySelector("#prowlr-push-all-btn")?.addEventListener("click", async () => {
+    sdk.window.showToast("Pushing findings to CyberBox...", { variant: "info" });
+    const result = await sdk.backend.pushAllUnexported();
+    const msg = `CyberBox: ${result.pushed} pushed, ${result.skipped} already exist${result.errors.length ? `, ${result.errors.length} errors` : ""}`;
+    const variant = result.errors.length && result.pushed === 0 ? "error" : result.pushed > 0 ? "success" : "info";
+    sdk.window.showToast(msg, { variant });
+    await refreshFindings(sdk, container);
   });
 
   // Findings: refresh
@@ -482,6 +510,23 @@ async function refreshFindings(sdk: ProwlrSDK, container: HTMLElement) {
     body.className = "prowlr-finding-body";
     body.textContent = f.description;
 
+    const pushBtn = document.createElement("button");
+    pushBtn.className = "prowlr-finding-push";
+    pushBtn.textContent = f.exported ? "Re-push" : "Push to CyberBox";
+    pushBtn.addEventListener("click", async () => {
+      pushBtn.textContent = "Pushing...";
+      pushBtn.disabled = true;
+      const result = await sdk.backend.pushFinding(f.id);
+      if (result.status === "error") {
+        sdk.window.showToast(`Push failed: ${result.error}`, { variant: "error" });
+        pushBtn.textContent = "Push failed";
+        pushBtn.disabled = false;
+      } else {
+        sdk.window.showToast(result.status === "created" ? "Pushed to CyberBox" : "Already in CyberBox", { variant: "success" });
+        await refreshFindings(sdk, container);
+      }
+    });
+
     const deleteBtn = document.createElement("button");
     deleteBtn.className = "prowlr-finding-delete";
     deleteBtn.textContent = "Delete";
@@ -490,7 +535,7 @@ async function refreshFindings(sdk: ProwlrSDK, container: HTMLElement) {
       await refreshFindings(sdk, container);
     });
 
-    div.append(header, meta, body, deleteBtn);
+    div.append(header, meta, body, pushBtn, deleteBtn);
     list.appendChild(div);
   }
 }
@@ -505,6 +550,9 @@ async function saveSettings(sdk: ProwlrSDK, container: HTMLElement) {
   const claudeEndpoint = (container.querySelector("#prowlr-setting-claude-endpoint") as HTMLInputElement).value;
   const claudeMaxTokens = (container.querySelector("#prowlr-setting-claude-max-tokens") as HTMLInputElement).value;
   const claudeApiVersion = (container.querySelector("#prowlr-setting-claude-api-version") as HTMLInputElement).value;
+  const cyberboxUrl = (container.querySelector("#prowlr-setting-cyberbox-url") as HTMLInputElement).value;
+  const cyberboxKey = (container.querySelector("#prowlr-setting-cyberbox-key") as HTMLInputElement).value;
+  const cyberboxProject = (container.querySelector("#prowlr-setting-cyberbox-project") as HTMLInputElement).value;
   const exportPath = (container.querySelector("#prowlr-setting-export-path") as HTMLInputElement).value;
   const terminalTimeout = (container.querySelector("#prowlr-setting-terminal-timeout") as HTMLInputElement).value;
   const terminalCwd = (container.querySelector("#prowlr-setting-terminal-cwd") as HTMLInputElement).value;
@@ -521,6 +569,9 @@ async function saveSettings(sdk: ProwlrSDK, container: HTMLElement) {
     sdk.backend.setSetting("claude_endpoint", claudeEndpoint),
     sdk.backend.setSetting("claude_max_tokens", claudeMaxTokens || "2048"),
     sdk.backend.setSetting("claude_api_version", claudeApiVersion || "2023-06-01"),
+    sdk.backend.setSetting("cyberbox_url", cyberboxUrl || "http://localhost:8787"),
+    sdk.backend.setSetting("cyberbox_api_key", cyberboxKey),
+    sdk.backend.setSetting("cyberbox_project_id", cyberboxProject),
     sdk.backend.setSetting("export_path", exportPath),
     sdk.backend.setSetting("terminal_timeout", terminalTimeout || "300"),
     sdk.backend.setSetting("terminal_cwd", terminalCwd),
@@ -530,8 +581,9 @@ async function saveSettings(sdk: ProwlrSDK, container: HTMLElement) {
 
 async function loadSettings(sdk: ProwlrSDK, container: HTMLElement) {
   const [enforcement, provider, ollamaEndpoint, ollamaModel, claudeModel,
-         claudeEndpoint, claudeMaxTokens, claudeApiVersion, exportPath,
-         terminalTimeout, terminalCwd, aiPrompt] = await Promise.all([
+         claudeEndpoint, claudeMaxTokens, claudeApiVersion,
+         cyberboxUrl, cyberboxProject,
+         exportPath, terminalTimeout, terminalCwd, aiPrompt] = await Promise.all([
     sdk.backend.getSetting("scope_enforcement"),
     sdk.backend.getSetting("ai_provider"),
     sdk.backend.getSetting("ollama_endpoint"),
@@ -540,6 +592,8 @@ async function loadSettings(sdk: ProwlrSDK, container: HTMLElement) {
     sdk.backend.getSetting("claude_endpoint"),
     sdk.backend.getSetting("claude_max_tokens"),
     sdk.backend.getSetting("claude_api_version"),
+    sdk.backend.getSetting("cyberbox_url"),
+    sdk.backend.getSetting("cyberbox_project_id"),
     sdk.backend.getSetting("export_path"),
     sdk.backend.getSetting("terminal_timeout"),
     sdk.backend.getSetting("terminal_cwd"),
@@ -561,6 +615,9 @@ async function loadSettings(sdk: ProwlrSDK, container: HTMLElement) {
 
   (container.querySelector("#prowlr-setting-claude-max-tokens") as HTMLInputElement).value = claudeMaxTokens || "2048";
   (container.querySelector("#prowlr-setting-claude-api-version") as HTMLInputElement).value = claudeApiVersion || "2023-06-01";
+  (container.querySelector("#prowlr-setting-cyberbox-url") as HTMLInputElement).value = cyberboxUrl || "http://localhost:8787";
+  (container.querySelector("#prowlr-setting-cyberbox-project") as HTMLInputElement).value = cyberboxProject || "";
+
   (container.querySelector("#prowlr-setting-export-path") as HTMLInputElement).value = exportPath || "/home/hunter/exports/findings";
   (container.querySelector("#prowlr-setting-terminal-timeout") as HTMLInputElement).value = terminalTimeout || "300";
   (container.querySelector("#prowlr-setting-terminal-cwd") as HTMLInputElement).value = terminalCwd || "";
@@ -643,6 +700,16 @@ export const init = (sdk: ProwlrSDK) => {
     },
   });
 
+  sdk.commands.register(Commands.pushAllToCyberBox, {
+    name: "Push All Findings to CyberBox",
+    run: async () => {
+      sdk.window.showToast("Pushing to CyberBox...", { variant: "info" });
+      const result = await sdk.backend.pushAllUnexported();
+      const msg = `CyberBox: ${result.pushed} pushed, ${result.skipped} already exist${result.errors.length ? `, ${result.errors.length} errors` : ""}`;
+      sdk.window.showToast(msg, { variant: result.errors.length && result.pushed === 0 ? "error" : "success" });
+    },
+  });
+
   // Context menus (right-click on requests)
   sdk.menu.registerItem({
     type: "RequestRow",
@@ -665,6 +732,7 @@ export const init = (sdk: ProwlrSDK) => {
   // Command palette
   sdk.commandPalette.register(Commands.analyzeRequest);
   sdk.commandPalette.register(Commands.exportFindings);
+  sdk.commandPalette.register(Commands.pushAllToCyberBox);
 
   // Sidebar page
   const page = buildPage(sdk);

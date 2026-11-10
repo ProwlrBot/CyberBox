@@ -263,6 +263,10 @@ async function initDatabase(sdk: SDK) {
   stmt.run("scope_enforcement", "warn");
   // AI provider
   stmt.run("ai_provider", "ollama");
+  // CyberBox control plane bridge
+  stmt.run("cyberbox_url", "http://localhost:8787");
+  stmt.run("cyberbox_api_key", "");
+  stmt.run("cyberbox_project_id", "");
   // Claude
   stmt.run("claude_api_key", "");
   stmt.run("claude_model", "claude-sonnet-4-20250514");
@@ -901,6 +905,91 @@ async function getQuickCommands(sdk: SDK): Promise<Array<{ label: string; cmd: s
   ];
 }
 
+// ── CyberBox Control Plane Bridge ───────────────────────────
+// Pushes Prowlr findings to the local CyberBox control plane so they appear
+// in the vulnerabilities table alongside findings from other sources.
+
+interface PushResult {
+  finding_id: number;
+  remote_id: string;
+  status: "created" | "already_exists" | "error";
+  error?: string;
+}
+
+async function pushFinding(sdk: SDK, findingId: number): Promise<PushResult> {
+  const db = await sdk.meta.db();
+  const settings = getSettings(db);
+
+  const url = (settings.cyberbox_url || "http://localhost:8787").replace(/\/$/, "");
+  const apiKey = settings.cyberbox_api_key || "";
+  const projectId = settings.cyberbox_project_id || "";
+
+  if (!projectId) {
+    return { finding_id: findingId, remote_id: "", status: "error", error: "cyberbox_project_id not set — configure in Prowlr settings" };
+  }
+
+  const finding = db.prepare("SELECT * FROM findings WHERE id = ?").get(findingId) as Finding | undefined;
+  if (!finding) {
+    return { finding_id: findingId, remote_id: "", status: "error", error: "finding not found" };
+  }
+
+  const payload = {
+    request_id: finding.requestId || "",
+    title: finding.title,
+    severity: finding.severity,
+    description: finding.description || "",
+    evidence: finding.evidence || "",
+    url: finding.url || "",
+    method: finding.method || "GET",
+    timestamp: finding.timestamp || new Date().toISOString(),
+    source_id: String(findingId),
+  };
+
+  try {
+    const res = await fetch(`${url}/api/v1/projects/${encodeURIComponent(projectId)}/caido-findings`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiKey ? { "X-API-Key": apiKey } : {}),
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const errText = (await res.text()).substring(0, 200);
+      return { finding_id: findingId, remote_id: "", status: "error", error: `${res.status}: ${errText}` };
+    }
+
+    const data = await res.json() as { id: string; status: string };
+    sdk.console.log(`[Prowlr bridge] finding ${findingId} → CyberBox ${data.status} (${data.id})`);
+    return { finding_id: findingId, remote_id: data.id, status: data.status as "created" | "already_exists" };
+  } catch (err) {
+    return { finding_id: findingId, remote_id: "", status: "error", error: sanitizeError(String(err)) };
+  }
+}
+
+async function pushAllUnexported(sdk: SDK): Promise<{ pushed: number; skipped: number; errors: string[] }> {
+  const db = await sdk.meta.db();
+  const findings = db.prepare("SELECT * FROM findings WHERE exported = 0 ORDER BY id").all() as unknown as Finding[];
+
+  let pushed = 0;
+  let skipped = 0;
+  const errors: string[] = [];
+
+  for (const finding of findings) {
+    const result = await pushFinding(sdk, finding.id);
+    if (result.status === "error") {
+      errors.push(`finding ${finding.id}: ${result.error}`);
+    } else {
+      if (result.status === "created") pushed++;
+      else skipped++;
+      db.prepare("UPDATE findings SET exported = 1 WHERE id = ?").run(finding.id);
+    }
+  }
+
+  return { pushed, skipped, errors };
+}
+
 // ── Settings ────────────────────────────────────────────────
 
 async function getSetting(sdk: SDK, key: string): Promise<string> {
@@ -934,6 +1023,11 @@ async function setSetting(sdk: SDK, key: string, value: string): Promise<void> {
       throw new Error("terminal_timeout must be 10-3600 seconds");
     }
   }
+  if (key === "cyberbox_url") {
+    if (value && !/^https?:\/\/.+/.test(value)) {
+      throw new Error("cyberbox_url must be an http/https URL");
+    }
+  }
 
   const db = await sdk.meta.db();
   db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(key, value);
@@ -959,6 +1053,9 @@ export type API = DefineAPI<{
   getFindings: typeof getFindings;
   deleteFinding: typeof deleteFinding;
   exportFindingsToObsidian: typeof exportFindingsToObsidian;
+  // CyberBox bridge
+  pushFinding: typeof pushFinding;
+  pushAllUnexported: typeof pushAllUnexported;
   // Settings
   getSetting: typeof getSetting;
   setSetting: typeof setSetting;
@@ -993,6 +1090,8 @@ export async function init(sdk: SDK<API, BackendEvents>) {
   sdk.api.register("getFindings", getFindings);
   sdk.api.register("deleteFinding", deleteFinding);
   sdk.api.register("exportFindingsToObsidian", exportFindingsToObsidian);
+  sdk.api.register("pushFinding", pushFinding);
+  sdk.api.register("pushAllUnexported", pushAllUnexported);
   sdk.api.register("getSetting", getSetting);
   sdk.api.register("setSetting", setSetting);
   sdk.api.register("terminalExec", terminalExec);

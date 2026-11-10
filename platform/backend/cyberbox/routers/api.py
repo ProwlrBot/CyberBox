@@ -1658,3 +1658,96 @@ def ingest_caido(project_id: str, body: dict, _user: dict = Depends(current_user
 def run_drift_detection(project_id: str, _user: dict = Depends(current_user)) -> list[dict]:
     _require_project(project_id)
     return genome_svc.detect_drift(project_id)
+
+
+# ── Caido findings bridge ────────────────────────────────────────────────────
+# Accepts a single Prowlr finding (Caido plugin format) or a batch and writes
+# directly into `vulnerabilities`, bypassing the hypothesis/experiment workflow.
+# The plugin POSTs here after the hunter clicks "Push to CyberBox" or on
+# auto-export; `source_id` is the Caido finding id for idempotency.
+
+class CaidoFindingIngest(BaseModel):
+    request_id: str = ""
+    title: str
+    severity: str = "info"
+    description: str = ""
+    evidence: str = ""
+    url: str = ""
+    method: str = "GET"
+    timestamp: str = ""
+    source_id: str | None = None   # Caido finding id — used for dedup_key
+
+
+@router.post("/projects/{project_id}/caido-findings", status_code=201)
+def ingest_caido_finding(
+    project_id: str,
+    body: CaidoFindingIngest,
+    _user: dict = Depends(current_user),
+) -> dict:
+    """Accept a single Prowlr finding and write it into the vulnerabilities table."""
+    _require_project(project_id)
+
+    VALID_SEVERITIES = {"info", "low", "medium", "high", "critical"}
+    severity = body.severity if body.severity in VALID_SEVERITIES else "info"
+
+    # Build a stable dedup key so re-pushing the same Caido finding is idempotent
+    dedup_key = f"caido|{body.source_id}" if body.source_id else f"caido|{body.url}|{body.title}"
+
+    existing = db.query_one(
+        "SELECT id FROM vulnerabilities WHERE project_id=? AND dedup_key=?",
+        [project_id, dedup_key],
+    )
+    if existing:
+        return {"id": existing["id"], "status": "already_exists", "dedup_key": dedup_key}
+
+    finding_id = str(uuid.uuid4())
+    detected = body.timestamp or _now()
+    # Store the original HTTP request reference as a one-element request_chain entry
+    request_chain = json.dumps([{"request_id": body.request_id, "method": body.method, "url": body.url}])
+    # Combine description + evidence into the description field
+    full_description = body.description
+    if body.evidence:
+        full_description = f"{full_description}\n\n## Evidence / Next Steps\n{body.evidence}".strip()
+
+    row = {
+        "id": finding_id,
+        "project_id": project_id,
+        "asset_id": None,
+        "template_id": None,
+        "name": body.title[:500],
+        "severity": severity,
+        "category": "Caido",
+        "description": full_description,
+        "cve": None,
+        "host": body.url[:512] if body.url else "",
+        "matched_at": body.url[:512] if body.url else "",
+        "status": "open",
+        "verified": 0,
+        "poc": body.evidence[:2000] if body.evidence else "",
+        "request_chain": request_chain,
+        "tags": json.dumps(["caido", "prowlr"]),
+        "dedup_key": dedup_key,
+        "sla_due": None,
+        "detected_at": detected,
+        "fixed_at": None,
+    }
+    db.insert("vulnerabilities", row)
+    events.append(project_id, "finding.created", {"finding_id": finding_id, "source": "caido"})
+    return {"id": finding_id, "status": "created", "dedup_key": dedup_key}
+
+
+@router.post("/projects/{project_id}/caido-findings/batch", status_code=201)
+def ingest_caido_findings_batch(
+    project_id: str,
+    body: list[CaidoFindingIngest],
+    _user: dict = Depends(current_user),
+) -> dict:
+    """Accept up to 200 Prowlr findings and write them in one pass."""
+    _require_project(project_id)
+    if len(body) > 200:
+        raise HTTPException(422, "batch size limit is 200")
+    created, skipped = [], []
+    for item in body:
+        result = ingest_caido_finding(project_id, item, _user)
+        (created if result["status"] == "created" else skipped).append(result["id"])
+    return {"created": len(created), "skipped": len(skipped), "ids": created}
