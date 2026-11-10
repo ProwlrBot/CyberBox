@@ -55,9 +55,22 @@ _Audited: 2026-11-10 | Based on actual file inspection_
 
 ---
 
-## The Core Integration Gap
+## The Core Integration Gap — CLOSED
 
-The claude-bug-bounty harness and the CyberBox control plane are **two separate working systems** with no bridge:
+`cyberbox_runner.py` (`claude-bug-bounty/tools/cyberbox_runner.py`) is the adapter.
+Call `cyberbox_runner.install()` before importing `autopilot_runner` and every
+hunt phase, scope check, and finding routes to the CyberBox control plane:
+
+```python
+import cyberbox_runner
+cyberbox_runner.install(api_url="http://localhost:8080", project_id="proj_xxx")
+import autopilot_runner            # _load("sandbox") + _load("scope_checker") now hit shims
+result = autopilot_runner.session_start(plan)   # → logged in /api/v1/executions
+```
+
+CLI: `python cyberbox_runner.py scope-check --url https://target.com --engagement eng_xxx`
+
+The claude-bug-bounty harness and the CyberBox control plane are **two working systems bridged by cyberbox_runner**:
 
 ```
 claude-bug-bounty/                      CyberBox/
