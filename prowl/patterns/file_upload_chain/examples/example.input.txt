@@ -1,27 +1,19 @@
-POST /api/v1/documents/upload HTTP/1.1
-Host: app.example.com
-Authorization: Bearer eyJhbGciOiJSUzI1NiJ9...
-Content-Type: multipart/form-data; boundary=----WebKitFormBoundary
+SaaS document collaboration platform — file attachment feature.
 
-------WebKitFormBoundary
-Content-Disposition: form-data; name="file"; filename="report.pdf"
-Content-Type: application/pdf
+Upload endpoint: POST /api/v1/attachments
+Observed request:
+  Content-Type: multipart/form-data
+  Body: file=<binary>, filename="report.pdf", content_type="application/pdf"
 
-%PDF-1.4 ... (binary content)
-------WebKitFormBoundary--
+Server response (201 Created):
+  {"attachment_id":"3f2a1b8c-9d4e-4f7a-b2c3-1a2b3c4d5e6f","url":"https://cdn.example.com/attachments/3f2a1b8c-9d4e-4f7a-b2c3-1a2b3c4d5e6f","expires_at":null}
 
-HTTP/1.1 200 OK
-Content-Type: application/json
-
-{"id": "doc_8f3a2c", "filename": "report.pdf", "size": 48392, "url": "/documents/doc_8f3a2c/report.pdf", "status": "processing"}
-
----
-
-Observations:
-- Files are served directly from /documents/<id>/<filename> with original filename preserved
-- Server checks Content-Type header, accepts application/pdf and image/* only
-- Thumbnails generated via ImageMagick after upload ("status":"processing" in response)
-- After ~3 seconds, status changes to "ready" and thumbnail appears at /documents/<id>/thumb.jpg
-- Extension check: server rejects .php, .jsp, .sh explicitly but allows .pdf, .jpg, .png, .gif, .svg
-- Storage appears to be local disk based on direct path serving
-- No Content-Disposition: attachment header on served files (served inline)
+Observed behavior:
+- Server checks Content-Type header from request (mime_only); no server-side extension validation observed.
+- Filename is preserved in a Content-Disposition header when served.
+- Files stored on S3; served via CDN at cdn.example.com/attachments/{uuid}.
+- Thumbnails generated asynchronously (observed thumbnail_url field populated ~2s after upload for image types).
+- No expiry on attachment URLs — links are permanent.
+- Attachments can be shared across team members; retrieval URL is not signed (no auth query param observed on CDN URLs).
+- Platform also accepts .docx uploads; server renders a preview in the browser using an iframe pointed at the CDN URL.
+- Observed a /api/v1/attachments/{id}/preview endpoint that proxies external URLs for "link preview" feature.

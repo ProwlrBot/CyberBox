@@ -1,0 +1,179 @@
+# CyberBox vulnerable app targets for security evaluation
+#
+# Provides intentionally-vulnerable apps for the prowl pattern library and
+# evaluation/dataset/evaluation_security_webapp.xml benchmark tasks.
+#
+# Usage (alongside main sandbox):
+#   docker compose \
+#     -f cybersandbox/docker-compose.dev.yml \
+#     -f cybersandbox/docker-compose.vuln-targets.yml \
+#     up -d
+#
+# Standalone (eval harness only, no cybersandbox):
+#   docker compose -f cybersandbox/docker-compose.vuln-targets.yml up -d
+#
+# Ports (all loopback-only):
+#   8888  crAPI (OWASP API Security Top 10)
+#   4280  DVWA  (file upload, SQLi, XSS, command injection)
+#   8025  crAPI Mailhog web UI
+#
+# Stop and remove volumes:
+#   docker compose -f cybersandbox/docker-compose.vuln-targets.yml down -v
+
+services:
+
+  # =========================================================
+  # crAPI — OWASP API Security Top 10 intentionally-vulnerable target
+  # Covers: BOLA/IDOR (API1), broken auth (API2), mass assignment (API6),
+  #         business logic, BFLA (API5)
+  # =========================================================
+
+  crapi-postgres:
+    image: postgres:14-alpine
+    container_name: csbx-crapi-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: crapi
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: crapisecret
+    volumes:
+      - csbx-crapi-postgres:/var/lib/postgresql/data
+    networks:
+      - vuln-targets
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d crapi"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  crapi-mongo:
+    image: mongo:4.4
+    container_name: csbx-crapi-mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: crapisecret
+    volumes:
+      - csbx-crapi-mongo:/data/db
+    networks:
+      - vuln-targets
+    healthcheck:
+      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  crapi-mailhog:
+    image: mailhog/mailhog:latest
+    container_name: csbx-crapi-mailhog
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8025:8025"
+    networks:
+      - vuln-targets
+
+  crapi:
+    image: crapi/crapi:latest
+    container_name: csbx-crapi
+    restart: unless-stopped
+    depends_on:
+      crapi-postgres:
+        condition: service_healthy
+      crapi-mongo:
+        condition: service_healthy
+      crapi-mailhog:
+        condition: service_started
+    ports:
+      - "127.0.0.1:8888:8888"
+    environment:
+      DB_NAME: crapi
+      DB_USER: admin
+      DB_PASSWORD: crapisecret
+      DB_HOST: crapi-postgres
+      DB_PORT: "5432"
+      MONGO_DB_HOST: crapi-mongo
+      MONGO_DB_PORT: "27017"
+      MONGO_DB_USER: admin
+      MONGO_DB_PASSWORD: crapisecret
+      SECRET_KEY: crapi-dev-secret-change-in-prod
+      MAILHOG_HOST: crapi-mailhog
+      MAILHOG_PORT: "1025"
+      SMTP_EMAIL: admin@example.com
+      SMTP_PASS: admin
+      REACT_APP_API_URL: "http://localhost:8888"
+      SERVER_PORT: "8888"
+      ENABLE_SHELL_INJECTION: "true"
+    networks:
+      - vuln-targets
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8888/identity/api/health || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # =========================================================
+  # DVWA — Damn Vulnerable Web Application
+  # Covers: file upload bypass (CWE-434), SQLi, XSS, command injection
+  # Default credentials: admin / password
+  # Setup URL: http://localhost:4280/setup.php (run once after first start)
+  # =========================================================
+
+  dvwa-db:
+    image: mariadb:10.11
+    container_name: csbx-dvwa-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: dvwaroot
+      MYSQL_DATABASE: dvwa
+      MYSQL_USER: dvwa
+      MYSQL_PASSWORD: p@ssw0rd
+    volumes:
+      - csbx-dvwa-db:/var/lib/mysql
+    networks:
+      - vuln-targets
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "dvwa", "-pp@ssw0rd"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  dvwa:
+    image: ghcr.io/digininja/dvwa:latest
+    container_name: csbx-dvwa
+    restart: unless-stopped
+    depends_on:
+      dvwa-db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:4280:80"
+    environment:
+      DB_SERVER: dvwa-db
+      DB_PORT: "3306"
+      DB_DATABASE: dvwa
+      DB_USERNAME: dvwa
+      DB_PASSWORD: p@ssw0rd
+      DVWA_NO_CAPTCHA: "1"
+    networks:
+      - vuln-targets
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost/dvwa/login.php || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Wire cybersandbox into the vuln network so internal requests work
+  # (only takes effect when using the -f override with docker-compose.dev.yml)
+  cybersandbox:
+    networks:
+      - vuln-targets
+
+networks:
+  vuln-targets:
+    name: csbx-vuln-targets
+
+volumes:
+  csbx-crapi-postgres:
+  csbx-crapi-mongo:
+  csbx-dvwa-db:

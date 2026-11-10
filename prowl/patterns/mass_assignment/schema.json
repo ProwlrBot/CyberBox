@@ -3,58 +3,51 @@
   "title": "mass_assignment",
   "type": "object",
   "additionalProperties": false,
-  "required": ["endpoint", "framework_hint", "observed_body_fields", "response_fields", "candidate_fields", "nested_object_risk", "nested_object_note", "secondary_endpoints", "stop_conditions", "summary"],
+  "required": ["endpoint", "body_format", "observed_fields", "candidate_privileged_fields", "framework_hints", "api_versions", "graphql_surfaces", "stop_conditions", "summary"],
   "properties": {
     "endpoint": { "type": "string", "minLength": 4, "maxLength": 400 },
-    "framework_hint": {
+    "body_format": {
       "type": "string",
-      "enum": ["rails", "django", "laravel", "spring", "express", "fastapi", "unknown"]
+      "enum": ["json", "form", "multipart", "graphql_mutation", "unknown"]
     },
-    "observed_body_fields": {
+    "observed_fields": {
       "type": "array",
       "minItems": 1,
       "items": { "type": "string", "minLength": 1, "maxLength": 120 }
     },
-    "response_fields": {
-      "type": "array",
-      "items": { "type": "string", "minLength": 1, "maxLength": 120 }
-    },
-    "candidate_fields": {
+    "candidate_privileged_fields": {
       "type": "array",
       "minItems": 1,
-      "maxItems": 10,
+      "maxItems": 8,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["field", "source", "expected_effect", "request_mutation", "proof_of_acceptance", "proof_of_rejection", "exploit_value", "cwe"],
+        "required": ["field", "rationale", "test_value", "expected_blocked_signal", "proof_of_success"],
         "properties": {
           "field": { "type": "string", "minLength": 1, "maxLength": 120 },
-          "source": {
-            "type": "string",
-            "enum": ["response_leak", "api_schema", "sibling_endpoint", "common_pattern", "javascript_source"]
-          },
-          "expected_effect": { "type": "string", "minLength": 8, "maxLength": 400 },
-          "request_mutation": { "type": "string", "minLength": 8, "maxLength": 500 },
-          "proof_of_acceptance": { "type": "string", "minLength": 8, "maxLength": 400 },
-          "proof_of_rejection": { "type": "string", "minLength": 8, "maxLength": 400 },
-          "exploit_value": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
-          "cwe": {
-            "type": "string",
-            "enum": ["CWE-915", "CWE-269", "CWE-284", "CWE-285"]
-          }
+          "rationale": { "type": "string", "minLength": 8, "maxLength": 400 },
+          "test_value": { "type": "string", "minLength": 1, "maxLength": 240 },
+          "expected_blocked_signal": { "type": "string", "minLength": 4, "maxLength": 240 },
+          "proof_of_success": { "type": "string", "minLength": 8, "maxLength": 400 }
         }
       }
     },
-    "nested_object_risk": { "type": "string", "enum": ["none", "low", "medium", "high"] },
-    "nested_object_note": { "type": "string", "minLength": 4, "maxLength": 240 },
-    "secondary_endpoints": {
+    "framework_hints": {
       "type": "array",
-      "items": { "type": "string", "minLength": 6, "maxLength": 300 }
+      "items": { "type": "string", "minLength": 2, "maxLength": 300 }
+    },
+    "api_versions": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 4, "maxLength": 300 }
+    },
+    "graphql_surfaces": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 120 }
     },
     "stop_conditions": {
       "type": "array",
       "minItems": 1,
-      "items": { "type": "string", "minLength": 6, "maxLength": 300 }
+      "items": { "type": "string", "minLength": 6, "maxLength": 240 }
     },
     "summary": { "type": "string", "minLength": 8, "maxLength": 400 }
   }

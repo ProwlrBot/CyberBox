@@ -3,67 +3,88 @@
   "title": "file_upload_chain",
   "type": "object",
   "additionalProperties": false,
-  "required": ["endpoint", "storage_backend", "served_path", "mime_enforcement", "post_processing", "chain_steps", "execution_surfaces", "path_traversal_risk", "path_traversal_note", "stop_conditions", "summary"],
+  "required": ["upload_endpoint", "storage_model", "content_type_checks", "filename_handling", "attack_vectors", "cross_user_retrieval", "async_processing", "stop_conditions", "summary"],
   "properties": {
-    "endpoint": { "type": "string", "minLength": 4, "maxLength": 400 },
-    "storage_backend": {
+    "upload_endpoint": { "type": "string", "minLength": 4, "maxLength": 400 },
+    "storage_model": {
       "type": "string",
-      "enum": ["local_disk", "s3", "gcs", "azure_blob", "cdn", "unknown"]
+      "enum": ["same_origin", "cdn", "s3", "internal_path", "unknown"]
     },
-    "served_path": { "type": "string", "minLength": 1, "maxLength": 400 },
-    "mime_enforcement": {
+    "content_type_checks": {
       "type": "string",
-      "enum": ["none", "content_type_header_only", "magic_bytes", "extension_allowlist", "extension_blocklist", "both"]
+      "enum": ["none", "extension_only", "mime_only", "both", "unknown"]
     },
-    "post_processing": {
-      "type": "array",
-      "items": { "type": "string", "minLength": 4, "maxLength": 240 }
+    "filename_handling": {
+      "type": "string",
+      "enum": ["preserved", "sanitized", "hashed", "unknown"]
     },
-    "chain_steps": {
+    "attack_vectors": {
       "type": "array",
       "minItems": 1,
       "maxItems": 8,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["step", "technique", "request_mutation", "gate_to_pass", "next_step_requires", "exploit_value", "cwe"],
+        "required": ["id", "technique", "test_payload", "retrieval_url_pattern", "exploit_value", "cwe"],
         "properties": {
-          "step": { "type": "integer", "minimum": 1, "maximum": 8 },
+          "id": { "type": "string", "minLength": 1, "maxLength": 80 },
           "technique": {
             "type": "string",
             "enum": [
-              "double_extension",
-              "null_byte_injection",
-              "polyglot_file",
+              "stored_xss_svg",
+              "stored_xss_html",
               "path_traversal_filename",
-              "metadata_injection",
-              "svg_xss",
               "zip_slip",
-              "ssrf_via_url_upload",
-              "content_type_confusion",
-              "archive_bomb",
-              "htaccess_upload",
-              "php_phar_deserialization",
-              "other"
+              "ssrf_via_url_fetch",
+              "polyglot_webshell",
+              "mime_confusion",
+              "content_sniff",
+              "archive_bomb_check",
+              "xxe_via_xml",
+              "lfi_via_path"
             ]
           },
-          "request_mutation": { "type": "string", "minLength": 8, "maxLength": 500 },
-          "gate_to_pass": { "type": "string", "minLength": 8, "maxLength": 400 },
-          "next_step_requires": { "type": "string", "minLength": 4, "maxLength": 400 },
+          "test_payload": { "type": "string", "minLength": 4, "maxLength": 1000 },
+          "retrieval_url_pattern": { "type": "string", "minLength": 4, "maxLength": 400 },
           "exploit_value": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
           "cwe": {
             "type": "string",
-            "enum": ["CWE-434", "CWE-22", "CWE-79", "CWE-918", "CWE-400", "CWE-116", "CWE-73", "CWE-502"]
+            "enum": ["CWE-434", "CWE-22", "CWE-918", "CWE-611", "CWE-79", "CWE-400"]
           }
         }
       }
     },
-    "execution_surfaces": {
-      "type": "array",
-      "items": { "type": "string", "minLength": 6, "maxLength": 300 }
+    "cross_user_retrieval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["testable", "method", "test_steps"],
+      "properties": {
+        "testable": { "type": "boolean" },
+        "method": {
+          "type": "string",
+          "enum": ["direct_id", "predictable_path", "shared_namespace", "unknown"]
+        },
+        "test_steps": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 8, "maxLength": 400 }
+        }
+      },
+      "if": { "properties": { "testable": { "const": true } } },
+      "then": { "properties": { "test_steps": { "minItems": 2 } } }
     },
-    "path_traversal_risk": { "type": "string", "enum": ["none", "low", "medium", "high"] },
-    "path_traversal_note": { "type": "string", "minLength": 4, "maxLength": 240 },
+    "async_processing": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["surface", "trigger", "attack_note"],
+        "properties": {
+          "surface": { "type": "string", "minLength": 2, "maxLength": 120 },
+          "trigger": { "type": "string", "minLength": 4, "maxLength": 240 },
+          "attack_note": { "type": "string", "minLength": 8, "maxLength": 500 }
+        }
+      }
+    },
     "stop_conditions": {
       "type": "array",
       "minItems": 1,

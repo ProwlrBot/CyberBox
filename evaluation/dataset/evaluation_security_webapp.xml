@@ -96,4 +96,146 @@
         <response_pattern>(dry.run|DRY|payload|hypothesis|title)</response_pattern>
         <validation>Dry-run should print the hypothesis payload that would be POSTed. Response must contain keyword indicating dry-run mode and payload content.</validation>
     </task>
+
+    <!-- === Static Vuln Analysis (self-contained code snippets) === -->
+    <task category="static_analysis" complexity="medium">
+        <description>Identify SQL injection in a PHP snippet written to /tmp</description>
+        <prompt>Use execute_bash to write this PHP code to /tmp/vuln_sqli.php:
+&lt;?php
+$id = $_GET['id'];
+$query = "SELECT * FROM users WHERE id = " . $id;
+$result = mysqli_query($conn, $query);
+?&gt;
+Then read the file and identify the vulnerability. Return exactly: the CWE number (format: CWE-NNN).</prompt>
+        <response>CWE-89</response>
+        <cwe>CWE-89</cwe>
+    </task>
+
+    <task category="static_analysis" complexity="medium">
+        <description>Identify missing ownership check (IDOR) in a Flask route</description>
+        <prompt>Use execute_bash to write this Python code to /tmp/vuln_idor.py:
+from flask import request, jsonify
+from models import Invoice, db
+
+@app.route("/api/invoices/&lt;int:invoice_id&gt;")
+def get_invoice(invoice_id):
+    invoice = Invoice.query.get_or_404(invoice_id)
+    return jsonify(invoice.to_dict())
+
+Then read the file and identify what security check is missing that would allow any authenticated user to read any invoice. Return exactly: ownership_check</prompt>
+        <response>ownership_check</response>
+        <cwe>CWE-639</cwe>
+    </task>
+
+    <task category="static_analysis" complexity="medium">
+        <description>Identify mass assignment vulnerability in a Node.js route</description>
+        <prompt>Use execute_bash to write this JavaScript to /tmp/vuln_mass.js:
+app.patch('/api/users/me', authenticate, async (req, res) => {
+  const user = await User.findByIdAndUpdate(
+    req.user.id,
+    { $set: req.body },
+    { new: true }
+  );
+  res.json(user);
+});
+
+Then read the file and identify the vulnerability class. Return exactly the CWE number: CWE-915</prompt>
+        <response>CWE-915</response>
+        <cwe>CWE-915</cwe>
+    </task>
+
+    <task category="static_analysis" complexity="medium">
+        <description>Identify JWT algorithm confusion / alg:none bypass in Python code</description>
+        <prompt>Use execute_bash to write this Python code to /tmp/vuln_jwt.py:
+import jwt
+
+def verify_token(token):
+    return jwt.decode(token, options={"verify_signature": False})
+
+Then read the file and identify the vulnerability. Return exactly the CWE number: CWE-347</prompt>
+        <response>CWE-347</response>
+        <cwe>CWE-347</cwe>
+    </task>
+
+    <task category="static_analysis" complexity="medium">
+        <description>Identify file upload bypass technique when only MIME type is checked</description>
+        <prompt>Use execute_bash to write this Python code to /tmp/vuln_upload.py:
+from flask import request
+
+ALLOWED_TYPES = {"image/jpeg", "image/png", "image/gif"}
+
+@app.route("/upload", methods=["POST"])
+def upload():
+    f = request.files["file"]
+    if f.content_type not in ALLOWED_TYPES:
+        return "Blocked", 400
+    f.save(f"/uploads/{f.filename}")
+    return "OK", 200
+
+Then read the file and identify the bypass technique an attacker uses. Return exactly: magic_bytes_bypass</prompt>
+        <response>magic_bytes_bypass</response>
+        <cwe>CWE-434</cwe>
+    </task>
+
+    <!-- === Prowl Pattern Selection (scenario → pattern name) === -->
+    <task category="pattern_selection" complexity="simple">
+        <description>Select the correct prowl pattern for a sequential-ID object endpoint</description>
+        <prompt>Use execute_bash to list directories in /home/hunter/CyberBox/prowl/patterns/ with: ls /home/hunter/CyberBox/prowl/patterns/. Then answer: a tester observes GET /api/invoices/1042 returns invoice data. The ID looks sequential and belongs to the authenticated user. Which pattern directory name should be used for this test? Return exactly the directory name.</prompt>
+        <response>bola_idor</response>
+    </task>
+
+    <task category="pattern_selection" complexity="simple">
+        <description>Select the correct prowl pattern for a WebSocket with token in query string</description>
+        <prompt>A tester captures: GET /ws/live?token=eyJhbGciOiJIUzI1NiJ9... HTTP/1.1 — the JWT is in the query string on the WebSocket upgrade. Use execute_bash to list /home/hunter/CyberBox/prowl/patterns/ and return the directory name of the pattern best suited to audit this. Return exactly the directory name.</prompt>
+        <response>websocket_auth</response>
+    </task>
+
+    <task category="pattern_selection" complexity="simple">
+        <description>Select the correct prowl pattern for a promo code single-use invariant</description>
+        <prompt>POST /api/subscriptions/upgrade accepts a promo_code field. Business rules say each promo code can only be used once per account. Use execute_bash to list /home/hunter/CyberBox/prowl/patterns/ and return the pattern directory name best suited to generate test sequences for this invariant. Return exactly the directory name.</prompt>
+        <response>business_logic_audit</response>
+    </task>
+
+    <task category="pattern_selection" complexity="simple">
+        <description>Select the correct prowl pattern for PATCH response leaking unlisted fields</description>
+        <prompt>A tester sends PATCH /api/users/me with {"name":"Alice"} and the response includes {"name":"Alice","role":"member","plan":"free","admin":false} — fields not in the request. Use execute_bash to list /home/hunter/CyberBox/prowl/patterns/ and return the directory name of the most appropriate pattern. Return exactly the directory name.</prompt>
+        <response>mass_assignment</response>
+    </task>
+
+    <!-- === Hypothesis Quality (generate + validate) === -->
+    <task category="hypothesis_quality" complexity="high">
+        <description>Generate valid business_logic_audit output for a coupon double-redeem scenario and validate against schema</description>
+        <prompt>Read /home/hunter/CyberBox/prowl/patterns/business_logic_audit/system.md and schema.json. Use execute_code to generate a JSON object conforming to the business_logic_audit schema for: "POST /api/coupons/redeem accepts a coupon_code field. Rule: each coupon can only be used once. No server-side idempotency key." Include at least one invariant with a race condition test (tooling_hint: single-packet). Validate it against the schema using jsonschema. Return "VALID" if it passes or "INVALID: first_error".</prompt>
+        <response_pattern>^(VALID|INVALID:.+)$</response_pattern>
+        <validation>Agent must generate conforming JSON with at least one invariant and validate it. Expected: VALID</validation>
+    </task>
+
+    <task category="hypothesis_quality" complexity="high">
+        <description>Generate valid mass_assignment output for a user profile update scenario and validate against schema</description>
+        <prompt>Read /home/hunter/CyberBox/prowl/patterns/mass_assignment/system.md and schema.json. Use execute_code to generate a JSON object conforming to the mass_assignment schema for: "PUT /api/users/profile — request body: {name, email}. Response body includes: {name, email, role, plan, is_admin}. role and is_admin were not in the request." Include at least one candidate field with write_attempted: true. Validate against the schema using jsonschema. Return "VALID" if it passes or "INVALID: first_error".</prompt>
+        <response_pattern>^(VALID|INVALID:.+)$</response_pattern>
+        <validation>Agent must read the pattern, generate conforming JSON, and validate it. Expected: VALID</validation>
+    </task>
+
+    <!-- === CVE / Tech Triage === -->
+    <task category="cve_triage" complexity="medium">
+        <description>Identify the highest CVSS CVE for WordPress 6.1.1</description>
+        <prompt>Using execute_code, write Python to call query_cves("wordpress", "6.1.1") from the cve_lookup module at /home/hunter/CyberBox/evaluation/ and return the highest CVSS base score found as a decimal number (e.g. 8.8). Return "0" if no CVEs found.</prompt>
+        <response_pattern>^\d+(\.\d+)?$</response_pattern>
+        <validation>WordPress 6.1.1 has known CVEs. Response must be a valid CVSS score or 0.</validation>
+    </task>
+
+    <task category="cve_triage" complexity="medium">
+        <description>Determine if CVE-2022-32224 (Rails deserialization) applies to rails 6.1.0</description>
+        <prompt>Using execute_code, write Python to call query_cves("rails", "6.1.0") from the cve_lookup module at /home/hunter/CyberBox/evaluation/. Check if any returned CVE has id "CVE-2022-32224" or description containing "deserialization". Return "YES" if found, "NO" if not found, "NO_DATA" if the lookup returns no results.</prompt>
+        <response_pattern>^(YES|NO|NO_DATA)$</response_pattern>
+        <validation>CVE-2022-32224 is a Rails deserialization RCE affecting 6.1.x. Expected: YES or NO_DATA (depends on NVD connectivity)</validation>
+    </task>
+
+    <task category="cve_triage" complexity="medium">
+        <description>Count HIGH or CRITICAL CVEs for log4j 2.14.1</description>
+        <prompt>Using execute_code, write Python to call query_cves("log4j", "2.14.1") from the cve_lookup module at /home/hunter/CyberBox/evaluation/. Count CVEs with CVSS base score >= 7.0. Return the integer count, or "0" if none found.</prompt>
+        <response_pattern>^\d+$</response_pattern>
+        <validation>log4j 2.14.1 is affected by Log4Shell (CVE-2021-44228, CVSS 10.0) and related CVEs. Count should be >= 1.</validation>
+    </task>
 </evaluation>

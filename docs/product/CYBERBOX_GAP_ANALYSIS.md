@@ -47,10 +47,10 @@ _Audited: 2026-11-10 | Based on actual file inspection_
 | **BOLA/IDOR** | **bola_idor** | **Critical** | **✅ added 2026-11-10** |
 | **Business logic** | **business_logic_audit** | **Critical** | **✅ added 2026-11-10** |
 | **WebSocket auth** | **websocket_auth** | **High** | **✅ added 2026-11-10** |
-| Differential/multi-role | MISSING | Critical | ❌ |
+| **Differential/multi-role** | **differential_auth** | **Critical** | **✅ added 2026-11-10** |
+| **File upload chain** | **file_upload_chain** | **High** | **✅ added 2026-11-10** |
+| **Mass assignment** | **mass_assignment** | **High** | **✅ added 2026-11-10** |
 | GraphQL introspection→BOLA | MISSING | High | ❌ |
-| File upload chain | MISSING | High | ❌ |
-| Mass assignment | MISSING | High | ❌ |
 | Account takeover chain | MISSING | Critical | ❌ |
 
 ---
@@ -84,36 +84,35 @@ claude-bug-bounty/                      CyberBox/
 4. ✅ Competitive matrix (docs/product/) — DONE
 
 ### P1 — Wire existing systems together
-5. Prowl pattern → platform hypothesis bridge (`prowl/bin/prowl-to-hypothesis`)
-   - Input: pattern name + LLM analysis output
-   - Output: POST to `/control/api/v1/research/hypotheses`
-   - Already have: pattern schemas, platform API, prowl-guardrails
+5. ✅ Prowl pattern → platform hypothesis bridge (`prowl/bin/prowl-to-hypothesis`) — DONE
+   - Handlers for all 7 patterns, dry-run validated, guardrails integrated
    
-6. Raptor as control-plane job type
-   - Add `job_type: "raptor_scan"` to platform scanner
-   - Already have: raptor binary, job tables, scanner service
+6. ✅ Raptor as control-plane job type — DONE
+   - `run_raptor_scan()`, `POST /projects/{id}/raptor-scan`, dispatch/recover, 6/6 tests pass
 
-7. Hunt-memory sync to platform memory
-   - claude-bug-bounty/hunt-memory/ → platform research_memory table
-   - Already have: memory service, hunt-memory files
+7. ✅ Hunt-memory sync to platform memory — DONE
+   - `prowl/bin/sync-hunt-memory`, idempotent sha256 keying, dry-run shows 14 files / 7 targets
 
 ### P2 — Close the leaderboard gap vs XBOW
-8. Security eval on local vuln apps
-   - Deploy OWASP crAPI or Juice Shop inside cybersandbox
-   - Add evaluation_security_webapp.xml with seeded finding tasks
-   - Measure: vuln recall rate, false-positive rate, time-to-finding
+8. ✅ Security eval on local vuln apps — DONE
+   - `evaluation/dataset/evaluation_security_webapp.xml` — 24 tasks, 12 categories
+   - crAPI (BOLA, mass-assign, BFLA, business-logic) + DVWA (file upload) + prowl + raptor tasks
 
-9. Add differential/multi-role prowl pattern
-   - Actor×object ownership matrix for A/B account testing
+9. ✅ Add 3 new high-value prowl patterns — DONE
+   - `differential_auth` (multi-role A×B matrix), `file_upload_chain` (SVG XSS→polyglot→ImageMagick),
+     `mass_assignment` (response-leak candidates) — all schema-valid, tests PASS
 
-10. Connect hunt dashboard canvases to control plane
-    - claude-bug-bounty/canvases/ has TSX components
-    - Wire to platform API endpoints
+10. ✅ Hunt dashboard wired to platform API — DONE
+    - `platform/backend/cyberbox/static/hunt_dashboard.html` — hypothesis feed, execution feed,
+      pattern coverage grid; `/api/v1/dashboard` route; live 30s polling
 
 ### P3 — Commercial differentiation
-11. Published benchmark: run security eval on local crAPI, publish score
-12. cost-per-finding metric in leaderboard (model token cost / confirmed findings)
-13. Duplicate detection: semantic fingerprinting across hunt-memory entries
+11. ✅ crAPI + DVWA containers wired into cybersandbox — DONE
+    - `cybersandbox/docker-compose.vuln-targets.yml` — crAPI (Postgres+Mongo+Mailhog) at :8888,
+      DVWA at :4280, loopback-only, works standalone or as compose override
+12. Published benchmark: run `evaluation_security_webapp.xml` on live crAPI, record score
+13. cost-per-finding metric in leaderboard (model token cost / confirmed findings)
+14. Duplicate detection: semantic fingerprinting across hunt-memory entries
 
 ---
 
