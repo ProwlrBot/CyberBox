@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import ipaddress
 import json
+import os
 import re
 import sqlite3
 import urllib.parse
@@ -13,6 +14,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from .. import db
@@ -1051,3 +1053,22 @@ def run_triage(project_id: str, _user: dict = Depends(current_user)) -> dict:
     if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
         raise HTTPException(status_code=404, detail="project not found")
     return triage.auto_triage(project_id)
+
+
+@router.get("/executions")
+def list_executions(limit: int = 50, _user: dict = Depends(current_user)) -> list[dict]:
+    """Return recent executions across all projects, newest first."""
+    limit = min(max(limit, 1), 200)
+    rows = db.query(
+        "SELECT id, project_id, engagement_id, kind, status, risk_class, "
+        "created_at, started_at, finished_at, error "
+        "FROM executions ORDER BY created_at DESC LIMIT ?",
+        [limit],
+    )
+    return list(rows)
+
+
+@router.get("/dashboard", include_in_schema=False)
+def hunt_dashboard() -> FileResponse:
+    path = os.path.join(os.path.dirname(__file__), "..", "static", "hunt_dashboard.html")
+    return FileResponse(os.path.abspath(path))

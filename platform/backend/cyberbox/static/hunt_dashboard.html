@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CyberBox Hunt Dashboard</title>
+<style>
+  :root {
+    --bg:       #0d1117;
+    --surface:  #161b22;
+    --border:   #21262d;
+    --accent:   #d4f026;
+    --muted:    #6e7681;
+    --text:     #e6edf3;
+    --green:    #3fb950;
+    --red:      #f85149;
+    --yellow:   #d29922;
+    --blue:     #58a6ff;
+    --mono:     'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Courier New', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    min-height: 100vh;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--accent);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+  }
+  .logo svg { width: 22px; height: 22px; }
+  .live-indicator {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: pulse 2s infinite;
+  }
+  .dot.dead { background: var(--red); animation: none; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.3; }
+  }
+  #last-update { color: var(--muted); font-size: 11px; }
+  main {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+    padding: 20px 24px;
+  }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 700px)  { main { grid-template-columns: 1fr; } }
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(255,255,255,0.02);
+  }
+  .panel-title {
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .panel-count {
+    background: var(--border);
+    color: var(--muted);
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 10px;
+  }
+  .panel-body { padding: 12px 14px; }
+  /* Hypothesis panel */
+  .project-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border);
+    gap: 8px;
+  }
+  .project-row:last-child { border-bottom: none; }
+  .project-name {
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 55%;
+  }
+  .project-meta { color: var(--muted); font-size: 11px; flex-shrink: 0; }
+  .hyp-count {
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+  /* Execution feed */
+  .exec-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .exec-row:last-child { border-bottom: none; }
+  .badge {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-weight: 700;
+    flex-shrink: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .badge-running  { background: rgba(88,166,255,0.15); color: var(--blue); }
+  .badge-done     { background: rgba(63,185,80,0.15);  color: var(--green); }
+  .badge-failed   { background: rgba(248,81,73,0.15);  color: var(--red); }
+  .badge-queued   { background: rgba(210,153,34,0.15); color: var(--yellow); }
+  .exec-kind { color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .exec-time { color: var(--muted); font-size: 10px; flex-shrink: 0; }
+  /* Pattern coverage */
+  .pattern-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px 10px;
+  }
+  .pattern-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 0;
+    color: var(--text);
+    font-size: 11px;
+  }
+  .pattern-check { color: var(--green); font-size: 12px; flex-shrink: 0; }
+  .pattern-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Empty / error states */
+  .empty { color: var(--muted); font-size: 11px; padding: 10px 0; text-align: center; }
+  .error-msg { color: var(--red); font-size: 11px; padding: 10px 0; text-align: center; }
+  /* Coverage summary bar */
+  .coverage-bar-wrap {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+  .coverage-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--muted);
+    margin-bottom: 5px;
+  }
+  .coverage-bar {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .coverage-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width 0.6s ease;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+    </svg>
+    CyberBox Hunt Dashboard
+  </div>
+  <div style="display:flex;align-items:center;gap:16px;">
+    <span id="last-update">—</span>
+    <div class="live-indicator">
+      <div class="dot" id="live-dot"></div>
+      <span id="live-label">LIVE</span>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- Panel 1: Hypothesis Feed -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Hypothesis Feed</span>
+      <span class="panel-count" id="hyp-total">—</span>
+    </div>
+    <div class="panel-body" id="hyp-body">
+      <div class="empty">Loading…</div>
+    </div>
+  </div>
+
+  <!-- Panel 2: Execution Feed -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Recent Executions</span>
+      <span class="panel-count" id="exec-total">—</span>
+    </div>
+    <div class="panel-body" id="exec-body">
+      <div class="empty">Loading…</div>
+    </div>
+  </div>
+
+  <!-- Panel 3: Pattern Coverage -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Prowl Coverage</span>
+      <span class="panel-count" id="pattern-count">14 patterns</span>
+    </div>
+    <div class="panel-body" id="pattern-body">
+      <div class="empty">Loading…</div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+const BASE = window.location.origin;
+
+const PATTERNS = [
+  'bola_idor', 'business_logic_audit', 'websocket_auth',
+  'differential_auth', 'file_upload_chain', 'mass_assignment',
+  'ssrf_chain', 'cors_audit', 'oauth_misconfig', 'jwt_audit',
+  'graphql_recon', 'header_misconfig_audit', 'race_condition_hypotheses',
+  'diff_for_secrets',
+];
+
+function fmtTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const now = new Date();
+  const diff = Math.floor((now - d) / 1000);
+  if (diff < 60)  return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+  return d.toLocaleDateString();
+}
+
+function badgeClass(status) {
+  const map = { running: 'badge-running', done: 'badge-done', failed: 'badge-failed', queued: 'badge-queued' };
+  return map[status] || 'badge-queued';
+}
+
+async function fetchJSON(path) {
+  const r = await fetch(BASE + path, { credentials: 'include' });
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+  return r.json();
+}
+
+function setLive(ok) {
+  const dot = document.getElementById('live-dot');
+  const lbl = document.getElementById('live-label');
+  dot.className = ok ? 'dot' : 'dot dead';
+  lbl.textContent = ok ? 'LIVE' : 'ERROR';
+}
+
+async function refreshHypotheses() {
+  const body = document.getElementById('hyp-body');
+  const counter = document.getElementById('hyp-total');
+  try {
+    const projects = await fetchJSON('/api/v1/projects');
+    if (!projects.length) {
+      body.innerHTML = '<div class="empty">No projects yet</div>';
+      counter.textContent = '0';
+      return;
+    }
+    // Fetch hypothesis counts in parallel (up to 8 projects)
+    const slice = projects.slice(0, 8);
+    const counts = await Promise.all(
+      slice.map(p =>
+        fetchJSON(`/api/v1/projects/${p.id}/hypotheses`)
+          .then(h => ({ ...p, hyp_count: h.length }))
+          .catch(() => ({ ...p, hyp_count: '?' }))
+      )
+    );
+    const total = counts.reduce((s, p) => typeof p.hyp_count === 'number' ? s + p.hyp_count : s, 0);
+    counter.textContent = `${total} total`;
+    body.innerHTML = counts.map(p => `
+      <div class="project-row">
+        <span class="project-name" title="${p.name}">${p.name}</span>
+        <span class="project-meta">${fmtTime(p.created_at)}</span>
+        <span class="hyp-count">${p.hyp_count}</span>
+      </div>
+    `).join('');
+  } catch (e) {
+    body.innerHTML = `<div class="error-msg">⚠ ${e.message}</div>`;
+    counter.textContent = 'err';
+    throw e;
+  }
+}
+
+async function refreshExecutions() {
+  const body = document.getElementById('exec-body');
+  const counter = document.getElementById('exec-total');
+  try {
+    // Global executions endpoint added at /api/v1/executions
+    const rows = await fetchJSON('/api/v1/executions');
+    counter.textContent = `${rows.length} recent`;
+    if (!rows.length) {
+      body.innerHTML = '<div class="empty">No executions yet</div>';
+      return;
+    }
+    body.innerHTML = rows.slice(0, 10).map(e => `
+      <div class="exec-row">
+        <span class="badge ${badgeClass(e.status)}">${e.status}</span>
+        <span class="exec-kind" title="${e.kind}">${e.kind}</span>
+        <span class="exec-time">${fmtTime(e.created_at)}</span>
+      </div>
+    `).join('');
+  } catch (e) {
+    body.innerHTML = `<div class="error-msg">⚠ ${e.message}</div>`;
+    counter.textContent = 'err';
+    throw e;
+  }
+}
+
+function renderPatterns() {
+  const body = document.getElementById('pattern-body');
+  const total = PATTERNS.length;
+  body.innerHTML = `
+    <div class="pattern-grid">
+      ${PATTERNS.map(p => `
+        <div class="pattern-item">
+          <span class="pattern-check">✓</span>
+          <span class="pattern-name" title="${p}">${p}</span>
+        </div>
+      `).join('')}
+    </div>
+    <div class="coverage-bar-wrap">
+      <div class="coverage-label">
+        <span>Pattern coverage</span>
+        <span>${total}/${total} complete</span>
+      </div>
+      <div class="coverage-bar">
+        <div class="coverage-fill" style="width:100%"></div>
+      </div>
+    </div>
+  `;
+}
+
+async function refresh() {
+  let ok = true;
+  try {
+    await Promise.all([refreshHypotheses(), refreshExecutions()]);
+  } catch (_) {
+    ok = false;
+  }
+  setLive(ok);
+  document.getElementById('last-update').textContent =
+    'updated ' + new Date().toLocaleTimeString();
+}
+
+// Initial render
+renderPatterns();
+refresh();
+setInterval(refresh, 30000);
+</script>
+</body>
+</html>
