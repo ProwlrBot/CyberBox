@@ -928,7 +928,7 @@ async function pushFinding(sdk: SDK, findingId: number): Promise<PushResult> {
     return { finding_id: findingId, remote_id: "", status: "error", error: "cyberbox_project_id not set — configure in Prowlr settings" };
   }
 
-  const finding = db.prepare("SELECT * FROM findings WHERE id = ?").get(findingId) as Finding | undefined;
+  const finding = db.prepare("SELECT * FROM findings WHERE id = ?").get(findingId) as unknown as Finding | undefined;
   if (!finding) {
     return { finding_id: findingId, remote_id: "", status: "error", error: "finding not found" };
   }
