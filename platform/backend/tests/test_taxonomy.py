@@ -64,7 +64,7 @@ class TaxonomyTest(unittest.TestCase):
 
     def test_chain_matcher_surfaces_lead_then_ready(self) -> None:
         # Find the Blind SSRF + IMDS chain's SSRF component class and cover it.
-        ssrf = next(c for c in taxonomy.list_classes(9) if "blind" in c["name"].lower())
+        ssrf = next(c for c in taxonomy.list_classes(9) if c["name"] == "Blind SSRF")
         taxonomy.set_coverage(self.project_id, ssrf["id"], "covered")
         chains = taxonomy.reachable_chains(self.project_id)
         blind = next((c for c in chains if "Blind SSRF" in c["name"]), None)
@@ -91,7 +91,7 @@ class TaxonomyTest(unittest.TestCase):
     def test_manual_component_never_auto_satisfied(self) -> None:
         # The Blind SSRF chain's second component ("IMDSv1 reachable") has no class, so the chain
         # can never be auto-ready from coverage alone — the hunter confirms it manually.
-        ssrf = next(c for c in taxonomy.list_classes(9) if "blind" in c["name"].lower())
+        ssrf = next(c for c in taxonomy.list_classes(9) if c["name"] == "Blind SSRF")
         taxonomy.set_coverage(self.project_id, ssrf["id"], "covered")
         blind = next(c for c in taxonomy.reachable_chains(self.project_id) if "Blind SSRF" in c["name"])
         self.assertFalse(blind["ready"])
@@ -103,6 +103,19 @@ class TaxonomyTest(unittest.TestCase):
         self.assertFalse(rep["reportable_standalone"])
         self.assertIn("chain", rep["reason"])
         self.assertTrue(rep["feeds_chains"])  # self-xss feeds at least one chain
+
+    def test_seed_prunes_orphan_classes_and_chains(self) -> None:
+        # A class/chain no longer in the spine (e.g. after a rename) must not survive a re-seed.
+        db.insert("taxonomy_classes", {"id": "f1-ghost-renamed-away", "family_num": 1, "name": "Ghost class",
+                                       "priority": "P5", "payout_rank": 1, "cwe": None, "signal": None,
+                                       "informational_only": 0, "chain_component": 0})
+        db.insert("chain_recipes", {"id": "chain-ghost", "name": "Ghost chain", "result_impact": "none",
+                                    "result_priority": "P5", "components": "[]"})
+        taxonomy.ensure_seeded()
+        self.assertIsNone(db.query_one("SELECT id FROM taxonomy_classes WHERE id=?", ["f1-ghost-renamed-away"]))
+        self.assertIsNone(db.query_one("SELECT id FROM chain_recipes WHERE id=?", ["chain-ghost"]))
+        # A real seeded class is still present.
+        self.assertTrue(db.query_one("SELECT id FROM taxonomy_classes LIMIT 1"))
 
     def test_reportability_allows_impactful_class(self) -> None:
         idor = next(c for c in taxonomy.list_classes(14) if "bola" in c["name"].lower())

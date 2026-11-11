@@ -47,36 +47,62 @@ def class_id(family_num: int, name: str) -> str:
 def ensure_seeded() -> dict:
     """Idempotently load families/classes/chains from the JSON spine. Safe to call on boot."""
     data = _load()
-    for fam in data["families"]:
-        db.upsert("taxonomy_families",
-                  {"num": fam["num"], "name": fam["name"], "owasp": fam.get("owasp"),
-                   "money_rank": fam.get("money_rank"), "note": fam.get("note")},
-                  conflict_cols=["num"], update_cols=["name", "owasp", "money_rank", "note"])
-    for c in data["classes"]:
-        cid = class_id(c["family"], c["name"])
-        db.upsert("taxonomy_classes",
-                  {"id": cid, "family_num": c["family"], "name": c["name"],
-                   "priority": c["priority"], "payout_rank": c["payout_rank"], "cwe": c.get("cwe"),
-                   "signal": c.get("signal"),
-                   "informational_only": 1 if c.get("informational_only") else 0,
-                   "chain_component": 1 if c.get("chain_component") else 0},
-                  conflict_cols=["id"],
-                  update_cols=["family_num", "name", "priority", "payout_rank", "cwe", "signal",
-                               "informational_only", "chain_component"])
-    for ch in data["chains"]:
-        chid = "chain-" + re.sub(r"[^a-z0-9]+", "-", ch["name"].lower()).strip("-")[:100]
-        # Resolve each component's class reference to a stable class id (or null = manual condition
-        # the harness cannot auto-confirm). Matching is on this id — never fuzzy text.
-        components = []
-        for comp in ch["components"]:
-            cref = class_id(comp["family"], comp["name"]) if comp.get("name") and comp.get("family") else None
-            components.append({"text": comp["text"], "class_id": cref})
-        db.upsert("chain_recipes",
-                  {"id": chid, "name": ch["name"], "result_impact": ch["result_impact"],
-                   "result_priority": ch["result_priority"], "components": json.dumps(components)},
-                  conflict_cols=["id"], update_cols=["name", "result_impact", "result_priority", "components"])
+    # One transaction for the whole seed: 386 class upserts + chains + prune commit once, not
+    # 400+ times. On WSL2 (synchronous=FULL) this is the difference between ~40s and <1s of boot.
+    with db.batch():
+        for fam in data["families"]:
+            db.upsert("taxonomy_families",
+                      {"num": fam["num"], "name": fam["name"], "owasp": fam.get("owasp"),
+                       "money_rank": fam.get("money_rank"), "note": fam.get("note")},
+                      conflict_cols=["num"], update_cols=["name", "owasp", "money_rank", "note"])
+        for c in data["classes"]:
+            cid = class_id(c["family"], c["name"])
+            db.upsert("taxonomy_classes",
+                      {"id": cid, "family_num": c["family"], "name": c["name"],
+                       "priority": c["priority"], "payout_rank": c["payout_rank"], "cwe": c.get("cwe"),
+                       "signal": c.get("signal"),
+                       "informational_only": 1 if c.get("informational_only") else 0,
+                       "chain_component": 1 if c.get("chain_component") else 0},
+                      conflict_cols=["id"],
+                      update_cols=["family_num", "name", "priority", "payout_rank", "cwe", "signal",
+                                   "informational_only", "chain_component"])
+        valid_chain_ids = []
+        for ch in data["chains"]:
+            chid = "chain-" + re.sub(r"[^a-z0-9]+", "-", ch["name"].lower()).strip("-")[:100]
+            valid_chain_ids.append(chid)
+            # Resolve each component's class reference to a stable class id (or null = manual
+            # condition the harness cannot auto-confirm). Matching is on this id — never fuzzy text.
+            components = []
+            for comp in ch["components"]:
+                cref = class_id(comp["family"], comp["name"]) if comp.get("name") and comp.get("family") else None
+                components.append({"text": comp["text"], "class_id": cref})
+            db.upsert("chain_recipes",
+                      {"id": chid, "name": ch["name"], "result_impact": ch["result_impact"],
+                       "result_priority": ch["result_priority"], "components": json.dumps(components)},
+                      conflict_cols=["id"], update_cols=["name", "result_impact", "result_priority", "components"])
+
+        # Seeding is AUTHORITATIVE: prune classes/chains no longer in the spine so a rename never
+        # leaves a stale orphan behind. target_coverage rows are left intact — a LEFT JOIN from
+        # taxonomy_classes means orphaned coverage simply never surfaces, so no user data is lost.
+        valid_class_ids = [class_id(c["family"], c["name"]) for c in data["classes"]]
+        valid_family_nums = [f["num"] for f in data["families"]]
+        _prune("taxonomy_classes", "id", valid_class_ids)
+        _prune("chain_recipes", "id", valid_chain_ids)
+        _prune("taxonomy_families", "num", valid_family_nums)
+
     return {"families": len(data["families"]), "classes": len(data["classes"]),
             "chains": len(data["chains"]), "version": data["version"]}
+
+
+def _prune(table: str, key: str, keep: list) -> int:
+    """Delete rows of `table` whose `key` is not in `keep`. Returns rows removed."""
+    if not keep:
+        return 0
+    placeholders = ",".join("?" for _ in keep)
+    rows = db.query(f"SELECT {key} FROM {table} WHERE {key} NOT IN ({placeholders})", list(keep))
+    for r in rows:
+        db.execute(f"DELETE FROM {table} WHERE {key}=?", [r[key]])
+    return len(rows)
 
 
 # ── Reads ────────────────────────────────────────────────────────────────────────
