@@ -16,6 +16,7 @@ const Targets      = lazy(() => import("./pages/hunt/Targets"));
 const Findings     = lazy(() => import("./pages/hunt/Findings"));
 const CveIntel     = lazy(() => import("./pages/hunt/CveIntel"));
 const Jobs         = lazy(() => import("./pages/hunt/Jobs"));
+const Cockpit      = lazy(() => import("./pages/hunt/Cockpit"));
 const Genome       = lazy(() => import("./pages/hunt/Genome"));
 const Surface      = lazy(() => import("./pages/hunt/Surface"));
 const Memory       = lazy(() => import("./pages/hunt/Memory"));
@@ -67,6 +68,7 @@ export interface NavSection { id: string; label: string; items: NavItem[] }
 export const NAV_SECTIONS: NavSection[] = [
   { id: "hunt", label: "HUNT", items: [
     { label: "New Pentest", path: "/pentests/new", Icon: Crosshair },
+    { label: "Cockpit",   path: "/hunt/cockpit",   Icon: LayoutGrid },
     { label: "Targets",   path: "/hunt/targets",   Icon: Target },
     { label: "Recon",     path: "/hunt/recon",     Icon: Search },
     { label: "Traffic",   path: "/hunt/traffic",   Icon: Activity },
@@ -140,6 +142,7 @@ export const appRoutes: RouteObject[] = [
   { path: "hunt/targets",   element: <Suspense fallback={null}><Targets /></Suspense> },
   { path: "hunt/recon",     element: <Suspense fallback={null}><ReconPage /></Suspense> },
   { path: "hunt/traffic",   element: <Suspense fallback={null}><Traffic /></Suspense> },
+  { path: "hunt/cockpit",   element: <Suspense fallback={null}><Cockpit /></Suspense> },
   { path: "hunt/genome",    element: <Suspense fallback={null}><Genome /></Suspense> },
   { path: "hunt/surface",   element: <Suspense fallback={null}><Surface /></Suspense> },
   { path: "hunt/findings",  element: <Suspense fallback={null}><Findings /></Suspense> },

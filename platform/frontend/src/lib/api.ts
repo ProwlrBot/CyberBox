@@ -496,3 +496,70 @@ export async function updateTestResult(runId: string, testId: string, status: st
     body: JSON.stringify({ status, notes, result }),
   });
 }
+
+// ── Methodology cockpit — taxonomy coverage, chains, engines ─────────────────────
+
+export type TaxFamily = { num: number; name: string; owasp: string | null; money_rank: number | null; note: string | null };
+
+export type CoverageClass = {
+  id: string; family_num: number; name: string; priority: string; payout_rank: number;
+  cwe: string | null; signal: string | null; informational_only: number; chain_component: number;
+  status: "none" | "partial" | "covered"; evidence_ids: string[]; note: string | null; updated_at: string | null;
+};
+
+export type CoverageSummary = {
+  total: number; by_status: Record<string, number>;
+  families: Array<{ family_num: number; total: number; covered: number }>;
+};
+
+export type CoverageResponse = { summary: CoverageSummary; classes: CoverageClass[] };
+
+export type ChainComponent = { text: string; class_id: string | null; manual: boolean; have: boolean };
+export type Chain = {
+  id: string; name: string; result_impact: string; result_priority: string;
+  components: ChainComponent[]; have: number; total: number; ready: boolean; missing: string[];
+};
+
+export type Engine = {
+  key: string; name: string; kind: string; optional: boolean; description: string;
+  covers_count: number; covers: Array<{ class_id: string; family: number; name: string }>;
+};
+
+export type Checklist = { reporting_checklist: string[]; informational_standalone: string[] };
+
+export async function fetchTaxonomyFamilies(): Promise<TaxFamily[]> {
+  const r = await fetch(`/api/v1/taxonomy/families`, { headers: headers() });
+  return r.ok ? r.json() : [];
+}
+
+export async function fetchProjectCoverage(projectId: string): Promise<CoverageResponse | null> {
+  const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/coverage`, { headers: headers() });
+  return r.ok ? r.json() : null;
+}
+
+export async function fetchProjectChains(projectId: string): Promise<Chain[]> {
+  const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/chains`, { headers: headers() });
+  return r.ok ? r.json() : [];
+}
+
+export async function fetchEngines(): Promise<Engine[]> {
+  const r = await fetch(`/api/v1/engines`, { headers: headers() });
+  return r.ok ? r.json() : [];
+}
+
+export async function fetchTaxonomyChecklist(): Promise<Checklist | null> {
+  const r = await fetch(`/api/v1/taxonomy/checklist`, { headers: headers() });
+  return r.ok ? r.json() : null;
+}
+
+export async function setCoverage(
+  projectId: string, classId: string, status: "none" | "partial" | "covered",
+  evidenceIds: string[] = [], note?: string | null,
+): Promise<void> {
+  const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/coverage/${encodeURIComponent(classId)}`, {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify({ status, evidence_ids: evidenceIds, note: note ?? null }),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || (await r.text()));
+}
