@@ -573,3 +573,37 @@ export async function fetchMethodology(classId: string): Promise<Methodology | n
   const r = await fetch(`/api/v1/taxonomy/classes/${encodeURIComponent(classId)}/methodology`, { headers: headers() });
   return r.ok ? r.json() : null;
 }
+
+// ── WSTG v4.2 coverage axis ──────────────────────────────────────────────────────
+
+export type WstgTestCov = {
+  id: string; chapter: string; num: number; title: string;
+  status: "none" | "partial" | "covered"; mapped: boolean;
+  class_ids: string[]; evidence_ids: string[];
+};
+export type WstgChapterCov = {
+  code: string; name: string; total: number; mapped: number; covered: number; partial: number;
+};
+export type WstgCoverage = {
+  total: number; mapped: number; catalog_only: number; covered: number; partial: number;
+  chapters: WstgChapterCov[]; tests: WstgTestCov[];
+};
+
+export type WstgCatalogTest = {
+  id: string; chapter: string; num: number; title: string;
+  how_to_test: string; evidence: string; reject_if: string;
+  maps: Array<{ class_id: string; name: string }>;
+};
+export type WstgCatalog = {
+  total: number; chapters: Array<{ code: string; name: string; count: number }>; tests: WstgCatalogTest[];
+};
+
+export async function fetchWstgCatalog(): Promise<WstgCatalog | null> {
+  const r = await fetch(`/api/v1/wstg/catalog`, { headers: headers() });
+  return r.ok ? r.json() : null;
+}
+
+export async function fetchWstgCoverage(projectId: string): Promise<WstgCoverage | null> {
+  const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/wstg/coverage`, { headers: headers() });
+  return r.ok ? r.json() : null;
+}
