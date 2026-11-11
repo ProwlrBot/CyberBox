@@ -999,6 +999,24 @@ CREATE TABLE IF NOT EXISTS class_methodology (
     updated_at TEXT NOT NULL
 );
 
+-- Lightweight signals / leads bucket (audit fix): the sweep + import paths (cve-sweep,
+-- nuclei-sweep, caido import, preflight/dedup/howtohunt/loss notes) record findings-shaped
+-- leads here. This is NOT the research `hypotheses` table (claim/confidence under an engagement);
+-- those paths used to write into it with a stale column set and silently stored nothing.
+CREATE TABLE IF NOT EXISTS signals (
+    id          TEXT PRIMARY KEY,
+    project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    source      TEXT NOT NULL DEFAULT '',   -- cve_sweep | nuclei_sweep | caido | preflight_check | dedup_check | howtohunt_sync | loss_close
+    title       TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    severity    TEXT NOT NULL DEFAULT 'info',
+    status      TEXT NOT NULL DEFAULT 'open',
+    evidence    TEXT NOT NULL DEFAULT '{}',  -- JSON blob, carries the "source" key too
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_signals_project ON signals(project_id);
+CREATE INDEX IF NOT EXISTS idx_signals_source ON signals(project_id, source);
+
 -- OWASP WSTG v4.2 catalog: a second authoritative coverage axis over the same taxonomy spine.
 -- A WSTG test's per-target coverage is DERIVED from target_coverage via wstg_class_map (no own
 -- writes) so engine evidence auto-fills WSTG coverage too.

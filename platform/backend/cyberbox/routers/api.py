@@ -1754,26 +1754,19 @@ def gori_import(project_id: str, _user: dict = Depends(current_user)) -> dict:
     issues = gori_svc.get_issues(s)
     imported = 0
     for issue in issues:
-        hyp_id = "hyp_" + str(uuid.uuid4()).replace("-", "")[:16]
-        title = issue.get("title") or "Caido finding"
-        desc = issue.get("description") or ""
-        severity = issue.get("severity", "unknown").lower()
-        evidence = json.dumps({
-            "source": "caido",
-            "caido_id": issue.get("id"),
-            "request_url": issue.get("request_url"),
-            "method": issue.get("method"),
+        _insert_signal(project_id, {
+            "title": issue.get("title") or "Caido finding",
+            "description": issue.get("description") or "",
+            "severity": issue.get("severity", "info").lower(),
+            "status": "open",
+            "evidence": json.dumps({
+                "source": "caido",
+                "caido_id": issue.get("id"),
+                "request_url": issue.get("request_url"),
+                "method": issue.get("method"),
+            }),
         })
-        try:
-            db.execute(
-                "INSERT OR IGNORE INTO hypotheses "
-                "(id, project_id, title, description, severity, status, evidence, created_at) "
-                "VALUES (?,?,?,?,?,?,?,?)",
-                [hyp_id, project_id, title, desc, severity, "open", evidence, _now()],
-            )
-            imported += 1
-        except Exception:
-            pass
+        imported += 1
     return {"imported": imported, "total_caido_issues": len(issues)}
 
 
@@ -1796,20 +1789,31 @@ def gori_flows(
 # CVE intel sweep
 # ---------------------------------------------------------------------------
 
-def _insert_hypothesis(project_id: str, hyp: dict) -> str:
-    hyp_id = "hyp_" + str(uuid.uuid4()).replace("-", "")[:16]
+def _insert_signal(project_id: str, sig: dict) -> str:
+    """Persist a lightweight, findings-shaped lead into the `signals` table. Returns its id.
+
+    The `source` is taken from the evidence JSON's "source" key (what every caller already sets).
+    Replaces the old `_insert_hypothesis`, which wrote a stale column set into the research
+    `hypotheses` table and silently stored nothing."""
+    sig_id = "sig_" + str(uuid.uuid4()).replace("-", "")[:16]
+    evidence = sig.get("evidence", "{}")
+    source = ""
     try:
-        db.execute(
-            "INSERT OR IGNORE INTO hypotheses "
-            "(id, project_id, title, description, severity, status, evidence, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?)",
-            [hyp_id, project_id, hyp.get("title", ""), hyp.get("description", ""),
-             hyp.get("severity", "unknown"), hyp.get("status", "open"),
-             hyp.get("evidence", "{}"), _now()],
-        )
-    except Exception:
-        pass
-    return hyp_id
+        source = (json.loads(evidence) or {}).get("source", "") if isinstance(evidence, str) else ""
+    except (ValueError, TypeError):
+        source = ""
+    db.execute(
+        "INSERT OR IGNORE INTO signals "
+        "(id, project_id, source, title, description, severity, status, evidence, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        [sig_id, project_id, source, sig.get("title", ""), sig.get("description", ""),
+         sig.get("severity", "info"), sig.get("status", "open"), evidence, _now()],
+    )
+    return sig_id
+
+
+# Back-compat alias: several call sites still use the old name.
+_insert_hypothesis = _insert_signal
 
 
 @router.post("/projects/{project_id}/cve-sweep", status_code=202)
@@ -1861,12 +1865,12 @@ def cve_sweep(project_id: str, body: CveSweepCreate,
 
 @router.get("/projects/{project_id}/cve-sweep")
 def cve_sweep_results(project_id: str, _user: dict = Depends(current_user)) -> list[dict]:
-    """Return hypotheses from past CVE sweeps for this project."""
+    """Return signals from past CVE sweeps for this project."""
     if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
         raise HTTPException(status_code=404, detail="project not found")
     rows = db.query(
         "SELECT id, title, description, severity, status, evidence, created_at "
-        "FROM hypotheses WHERE project_id=? AND evidence LIKE '%\"source\": \"cve_sweep\"%' "
+        "FROM signals WHERE project_id=? AND source='cve_sweep' "
         "ORDER BY created_at DESC LIMIT 100",
         [project_id],
     )
@@ -1878,6 +1882,29 @@ def cve_sweep_results(project_id: str, _user: dict = Depends(current_user)) -> l
             ev = {}
         result.append({**dict(r), "cve_meta": ev})
     return result
+
+
+@router.get("/projects/{project_id}/signals")
+def list_signals(project_id: str, source: str | None = None, limit: int = 200,
+                 _user: dict = Depends(current_user)) -> list[dict]:
+    """Lightweight leads recorded by the sweep/import/check paths (cve_sweep, nuclei_sweep, caido,
+    preflight_check, dedup_check, howtohunt_sync, loss_close). Filter by `source`."""
+    if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
+        raise HTTPException(status_code=404, detail="project not found")
+    sql = "SELECT id, source, title, description, severity, status, evidence, created_at FROM signals WHERE project_id=?"
+    params: list = [project_id]
+    if source:
+        sql += " AND source=?"
+        params.append(source)
+    sql += " ORDER BY created_at DESC LIMIT ?"
+    params.append(max(1, min(limit, 1000)))
+    rows = db.query(sql, params)
+    for r in rows:
+        try:
+            r["evidence_parsed"] = json.loads(r["evidence"])
+        except Exception:  # noqa: BLE001
+            r["evidence_parsed"] = {}
+    return rows
 
 
 # ---------------------------------------------------------------------------
