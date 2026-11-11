@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from .. import db
 from ..auth import current_user, require_internal_service
 from ..config import get_settings
-from ..services import analytics, artifacts, bundles, capabilities, events, executions, knowledge, memory, playbooks, policy, project_templates, research, triage, wordfence
+from ..services import analytics, artifacts, bundles, capabilities, events, executions, knowledge, memory, playbooks, policy, project_templates, research, tool_registry, triage, wordfence
 from ..services import gori as gori_svc
 from ..services import cve as cve_svc
 from ..services import model as model_svc
@@ -908,6 +908,22 @@ def complete_playbook_step(run_id: str, step_id: str, body: StepComplete,
         return playbooks.advance(run_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+# ── Tool registry ─────────────────────────────────────────────────────────────
+
+@router.get("/tools/registry")
+def list_tool_registry(category: str | None = None, enabled_only: bool = False,
+                       _user: dict = Depends(current_user)) -> list[dict]:
+    return tool_registry.list_tools(category=category, enabled_only=enabled_only)
+
+
+@router.post("/tools/registry/import")
+def import_tool_registry(path: str | None = None,
+                         _user: dict = Depends(current_user)) -> dict:
+    # Default to the inventory file produced by the local cataloguer.
+    inventory = path or str(get_settings().home / "tool_inventory.txt")
+    return tool_registry.import_inventory(inventory)
 
 
 # ── Techniques ────────────────────────────────────────────────────────────────

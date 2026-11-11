@@ -5,6 +5,7 @@ assert the default-deny invariant directly on tool_runner._policy_gate.
 """
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 import uuid
@@ -12,12 +13,13 @@ from pathlib import Path
 
 from cyberbox import db, migrations
 from cyberbox.config import Settings
-from cyberbox.services import profiles, tool_runner
+from cyberbox.services import profiles, tool_registry, tool_runner
 
 
 class PolicyGateTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.temp = tempfile.TemporaryDirectory()
+        # tmpfs keeps NORMAL-mode fsyncs cheap so the suite stays fast
+        self.temp = tempfile.TemporaryDirectory(dir="/dev/shm" if os.path.isdir("/dev/shm") else None)
         settings = Settings(home=Path(self.temp.name))
         settings.ensure_dirs()
         import cyberbox.config as config
@@ -29,6 +31,7 @@ class PolicyGateTest(unittest.TestCase):
         db.init_db()
         migrations.migrate()
         profiles.seed()
+        tool_registry.seed()
         self.project_id = str(uuid.uuid4())
         db.insert("projects", {"id": self.project_id, "slug": self.project_id,
                                "name": "Test", "description": "", "created_at": "now"})

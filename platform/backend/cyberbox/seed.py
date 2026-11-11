@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 from . import db
 from .config import get_settings
-from .services import playbooks, profiles, project_templates
+from .services import playbooks, profiles, project_templates, tool_registry
 
 
 def _now() -> str:
@@ -70,6 +70,7 @@ def seed() -> None:
     profiles.seed()
     playbooks.seed()
     project_templates.seed()
+    tool_registry.seed()
     _seed_techniques(now)
 
 

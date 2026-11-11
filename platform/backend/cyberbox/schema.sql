@@ -714,3 +714,24 @@ CREATE INDEX IF NOT EXISTS idx_technique_stages_tech ON technique_stages(techniq
 CREATE INDEX IF NOT EXISTS idx_technique_tests_stage ON technique_tests(stage_id, test_order);
 CREATE INDEX IF NOT EXISTS idx_technique_runs_project ON technique_runs(project_id);
 CREATE INDEX IF NOT EXISTS idx_technique_results_run ON technique_test_results(run_id);
+
+-- ── Tool registry (catalogs executable tools; danger_tier gates policy) ────────
+CREATE TABLE IF NOT EXISTS tool_registry (
+    id             TEXT PRIMARY KEY,
+    name           TEXT NOT NULL UNIQUE,
+    category       TEXT NOT NULL DEFAULT 'utility',
+    -- recon|fuzzer|scanner|exploit|source-analysis|mobile|binary|osint|utility
+    description    TEXT,
+    danger_tier    TEXT NOT NULL DEFAULT 'passive',
+    -- passive|active|exploit — maps to a policy risk_class
+    scope_required INTEGER NOT NULL DEFAULT 1,
+    binary_path    TEXT,
+    invocation     TEXT,
+    output_parser  TEXT,
+    approval       TEXT NOT NULL DEFAULT 'auto',   -- auto|operator
+    source         TEXT NOT NULL DEFAULT 'builtin', -- builtin|inventory|plugin
+    enabled        INTEGER NOT NULL DEFAULT 1,
+    created_at     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tool_registry_category ON tool_registry(category);
+CREATE INDEX IF NOT EXISTS idx_tool_registry_enabled ON tool_registry(enabled);

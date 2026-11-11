@@ -16,6 +16,7 @@ from pathlib import Path
 from .. import db
 from . import campaign as campaign_svc
 from . import policy as policy_svc
+from . import tool_registry
 
 _POLL_INTERVAL = 5          # seconds between polls
 _LEASE_MINUTES = 5          # lease duration per job
@@ -176,11 +177,6 @@ def _guess_phase(tool_name: str) -> str:
             "nuclei": "fuzz", "ffuf": "fuzz"}.get(tool_name, "recon")
 
 
-# Active tools whose risk class escalates past passive recon.
-_TOOL_RISK = {"subfinder": "passive", "httpx": "low-impact",
-              "nuclei": "state-changing", "ffuf": "high-volume"}
-
-
 def _target_url(args: dict) -> str | None:
     """Best-effort target URL for policy evaluation from a tool's args."""
     url = args.get("target_url") or args.get("url")
@@ -202,7 +198,7 @@ def _policy_gate(engagement_id: str | None, tool_name: str, args: dict) -> dict:
     url = _target_url(args)
     if not url:
         return {"allowed": False, "reason": "no resolvable target to scope-check"}
-    risk = _TOOL_RISK.get(tool_name, "low-impact")
+    risk = tool_registry.risk_class_for(tool_name)  # registry-driven, conservative fallback
     try:
         decision = policy_svc.evaluate(engagement_id, url, method="GET", risk_class=risk)
     except Exception as exc:  # noqa: BLE001 — a failing policy check must deny, not pass
