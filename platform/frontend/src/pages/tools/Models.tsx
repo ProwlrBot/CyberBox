@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Brain, Save, RefreshCw } from "lucide-react";
 import { getApiKey } from "../../lib/api";
+import { useProfile } from "../../contexts/ProfileContext";
 import ProviderPicker from "../../components/ProviderPicker";
 
 type Profile = {
@@ -43,6 +44,7 @@ const MATURITY_COLOR: Record<string, string> = {
 };
 
 export default function Models() {
+  const { activeProfileId, setActiveProfile } = useProfile();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [runtime, setRuntime]   = useState<RuntimeData | null>(null);
   const [loading, setLoading]   = useState(true);
@@ -232,13 +234,17 @@ export default function Models() {
                         </span>
                       </td>
                       <td>
-                        <button
-                          className="action-btn"
-                          style={{ fontSize: 11 }}
-                          onClick={() => showToast("Profile switching coming soon")}
-                        >
-                          Activate
-                        </button>
+                        {activeProfileId === p.id ? (
+                          <span className="profile-active-badge">✓ Active</span>
+                        ) : (
+                          <button
+                            className="action-btn"
+                            style={{ fontSize: 11 }}
+                            onClick={() => { setActiveProfile(p.id); showToast(`Activated ${p.name}`); }}
+                          >
+                            Activate
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}

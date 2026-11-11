@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Terminal as TerminalIcon, RefreshCw } from "lucide-react";
 import { fetchProjects, getApiKey } from "../../lib/api";
 
-type Exec = { id: string; kind: string; status: string; created_at: string; output: string | null; };
+type Exec = { id: string; project_id?: string; kind: string; status: string; created_at: string; output: string | null; };
 
 function timeAgo(iso: string): string {
   const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -32,12 +32,14 @@ export default function TerminalPage() {
   async function loadExecs(pid: string, quiet = false) {
     if (!quiet) setSpinning(true);
     try {
-      const r = await fetch(`/api/v1/projects/${encodeURIComponent(pid)}/executions?limit=50`, {
+      // Executions are a global endpoint; scope to the active project client-side.
+      const r = await fetch(`/api/v1/executions?limit=200`, {
         headers: { "X-Api-Key": getApiKey() },
       });
       if (r.ok) {
         const data = await r.json();
-        setExecs(Array.isArray(data) ? data : []);
+        const rows: Exec[] = Array.isArray(data) ? data : [];
+        setExecs(rows.filter((e) => !e.project_id || e.project_id === pid));
       }
     } finally {
       if (!quiet) setSpinning(false);
@@ -67,7 +69,7 @@ export default function TerminalPage() {
 
     if (!exec || exec.status !== "running") return;
     const timer = setInterval(async () => {
-      const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/executions/${encodeURIComponent(selectedId)}`, {
+      const r = await fetch(`/api/v1/executions/${encodeURIComponent(selectedId)}`, {
         headers: { "X-Api-Key": getApiKey() },
       });
       if (r.ok) {
@@ -79,9 +81,18 @@ export default function TerminalPage() {
     return () => clearInterval(timer);
   }, [selectedId, projectId, execs]);
 
-  function selectExec(exec: Exec) {
+  async function selectExec(exec: Exec) {
     setSelectedId(exec.id);
     setSelectedExec(exec);
+    // The list endpoint omits `output`; fetch the detail to show it.
+    const r = await fetch(`/api/v1/executions/${encodeURIComponent(exec.id)}`, {
+      headers: { "X-Api-Key": getApiKey() },
+    });
+    if (r.ok) {
+      const data: Exec = await r.json();
+      setSelectedExec(data);
+      setExecs((prev) => prev.map((e) => (e.id === data.id ? { ...e, ...data } : e)));
+    }
   }
 
   const filtered = filter

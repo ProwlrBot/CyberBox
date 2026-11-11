@@ -28,8 +28,8 @@ export default function Health() {
       const key = getApiKey();
       const headers: Record<string, string> = key ? { "X-Api-Key": key } : {};
 
-      // Fetch health
-      const hr = await fetch("/api/v1/health", { headers });
+      // Fetch health (served at app root, not under /api/v1)
+      const hr = await fetch("/health", { headers });
       const hData: HealthData = hr.ok ? await hr.json() : { status: "error", database: "error", version: "unknown" };
       setHealth(hData);
 
@@ -65,7 +65,7 @@ export default function Health() {
   }, []);
 
   const statusOk = health?.status === "ok";
-  const dbOk = health?.database === "ok";
+  const dbOk = health?.database === "ready";
 
   return (
     <div className="page-targets">

@@ -148,6 +148,14 @@ export async function fetchProviders(): Promise<Array<{
   return r.ok ? r.json() : [];
 }
 
+export async function fetchGenomeSummary(projectId: string): Promise<{
+  by_source: Array<{ source: string; n: number; auth_ct: number }>;
+  hosts: string[]; drift_count: number;
+} | null> {
+  const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/genome`, { headers: headers() });
+  return r.ok ? r.json() : null;
+}
+
 export async function fetchCampaign(id: string): Promise<{
   id: string; name: string; target_url: string; hunt_type: string; status: string;
   phase: string | null; progress: number; findings_count: number; agent_ids: string | null;

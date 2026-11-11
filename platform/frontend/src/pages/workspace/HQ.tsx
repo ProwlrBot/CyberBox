@@ -92,7 +92,7 @@ export default function HQ() {
       fetch(`/api/v1/projects/${pid}/vulnerabilities`, { headers: h }),
       fetch(`/api/v1/projects/${pid}/events?limit=20`, { headers: h }),
       fetch(`/api/v1/projects/${pid}/cve-sweep`, { headers: h }),
-      fetch("/api/v1/health", { headers: h }),
+      fetch("/health", { headers: h }),
     ]);
 
     if (execRes.status === "fulfilled" && execRes.value.ok) {

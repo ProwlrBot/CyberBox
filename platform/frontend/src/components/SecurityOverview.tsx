@@ -6,6 +6,7 @@ type Props = {
   openFindings: number;
   critical: number;
   campaigns: number;
+  endpoints: number;
 };
 
 function Ring({ value }: { value: number }) {
@@ -38,7 +39,7 @@ function Metric({ label, value, foot, accent }: { label: string; value: string |
   );
 }
 
-export default function SecurityOverview({ score, openFindings, critical, campaigns }: Props) {
+export default function SecurityOverview({ score, openFindings, critical, campaigns, endpoints }: Props) {
   const [prReviews, setPrReviews] = useState<number | null>(null);
   const [failing, setFailing] = useState(0);
 
@@ -70,7 +71,7 @@ export default function SecurityOverview({ score, openFindings, critical, campai
         <Metric label="Open issues" value={openFindings} foot={critical > 0 ? `${critical} critical` : "clear"} />
         <Metric label="PRs reviewed" value={prReviews ?? "—"} foot={failing > 0 ? `${failing} failed gate` : "all passing"} accent={failing > 0} />
         <Metric label="Campaigns" value={campaigns} foot="pentest runs" />
-        <Metric label="Coverage" value={`${Math.min(100, campaigns * 8 + (prReviews ?? 0) * 4)}%`} foot="surface tested" />
+        <Metric label="Endpoints" value={endpoints} foot="surface mapped" />
       </div>
     </div>
   );

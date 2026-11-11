@@ -690,6 +690,33 @@ def create_artifact(project_id: str, body: ArtifactCreate,
                            body.execution_id, body.metadata)
 
 
+@router.get("/projects/{project_id}/artifacts")
+def list_artifacts(project_id: str, limit: int = 200,
+                   _user: dict = Depends(current_user)) -> list[dict]:
+    if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
+        raise HTTPException(status_code=404, detail="project not found")
+    return artifacts.list_for_project(project_id, limit)
+
+
+@router.get("/projects/{project_id}/artifacts/{artifact_id}/download")
+def download_artifact(project_id: str, artifact_id: str,
+                      _user: dict = Depends(current_user)) -> Response:
+    row = db.query_one("SELECT id FROM artifacts WHERE id=? AND project_id=?",
+                       [artifact_id, project_id])
+    if not row:
+        raise HTTPException(status_code=404, detail="artifact not found in project")
+    result = artifacts.read(artifact_id)
+    if result is None:
+        raise HTTPException(status_code=410, detail="artifact content missing or corrupt")
+    meta, content = result
+    filename = f"{meta['kind']}-{meta['sha256'][:12]}"
+    return Response(
+        content=content,
+        media_type=meta.get("media_type") or "application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.post("/provider/projects/{project_id}/artifacts", status_code=201)
 def create_provider_artifact(project_id: str, body: ArtifactCreate,
                              x_cyberbox_capability: str | None = Header(default=None)) -> dict:
@@ -1105,6 +1132,20 @@ def list_hypotheses(project_id: str, engagement_id: str | None = None,
         rows = db.query(
             "SELECT * FROM hypotheses WHERE project_id=? ORDER BY updated_at DESC", [project_id])
     return [db.decode_row(r) for r in rows]
+
+
+@router.patch("/projects/{project_id}/hypotheses/{hypothesis_id}")
+def update_hypothesis(project_id: str, hypothesis_id: str, body: dict,
+                      user: dict = Depends(current_user)) -> dict:
+    status = (body or {}).get("status")
+    if not status:
+        raise HTTPException(status_code=422, detail="status is required")
+    try:
+        return research.update_hypothesis_status(project_id, hypothesis_id, status, user["id"])
+    except ValueError as exc:
+        detail = str(exc)
+        code = 404 if "not found" in detail else 400
+        raise HTTPException(status_code=code, detail=detail) from exc
 
 
 @router.post("/hypotheses/{hypothesis_id}/experiments", status_code=201)

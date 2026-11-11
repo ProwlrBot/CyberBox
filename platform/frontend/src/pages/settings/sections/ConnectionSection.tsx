@@ -32,26 +32,6 @@ export function ConnectionSection() {
     }
   }
 
-  async function handleAutoDetect() {
-    setStatus("testing");
-    try {
-      const r = await fetch("/api/v1/admin/bootstrap-key");
-      if (r.ok) {
-        const { key: detected } = await r.json() as { key: string };
-        if (detected) {
-          setKey(detected);
-          setApiKey(detected);
-          setStatus("ok");
-          setSaved(true);
-          await reloadProfiles();
-          setTimeout(() => setSaved(false), 2000);
-          return;
-        }
-      }
-    } catch { /* fall through */ }
-    setStatus("idle");
-  }
-
   function handleClear() {
     setKey("");
     setApiKey("");
@@ -106,16 +86,13 @@ export function ConnectionSection() {
           </div>
         </label>
 
-        <div style={{ display: "flex", gap: 8 }}>
-          <button className="action-btn" onClick={handleAutoDetect} disabled={status === "testing"}>
-            ⚡ Auto-detect
-          </button>
-          {key && (
+        {key && (
+          <div style={{ display: "flex", gap: 8 }}>
             <button className="action-btn" onClick={handleClear} style={{ color: "var(--bad)", borderColor: "var(--bad)" }}>
               Clear
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       <div style={{ marginTop: 24, padding: "12px 14px", background: "var(--panel-2)", borderRadius: 4, border: "1px solid var(--border)", maxWidth: 480 }}>

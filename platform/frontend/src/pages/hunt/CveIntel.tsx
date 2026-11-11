@@ -64,12 +64,13 @@ async function runSweep(
   return r.ok ? r.json() : { inserted: 0 };
 }
 
-async function queueHunt(projectId: string, hyp_id: string): Promise<void> {
-  await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/hypotheses/${hyp_id}`, {
+async function queueHunt(projectId: string, hyp_id: string): Promise<boolean> {
+  const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/hypotheses/${encodeURIComponent(hyp_id)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", "X-Api-Key": getApiKey() },
     body: JSON.stringify({ status: "active" }),
   });
+  return r.ok;
 }
 
 export default function CveIntel() {
@@ -141,7 +142,12 @@ export default function CveIntel() {
   async function handleHunt(row: CveRow) {
     if (queued.current.has(row.id)) return;
     queued.current.add(row.id);
-    await queueHunt(projectId, row.id);
+    const ok = await queueHunt(projectId, row.id);
+    if (!ok) {
+      queued.current.delete(row.id);
+      showToast(`Failed to queue ${row.evidence?.cve_id ?? row.id}`);
+      return;
+    }
     setRows((prev) => prev.map((r) => r.id === row.id ? { ...r, status: "active" } : r));
     showToast(`${row.evidence?.cve_id ?? row.id} queued for hunt`);
   }
