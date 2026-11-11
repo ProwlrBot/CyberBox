@@ -4,134 +4,105 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CyberBox Hunt OS</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-:root {
-  --bg:       #0a0c0f;
-  --surface:  #111418;
-  --surface2: #181c22;
-  --border:   rgba(200,241,53,0.12);
-  --border-h: rgba(200,241,53,0.38);
-  --accent:   #c8f135;
-  --teal:     #00d4aa;
-  --danger:   #ff4444;
-  --muted:    #5a6270;
-  --text:     #d8e0eb;
-  --mono:     'JetBrains Mono','Cascadia Code','Fira Code','Courier New',monospace;
+:root{
+  --bg:#08090a; --panel:#0e1013; --panel-2:#14171c; --border:#23272d; --border-h:#30353d;
+  --text:#e6e8ec; --muted:#8a93a0; --accent:#e4f222; --accent-dim:#b8c21a;
+  --good:#4ade80; --warn:#fbbf24; --bad:#f87171; --info:#60a5fa;
+  --mono:'JetBrains Mono',ui-monospace,'Cascadia Code','Courier New',monospace;
+  --glow:0 0 0 1px rgba(228,242,34,.14),0 8px 30px -12px rgba(228,242,34,.25);
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:12px;min-height:100vh;display:flex;flex-direction:column}
+::-webkit-scrollbar{width:7px;height:7px}
+::-webkit-scrollbar-thumb{background:#1c2128;border-radius:4px}
 
 /* ── topbar ── */
-#topbar{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:10px 20px;
-  border-bottom:1px solid var(--border);
-  background:var(--surface);
-  flex-shrink:0;
-}
-.logo{color:var(--accent);font-size:13px;font-weight:700;letter-spacing:.1em;display:flex;align-items:center;gap:8px}
-.logo-mark{color:var(--teal);font-size:16px;line-height:1}
+#topbar{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:space-between;
+  padding:12px 20px;border-bottom:1px solid var(--border);
+  background:radial-gradient(140% 160% at 0% 0%,rgba(228,242,34,.07),transparent 46%),linear-gradient(180deg,var(--panel-2),var(--panel))}
+#topbar::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.4;
+  background:repeating-linear-gradient(0deg,transparent 0 3px,rgba(255,255,255,.015) 3px 4px)}
+#topbar>*{position:relative}
+.logo{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.14em;font-size:13px}
+.logo b{color:var(--accent)}
+.logo-mark{width:22px;height:22px;display:grid;place-items:center;border-radius:6px;
+  background:rgba(228,242,34,.1);border:1px solid rgba(228,242,34,.25);color:var(--accent);font-size:13px}
+.eyebrow{font-size:9px;letter-spacing:.22em;color:var(--muted);text-transform:uppercase;margin-top:2px}
 .topbar-right{display:flex;align-items:center;gap:14px}
-#utc-clock{color:var(--muted);font-size:11px;letter-spacing:.05em}
-.live-pill{
-  display:flex;align-items:center;gap:5px;
-  padding:3px 9px;border-radius:20px;
-  border:1px solid var(--border);
-  font-size:10px;font-weight:700;letter-spacing:.08em;
-  color:var(--teal);transition:border-color .3s,color .3s;
-}
-.live-pill.dead{color:var(--danger);border-color:rgba(255,68,68,.35)}
-.live-dot{width:6px;height:6px;border-radius:50%;background:var(--teal);animation:blink 1.6s infinite}
-.live-pill.dead .live-dot{background:var(--danger);animation:none}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+#utc-clock{color:var(--muted);font-size:11px;letter-spacing:.06em}
+#keybtn{background:var(--panel);border:1px solid var(--border);color:var(--muted);font:inherit;font-size:10px;
+  padding:4px 9px;border-radius:5px;cursor:pointer}
+#keybtn:hover{border-color:var(--accent);color:var(--text)}
+.live-pill{display:flex;align-items:center;gap:6px;padding:3px 10px;border-radius:20px;border:1px solid rgba(74,222,128,.25);
+  font-size:10px;font-weight:700;letter-spacing:.09em;color:var(--good);background:rgba(74,222,128,.08)}
+.live-pill.dead{color:var(--bad);border-color:rgba(248,113,113,.3);background:rgba(248,113,113,.08)}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--good);box-shadow:0 0 0 0 rgba(74,222,128,.5);animation:pulse 1.6s infinite}
+.live-pill.dead .live-dot{background:var(--bad);animation:none}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(74,222,128,.5)}70%{box-shadow:0 0 0 6px rgba(74,222,128,0)}100%{box-shadow:0 0 0 0 rgba(74,222,128,0)}}
+
+/* ── score strip ── */
+#strip{display:flex;align-items:center;gap:22px;padding:16px 20px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.ring{position:relative;width:88px;height:88px;flex-shrink:0}
+.ring svg{transform:rotate(-90deg)}
+.ring-num{position:absolute;inset:0;display:grid;place-items:center;font-size:21px;font-weight:700;color:var(--accent)}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;flex:1;min-width:360px}
+.metric{position:relative;background:var(--panel);border:1px solid var(--border);border-radius:9px;padding:11px 13px;overflow:hidden}
+.metric::before{content:"";position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),transparent 70%);opacity:.8}
+.metric-l{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.metric-v{font-size:24px;font-weight:700;margin-top:7px;color:var(--text);font-variant-numeric:tabular-nums}
+.metric-v.accent{color:var(--accent)}
+.metric-f{font-size:10px;color:var(--muted);margin-top:3px}
 
 /* ── grid ── */
-main{
-  display:grid;
-  grid-template-columns:1fr 1fr 1fr;
-  gap:14px;padding:16px 20px;
-  flex:1;min-height:0;
-}
-@media(max-width:1050px){main{grid-template-columns:1fr 1fr}}
-@media(max-width:650px){main{grid-template-columns:1fr}}
+main{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:16px 20px;flex:1;min-height:0}
+@media(max-width:760px){main{grid-template-columns:1fr}.metrics{min-width:0}}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:10px;overflow:hidden;display:flex;flex-direction:column;transition:border-color .2s,box-shadow .2s}
+.card:hover{border-color:var(--border-h);box-shadow:var(--glow)}
+.card-head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--panel-2);flex-shrink:0}
+.card-title{display:flex;align-items:center;gap:8px;color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.11em;text-transform:uppercase}
+.card-badge{background:var(--panel);border:1px solid var(--border);color:var(--muted);font-size:9px;padding:2px 8px;border-radius:10px}
+.card-body{padding:11px 14px;overflow-y:auto;flex:1}
 
-/* ── card ── */
-.card{
-  background:var(--surface);
-  border:1px solid var(--border);
-  border-radius:6px;overflow:hidden;
-  display:flex;flex-direction:column;
-  transition:border-color .2s;
-}
-.card:hover{border-color:var(--border-h)}
-.card-head{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:9px 13px;
-  border-bottom:1px solid var(--border);
-  background:var(--surface2);
-  flex-shrink:0;
-}
-.card-title{
-  display:flex;align-items:center;gap:7px;
-  color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
-}
-.card-icon{font-size:13px;line-height:1}
-.card-badge{
-  background:var(--surface);border:1px solid var(--border);
-  color:var(--muted);font-size:9px;padding:2px 7px;border-radius:10px;
-}
-.card-body{padding:10px 13px;overflow-y:auto;flex:1}
+.row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.03);font-size:11px}
+.row:last-child{border-bottom:none}
+.row-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+.row-age{color:var(--muted);font-size:10px;flex-shrink:0}
+.num{color:var(--accent);font-weight:700;min-width:22px;text-align:right}
+.proj-row{cursor:pointer;border-radius:4px;transition:background .12s}
+.proj-row:hover{background:rgba(228,242,34,.04)}
 
-/* ── hypothesis rows ── */
-.proj-row{
-  display:flex;align-items:center;justify-content:space-between;
-  gap:8px;padding:6px 0;
-  border-bottom:1px solid rgba(200,241,53,.06);
-  cursor:pointer;transition:background .15s;
-  border-radius:3px;
-}
-.proj-row:last-child{border-bottom:none}
-.proj-row:hover{background:rgba(200,241,53,.04)}
-.proj-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.proj-age{color:var(--muted);font-size:10px;flex-shrink:0}
-.hyp-num{color:var(--accent);font-weight:700;font-size:12px;flex-shrink:0;min-width:24px;text-align:right}
+.badge{font-size:9px;padding:2px 7px;border-radius:3px;font-weight:700;flex-shrink:0;text-transform:uppercase;letter-spacing:.05em}
+.s-running{background:rgba(96,165,250,.14);color:var(--info)}
+.s-done{background:rgba(74,222,128,.14);color:var(--good)}
+.s-completed{background:rgba(74,222,128,.14);color:var(--good)}
+.s-failed{background:rgba(248,113,113,.14);color:var(--bad)}
+.s-blocked{background:rgba(251,191,36,.14);color:var(--warn)}
+.s-queued{background:rgba(138,147,160,.15);color:var(--muted)}
 
-/* ── execution feed ── */
-.exec-row{
-  display:flex;align-items:center;gap:7px;
-  padding:5px 0;border-bottom:1px solid rgba(200,241,53,.06);
-  font-size:11px;
-}
-.exec-row:last-child{border-bottom:none}
-.badge{
-  font-size:9px;padding:2px 6px;border-radius:3px;
-  font-weight:700;flex-shrink:0;text-transform:uppercase;letter-spacing:.05em;
-}
-.s-running{background:rgba(0,212,170,.12);color:var(--teal)}
-.s-done   {background:rgba(200,241,53,.12);color:var(--accent)}
-.s-failed {background:rgba(255,68,68,.12); color:var(--danger)}
-.s-queued {background:rgba(90,98,112,.15); color:var(--muted)}
-.exec-kind{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
-.exec-age {color:var(--muted);font-size:10px;flex-shrink:0}
+.sev{display:inline-flex;align-items:center;padding:1px 7px;border-radius:4px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;border:1px solid var(--border);border-left-width:3px}
+.sev.crit{border-left-color:var(--bad);color:var(--bad)}
+.sev.high{border-left-color:#fb7185;color:#fb7185}
+.sev.med{border-left-color:var(--warn);color:var(--warn)}
+.sev.low{border-left-color:var(--info);color:var(--info)}
+.gate{font-size:9px;font-weight:700;padding:1px 8px;border-radius:12px}
+.gate.pass{color:var(--good);background:rgba(74,222,128,.1)}
+.gate.fail{color:var(--bad);background:rgba(248,113,113,.1)}
 
-/* ── pattern grid ── */
 .pat-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px}
-.pat-item{
-  display:flex;align-items:center;gap:5px;
-  padding:3px 0;font-size:10px;color:var(--text);
-}
-.pat-ck{color:var(--teal);font-size:11px;flex-shrink:0}
+.pat-item{display:flex;align-items:center;gap:6px;padding:3px 0;font-size:10px;color:var(--text)}
+.pat-ck{color:var(--good);font-size:11px}
 .pat-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cov-bar-wrap{margin-top:10px;padding-top:9px;border-top:1px solid var(--border)}
-.cov-label{display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-bottom:4px}
-.cov-bar{height:3px;background:rgba(200,241,53,.12);border-radius:2px;overflow:hidden}
-.cov-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .6s ease}
+.cov-wrap{margin-top:11px;padding-top:10px;border-top:1px solid var(--border)}
+.cov-label{display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-bottom:5px}
+.cov-bar{height:4px;background:var(--panel-2);border-radius:2px;overflow:hidden}
+.cov-fill{height:100%;background:linear-gradient(90deg,var(--accent-dim),var(--accent));border-radius:2px;transition:width .6s ease}
 
-.empty{color:var(--muted);font-size:10px;padding:12px 0;text-align:center}
-.err  {color:var(--danger);font-size:10px;padding:12px 0;text-align:center}
-footer{padding:7px 20px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--surface);flex-shrink:0}
-.footer-l{color:var(--muted);font-size:9px;letter-spacing:.06em}
-.footer-r{color:rgba(200,241,53,.4);font-size:9px;font-family:var(--mono)}
+.empty{color:var(--muted);font-size:10px;padding:16px 0;text-align:center}
+footer{padding:8px 20px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--panel)}
+.footer-l{color:var(--muted);font-size:9px;letter-spacing:.07em}
+.footer-r{color:var(--accent-dim);font-size:9px}
 </style>
 </head>
 <body>
@@ -139,166 +110,123 @@ footer{padding:7px 20px;border-top:1px solid var(--border);display:flex;align-it
 <div id="topbar">
   <div class="logo">
     <span class="logo-mark">⬡</span>
-    CYBERBOX HUNT OS
+    <div><div>CYBER<b>BOX</b> HUNT OS</div><div class="eyebrow">evidence-driven research console</div></div>
   </div>
   <div class="topbar-right">
     <span id="utc-clock">00:00:00 UTC</span>
-    <div class="live-pill" id="live-pill">
-      <div class="live-dot"></div>
-      <span id="live-label">LIVE</span>
-    </div>
+    <button id="keybtn" onclick="setKey()">API KEY</button>
+    <div class="live-pill" id="live-pill"><div class="live-dot"></div><span id="live-label">LIVE</span></div>
+  </div>
+</div>
+
+<div id="strip">
+  <div class="ring">
+    <svg width="88" height="88"><circle cx="44" cy="44" r="38" fill="none" stroke="var(--border)" stroke-width="7"/>
+      <circle id="ring-fill" cx="44" cy="44" r="38" fill="none" stroke="var(--accent)" stroke-width="7" stroke-linecap="round"
+        stroke-dasharray="0 999" style="filter:drop-shadow(0 0 5px rgba(228,242,34,.4))"/></svg>
+    <div class="ring-num" id="ring-num">—</div>
+  </div>
+  <div class="metrics">
+    <div class="metric"><div class="metric-l">Open findings</div><div class="metric-v" id="m-find">—</div><div class="metric-f" id="m-find-f">—</div></div>
+    <div class="metric"><div class="metric-l">Scans</div><div class="metric-v accent" id="m-scan">—</div><div class="metric-f" id="m-scan-f">—</div></div>
+    <div class="metric"><div class="metric-l">Executions</div><div class="metric-v" id="m-exec">—</div><div class="metric-f">recent</div></div>
+    <div class="metric"><div class="metric-l">Hypotheses</div><div class="metric-v" id="m-hyp">—</div><div class="metric-f">across projects</div></div>
   </div>
 </div>
 
 <main>
-
   <div class="card">
-    <div class="card-head">
-      <div class="card-title"><span class="card-icon">🔬</span>[HYP] Hypothesis Feed</div>
-      <span class="card-badge" id="hyp-badge">—</span>
-    </div>
+    <div class="card-head"><div class="card-title">◇ Hypothesis Feed</div><span class="card-badge" id="hyp-badge">—</span></div>
     <div class="card-body" id="hyp-body"><div class="empty">loading…</div></div>
   </div>
-
   <div class="card">
-    <div class="card-head">
-      <div class="card-title"><span class="card-icon">🔄</span>[EXEC] Executions</div>
-      <span class="card-badge" id="exec-badge">—</span>
-    </div>
+    <div class="card-head"><div class="card-title">↻ Executions</div><span class="card-badge" id="exec-badge">—</span></div>
     <div class="card-body" id="exec-body"><div class="empty">loading…</div></div>
   </div>
-
   <div class="card">
-    <div class="card-head">
-      <div class="card-title"><span class="card-icon">🛡️</span>[PAT] Pattern Coverage</div>
-      <span class="card-badge" id="pat-badge">14 patterns</span>
-    </div>
+    <div class="card-head"><div class="card-title">⛨ Code Scanning</div><span class="card-badge" id="scan-badge">—</span></div>
+    <div class="card-body" id="scan-body"><div class="empty">loading…</div></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><div class="card-title">◈ Pattern Coverage</div><span class="card-badge" id="pat-badge">—</span></div>
     <div class="card-body" id="pat-body"><div class="empty">loading…</div></div>
   </div>
-
 </main>
 
 <footer>
-  <span class="footer-l">powered by CyberBox Hunt OS</span>
-  <span class="footer-r">rev 223ae6c · refreshes every 15s</span>
+  <span class="footer-l">powered by CyberBox Hunt OS · policy-gated, evidence-driven</span>
+  <span class="footer-r">refreshes every 15s</span>
 </footer>
 
 <script>
 const BASE = window.location.origin;
+const PATTERNS = ['bola_idor','business_logic_audit','websocket_auth','differential_auth','file_upload_chain',
+  'mass_assignment','ssrf_chain','cors_audit','oauth_misconfig','jwt_audit','graphql_recon','header_misconfig_audit',
+  'race_condition_hypotheses','diff_for_secrets'];
 
-const PATTERNS = [
-  'bola_idor','business_logic_audit','websocket_auth','differential_auth',
-  'file_upload_chain','mass_assignment','ssrf_chain','cors_audit',
-  'oauth_misconfig','jwt_audit','graphql_recon','header_misconfig_audit',
-  'race_condition_hypotheses','diff_for_secrets',
-];
+function apiKey(){ return localStorage.getItem('cyberbox.api-key.v1') || ''; }
+function setKey(){ const k=prompt('CyberBox API key (x-api-key):', apiKey()); if(k!==null) localStorage.setItem('cyberbox.api-key.v1',k.trim()); refresh(); }
 
-// UTC clock
-function tickClock() {
-  const n = new Date();
-  const pad = v => String(v).padStart(2,'0');
-  document.getElementById('utc-clock').textContent =
-    `${pad(n.getUTCHours())}:${pad(n.getUTCMinutes())}:${pad(n.getUTCSeconds())} UTC`;
+function pad(v){return String(v).padStart(2,'0')}
+function tickClock(){const n=new Date();document.getElementById('utc-clock').textContent=`${pad(n.getUTCHours())}:${pad(n.getUTCMinutes())}:${pad(n.getUTCSeconds())} UTC`}
+tickClock(); setInterval(tickClock,1000);
+
+function relAge(iso){if(!iso)return'—';const s=Math.floor((Date.now()-new Date(iso))/1000);
+  if(s<60)return`${s}s`;if(s<3600)return`${Math.floor(s/60)}m`;if(s<86400)return`${Math.floor(s/3600)}h`;return`${Math.floor(s/86400)}d`}
+function badgeCls(st){return{running:'s-running',done:'s-done',completed:'s-completed',failed:'s-failed',blocked:'s-blocked',queued:'s-queued'}[st]||'s-queued'}
+
+async function get(path){const r=await fetch(BASE+path,{headers:apiKey()?{'X-Api-Key':apiKey()}:{}});if(!r.ok)throw new Error(r.status);return r.json()}
+function setLive(ok){const p=document.getElementById('live-pill');p.className=ok?'live-pill':'live-pill dead';document.getElementById('live-label').textContent=ok?'LIVE':'AUTH'}
+function setRing(v){const c=2*Math.PI*38;document.getElementById('ring-fill').setAttribute('stroke-dasharray',`${(Math.max(0,Math.min(100,v))/100)*c} 999`);document.getElementById('ring-num').textContent=v==null?'—':Math.round(v)}
+
+async function loadHyp(){
+  const projects=await get('/api/v1/projects');
+  const badge=document.getElementById('hyp-badge'),body=document.getElementById('hyp-body');
+  if(!projects.length){body.innerHTML='<div class="empty">no projects</div>';badge.textContent='0';document.getElementById('m-hyp').textContent='0';return}
+  const rows=await Promise.all(projects.slice(0,8).map(p=>get(`/api/v1/projects/${p.id}/hypotheses`).then(h=>({...p,hc:h.length})).catch(()=>({...p,hc:'?'}))));
+  const total=rows.reduce((s,p)=>s+(typeof p.hc==='number'?p.hc:0),0);
+  badge.textContent=`${total} total`; document.getElementById('m-hyp').textContent=total;
+  body.innerHTML=rows.map(p=>`<div class="row proj-row" onclick="window.open('${BASE}/api/v1/projects/${p.id}/hypotheses','_blank')"><span class="row-name" title="${p.name}">${p.name}</span><span class="row-age">${relAge(p.created_at)}</span><span class="num">${p.hc}</span></div>`).join('');
 }
-tickClock();
-setInterval(tickClock, 1000);
-
-function relAge(iso) {
-  if (!iso) return '—';
-  const s = Math.floor((Date.now() - new Date(iso)) / 1000);
-  if (s < 60)    return `${s}s`;
-  if (s < 3600)  return `${Math.floor(s/60)}m`;
-  if (s < 86400) return `${Math.floor(s/3600)}h`;
-  return `${Math.floor(s/86400)}d`;
+async function loadExec(){
+  const rows=await get('/api/v1/executions');
+  document.getElementById('exec-badge').textContent=`${rows.length} recent`;
+  document.getElementById('m-exec').textContent=rows.length;
+  const body=document.getElementById('exec-body');
+  if(!rows.length){body.innerHTML='<div class="empty">no executions</div>';return}
+  body.innerHTML=rows.slice(0,20).map(e=>`<div class="row"><span class="badge ${badgeCls(e.status)}">${e.status}</span><span class="row-name" title="${e.kind||''}">${e.kind||'—'}</span><span class="row-age">${relAge(e.created_at)}</span></div>`).join('');
 }
-
-function badgeCls(st) {
-  return {running:'s-running',done:'s-done',failed:'s-failed',queued:'s-queued'}[st] || 's-queued';
+async function loadScans(){
+  const body=document.getElementById('scan-body');
+  let rows=[]; try{rows=await get('/api/v1/github/scans');}catch(_){body.innerHTML='<div class="empty">no scans</div>';return}
+  const failing=rows.filter(s=>s.exit_code===2).length;
+  document.getElementById('scan-badge').textContent=`${rows.length} scans`;
+  document.getElementById('m-scan').textContent=rows.length;
+  document.getElementById('m-scan-f').textContent=failing?`${failing} failed gate`:'all passing';
+  if(!rows.length){body.innerHTML='<div class="empty">no scans yet</div>';return}
+  body.innerHTML=rows.slice(0,16).map(s=>{const g=s.status==='completed'?(s.exit_code===2?'<span class="gate fail">✗</span>':'<span class="gate pass">✓</span>'):`<span class="badge ${badgeCls(s.status)}">${s.status}</span>`;
+    return `<div class="row"><span class="row-name" title="${s.repo}">${(s.repo||'').split('/').slice(-1)[0]}${s.pr_number?` #${s.pr_number}`:''}</span><span class="row-age">${(s.summary&&s.summary.total)||0}</span>${g}</div>`}).join('');
 }
-
-async function get(path) {
-  const r = await fetch(BASE + path, {credentials:'include'});
-  if (!r.ok) throw new Error(`${r.status}`);
-  return r.json();
+async function loadFindings(){
+  // Aggregate open findings + severity across projects (best-effort; uses score if present).
+  try{
+    const projects=await get('/api/v1/projects');
+    let open=0,crit=0,score=null;
+    for(const p of projects.slice(0,6)){
+      try{const sc=await get(`/api/v1/projects/${p.id}/analytics/score`);open+=sc.total_active||0;crit+=(sc.breakdown&&sc.breakdown.critical)||0;if(score==null)score=sc.score}catch(_){}
+    }
+    document.getElementById('m-find').textContent=open;
+    document.getElementById('m-find-f').textContent=crit?`${crit} critical`:'clear';
+    setRing(score==null?100:score);
+  }catch(_){setRing(null)}
 }
-
-function setLive(ok) {
-  const pill = document.getElementById('live-pill');
-  const lbl  = document.getElementById('live-label');
-  pill.className = ok ? 'live-pill' : 'live-pill dead';
-  lbl.textContent = ok ? 'LIVE' : 'ERR';
+function renderPatterns(){
+  const n=PATTERNS.length;
+  document.getElementById('pat-badge').textContent=`${n} patterns`;
+  document.getElementById('pat-body').innerHTML=`<div class="pat-grid">${PATTERNS.map(p=>`<div class="pat-item"><span class="pat-ck">✓</span><span class="pat-name" title="${p}">${p}</span></div>`).join('')}</div><div class="cov-wrap"><div class="cov-label"><span>coverage</span><span>${n}/${n}</span></div><div class="cov-bar"><div class="cov-fill" style="width:100%"></div></div></div>`;
 }
-
-async function loadHyp() {
-  const body = document.getElementById('hyp-body');
-  const badge = document.getElementById('hyp-badge');
-  const projects = await get('/api/v1/projects');
-  if (!projects.length) {
-    body.innerHTML = '<div class="empty">no projects</div>';
-    badge.textContent = '0';
-    return;
-  }
-  const rows = await Promise.all(
-    projects.slice(0,8).map(p =>
-      get(`/api/v1/projects/${p.id}/hypotheses`)
-        .then(h => ({...p, hc: h.length}))
-        .catch(() => ({...p, hc: '?'}))
-    )
-  );
-  const total = rows.reduce((s,p) => s + (typeof p.hc==='number' ? p.hc : 0), 0);
-  badge.textContent = `${total} total`;
-  body.innerHTML = rows.map(p =>
-    `<div class="proj-row" onclick="window.open('${BASE}/api/v1/projects/${p.id}/hypotheses','_blank')">
-      <span class="proj-name" title="${p.name}">${p.name}</span>
-      <span class="proj-age">${relAge(p.created_at)}</span>
-      <span class="hyp-num">${p.hc}</span>
-    </div>`
-  ).join('');
-}
-
-async function loadExec() {
-  const body = document.getElementById('exec-body');
-  const badge = document.getElementById('exec-badge');
-  const rows = await get('/api/v1/executions');
-  badge.textContent = `${rows.length} recent`;
-  if (!rows.length) {
-    body.innerHTML = '<div class="empty">no executions</div>';
-    return;
-  }
-  body.innerHTML = rows.slice(0,20).map(e =>
-    `<div class="exec-row">
-      <span class="badge ${badgeCls(e.status)}">${e.status}</span>
-      <span class="exec-kind" title="${e.kind || ''}">${e.kind || '—'} · ${e.status}</span>
-      <span class="exec-age">${relAge(e.created_at)}</span>
-    </div>`
-  ).join('');
-}
-
-function renderPatterns() {
-  const n = PATTERNS.length;
-  document.getElementById('pat-badge').textContent = `${n} patterns`;
-  document.getElementById('pat-body').innerHTML =
-    `<div class="pat-grid">${
-      PATTERNS.map(p =>
-        `<div class="pat-item"><span class="pat-ck">✓</span><span class="pat-name" title="${p}">${p}</span></div>`
-      ).join('')
-    }</div>
-    <div class="cov-bar-wrap">
-      <div class="cov-label"><span>coverage</span><span>${n}/${n}</span></div>
-      <div class="cov-bar"><div class="cov-fill" style="width:100%"></div></div>
-    </div>`;
-}
-
-async function refresh() {
-  let ok = true;
-  try { await Promise.all([loadHyp(), loadExec()]); }
-  catch(_) { ok = false; }
-  setLive(ok);
-}
-
-renderPatterns();
-refresh();
-setInterval(refresh, 15000);
+async function refresh(){let ok=true;try{await Promise.all([loadHyp(),loadExec(),loadScans(),loadFindings()]);}catch(_){ok=false}setLive(ok)}
+renderPatterns(); refresh(); setInterval(refresh,15000);
 </script>
 </body>
 </html>
