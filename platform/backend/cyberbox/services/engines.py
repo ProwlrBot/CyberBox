@@ -276,6 +276,96 @@ def apply_cve_hit(project_id: str, hit: dict) -> list[str]:
     return []
 
 
+# ── vulnx engine (ProjectDiscovery vulnerability.sh → coverage) ────────────────────
+#
+# A vulnx hit is a published CVE enriched with tags/CWE + KEV/EPSS/template flags. Because it
+# carries tags, it can flip a *specific* class (ssrf → f9, sqli → f10) via the same conservative
+# tag map the nuclei path uses — not just the generic known-vuln class. It always also marks f4
+# (it is, after all, a known vuln in edge software). KEV/EPSS/template ride along on the stored
+# evidence row as prioritisation signal. Egresses to vulnerability.sh, so unlike NVD it round-trips
+# here; still conservative — an untagged hit marks only f4, never an invented specific class.
+
+# CWE → taxonomy class, for the few CWEs with a crisp 1:1 meaning (augments tag mapping).
+_CWE_CLASS_MAP: dict[str, tuple[int, str]] = {
+    "CWE-918": (9, "Full-read SSRF"),
+    "CWE-89": (10, "SQL injection"),
+    "CWE-79": (16, "Reflected XSS, non-self"),
+    "CWE-78": (10, "OS command injection"),
+    "CWE-22": (10, "Path traversal, server-side"),
+    "CWE-611": (11, "XXE file disclosure"),
+    "CWE-502": (11, "Java deserialization"),
+    "CWE-94": (10, "Remote code execution"),
+    "CWE-98": (10, "File inclusion, remote"),
+    "CWE-1336": (10, "Server-Side Template Injection"),
+}
+
+
+def classes_for_vulnx(hit: dict) -> list[str]:
+    """Resolve a vulnx hit to taxonomy class ids via its tags + CWE, plus f4. Pure. De-duped."""
+    refs: list[tuple[int, str]] = []
+    for tag in hit.get("tags") or []:
+        found = _NUCLEI_TAG_MAP.get(str(tag).strip().lower())
+        if found:
+            refs.append(found)
+    for cwe in hit.get("cwe") or []:
+        found = _CWE_CLASS_MAP.get(str(cwe).strip().upper())
+        if found:
+            refs.append(found)
+    if hit.get("cve_id"):
+        refs.append(_CVE_CLASS)
+    out: list[str] = []
+    for family, name in refs:
+        cid = _class_id_if_exists(family, name)
+        if cid and cid not in out:
+            out.append(cid)
+    return out
+
+
+def apply_vulnx_hit(project_id: str, hit: dict) -> list[str]:
+    """Persist one vulnx hit as evidence and mark every class it speaks to. Deduped per (cve,project)."""
+    cve_id = (hit.get("cve_id") or "").strip()
+    if not cve_id:
+        return []
+    class_ids = classes_for_vulnx(hit)
+    if not class_ids:
+        return []
+    dedup_key = f"vulnx:{cve_id}"
+    existing = db.query_one(
+        "SELECT id FROM vulnerabilities WHERE project_id=? AND dedup_key=?", [project_id, dedup_key])
+    if existing:
+        evidence_id = existing["id"]
+    else:
+        evidence_id = str(uuid.uuid4())
+        sev = str(hit.get("severity") or "medium").lower()
+        sev = sev if sev in {"critical", "high", "medium", "low", "info"} else "medium"
+        flags = []
+        if hit.get("is_kev"):
+            flags.append("KEV")
+        if hit.get("epss_score") is not None:
+            flags.append(f"EPSS {hit['epss_score']:.3f}")
+        if hit.get("is_template"):
+            flags.append("nuclei-template")
+        tech = (hit.get("tech") or "").strip()
+        base = hit.get("description") or f"vulnerability.sh lists {cve_id} affecting {tech or 'the detected stack'}."
+        desc = (base[:700] + (f"  [{', '.join(flags)}]" if flags else "")).strip()
+        db.insert("vulnerabilities", {
+            "id": evidence_id, "project_id": project_id, "asset_id": None,
+            "template_id": f"vulnx-{cve_id}", "name": f"{cve_id} in {tech or 'detected software'}",
+            "severity": sev, "category": "Vulnerable Component", "description": desc,
+            "cve": cve_id, "host": tech, "matched_at": tech,
+            # KEV = publicly, actively exploited → treat as verified; otherwise a candidate.
+            "status": "open", "verified": 1 if hit.get("is_kev") else 0, "poc": "",
+            "request_chain": "[]",
+            "tags": json.dumps(["vulnx"] + [t for t in (hit.get("tags") or []) if t][:10]),
+            "dedup_key": dedup_key, "sla_due": None, "detected_at": _now(), "fixed_at": None,
+        })
+    marked = []
+    for cid in class_ids:
+        if mark_covered(project_id, cid, evidence_id, f"vulnx:{cve_id}"):
+            marked.append(cid)
+    return marked
+
+
 # ── Registry (provenance for the cockpit) ─────────────────────────────────────────
 
 _ENGINES = [
@@ -313,6 +403,18 @@ _ENGINES = [
                        "'Known vulnerabilities in edge software' covered with the stored hit as "
                        "evidence — a known-vuln candidate on the stack, not a specific exploit class.",
         "_static_classes": [_CVE_CLASS],
+    },
+    {
+        "key": "vulnx",
+        "name": "vulnx",
+        "kind": "intel",
+        "optional": False,
+        "description": "ProjectDiscovery vulnerability.sh intel. CVEs affecting the detected product, "
+                       "enriched with tags/CWE (so a hit flips the specific class, e.g. SSRF/SQLi) and "
+                       "KEV/EPSS/nuclei-template flags for prioritisation. Marks every class a hit's "
+                       "tags+CWE speak to, plus the known-vuln class.",
+        # Everything vulnx can reach: the nuclei tag map + the CWE map + the known-vuln class.
+        "_static_classes": [_CVE_CLASS, *_NUCLEI_TAG_MAP.values(), *_CWE_CLASS_MAP.values()],
     },
 ]
 

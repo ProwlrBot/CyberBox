@@ -36,6 +36,7 @@ from ..services import fingerprint as fingerprint_svc
 from ..services import engines as engines_svc
 from ..services import taxonomy as taxonomy_svc
 from ..services import wstg as wstg_svc
+from ..services import vulnx as vulnx_svc
 
 router = APIRouter(prefix="/api/v1", tags=["api"])
 
@@ -272,6 +273,13 @@ class CveSweepCreate(BaseModel):
     cvss_min: float = Field(default=7.0, ge=0.0, le=10.0, description="Minimum CVSS score (7.0 = HIGH+)")
     days_back: int = Field(default=90, ge=1, le=365)
     nvd_api_key: str = Field(default="", description="Optional NVD API key for higher rate limits")
+
+
+class VulnxSweepCreate(BaseModel):
+    techs: list[str] = Field(min_length=1, max_length=20, description="Affected products, e.g. ['wordpress', 'confluence']")
+    kev_only: bool = Field(default=False, description="Only known-exploited (KEV) CVEs")
+    template_only: bool = Field(default=False, description="Only CVEs with a nuclei template")
+    limit: int = Field(default=10, ge=1, le=100, description="Max hits per product")
 
 
 class NucleiSweepCreate(BaseModel):
@@ -1870,6 +1878,39 @@ def cve_sweep_results(project_id: str, _user: dict = Depends(current_user)) -> l
             ev = {}
         result.append({**dict(r), "cve_meta": ev})
     return result
+
+
+# ---------------------------------------------------------------------------
+# vulnx sweep (ProjectDiscovery vulnerability.sh) → coverage
+# ---------------------------------------------------------------------------
+
+@router.post("/projects/{project_id}/vulnx-sweep", status_code=202)
+def vulnx_sweep(project_id: str, body: VulnxSweepCreate,
+                _user: dict = Depends(current_user)) -> dict:
+    """Query vulnerability.sh for CVEs affecting the given products; each hit marks the taxonomy
+    classes its tags/CWE speak to (plus the known-vuln class), with the hit stored as evidence."""
+    _require_project(project_id)
+    if not vulnx_svc.available():
+        raise HTTPException(status_code=503, detail="vulnx CLI is not installed on this host")
+    hits = vulnx_svc.search(body.techs, kev_only=body.kev_only,
+                            template_only=body.template_only, limit=body.limit)
+    marked_classes: set[str] = set()
+    for hit in hits:
+        try:
+            marked_classes.update(engines_svc.apply_vulnx_hit(project_id, hit))
+        except Exception:  # noqa: BLE001 - coverage is best-effort; never fail the sweep
+            pass
+    return {
+        "techs": body.techs,
+        "cves_found": len(hits),
+        "coverage_marked": sorted(marked_classes),
+        "results": [
+            {"cve_id": h["cve_id"], "tech": h["tech"], "severity": h["severity"],
+             "cvss_score": h["cvss_score"], "epss_score": h["epss_score"],
+             "is_kev": h["is_kev"], "is_template": h["is_template"], "tags": h["tags"][:8]}
+            for h in hits
+        ],
+    }
 
 
 # ---------------------------------------------------------------------------

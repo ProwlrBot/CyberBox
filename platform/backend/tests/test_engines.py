@@ -145,6 +145,46 @@ class EnginesTest(unittest.TestCase):
         self.assertEqual(eng["covers_count"], 1)
         self.assertTrue(db.query_one("SELECT id FROM taxonomy_classes WHERE id=?", [eng["covers"][0]["class_id"]]))
 
+    # ── vulnx engine ──────────────────────────────────────────────────────────────
+
+    def test_vulnx_hit_maps_tags_and_cwe_to_specific_classes(self) -> None:
+        hit = {"cve_id": "CVE-2026-69137", "tech": "suitecrm", "severity": "high",
+               "cwe": ["CWE-918"], "tags": ["cve", "suitecrm", "ssrf"], "is_kev": False}
+        ids = engines.classes_for_vulnx(hit)
+        self.assertIn(taxonomy.class_id(9, "Full-read SSRF"), ids)                       # from tag + CWE-918
+        self.assertIn(taxonomy.class_id(4, "Known vulnerabilities in edge software"), ids)  # always
+        # Noise tags ("cve", "suitecrm") invent nothing.
+        self.assertEqual(len(ids), 2)
+
+    def test_vulnx_untagged_hit_marks_only_known_vuln(self) -> None:
+        ids = engines.classes_for_vulnx({"cve_id": "CVE-2026-1", "tags": ["cve", "nginx"], "cwe": []})
+        self.assertEqual(ids, [taxonomy.class_id(4, "Known vulnerabilities in edge software")])
+
+    def test_vulnx_apply_stores_evidence_and_kev_is_verified(self) -> None:
+        hit = {"cve_id": "CVE-2026-115886", "tech": "mlflow", "severity": "medium",
+               "cwe": ["CWE-918"], "tags": ["ssrf"], "is_kev": True, "epss_score": 0.007, "is_template": True}
+        marked = engines.apply_vulnx_hit(self.project_id, hit)
+        self.assertIn(taxonomy.class_id(9, "Full-read SSRF"), marked)
+        cov = {c["id"]: c for c in taxonomy.coverage(self.project_id)}
+        ev_id = cov[taxonomy.class_id(9, "Full-read SSRF")]["evidence_ids"][0]
+        row = db.query_one("SELECT cve, verified FROM vulnerabilities WHERE id=?", [ev_id])
+        self.assertEqual(row["cve"], "CVE-2026-115886")
+        self.assertEqual(row["verified"], 1)  # KEV = actively exploited → verified
+
+    def test_vulnx_resweep_reuses_one_evidence_row(self) -> None:
+        hit = {"cve_id": "CVE-2026-115886", "tech": "mlflow", "tags": ["ssrf"]}
+        engines.apply_vulnx_hit(self.project_id, hit)
+        engines.apply_vulnx_hit(self.project_id, hit)
+        rows = db.query("SELECT id FROM vulnerabilities WHERE project_id=? AND dedup_key=?",
+                        [self.project_id, "vulnx:CVE-2026-115886"])
+        self.assertEqual(len(rows), 1)
+
+    def test_vulnx_engine_registered_with_resolved_classes(self) -> None:
+        eng = next(e for e in engines.list_engines() if e["key"] == "vulnx")
+        self.assertGreater(eng["covers_count"], 5)
+        for c in eng["covers"]:
+            self.assertTrue(db.query_one("SELECT id FROM taxonomy_classes WHERE id=?", [c["class_id"]]))
+
     def test_fingerprint_gitlab_version_disclosure_marks_class(self) -> None:
         result = {"target": "https://gl.example", "version": "16.3.0", "revision": "abc123",
                   "exposed": {"public_api": True}}
