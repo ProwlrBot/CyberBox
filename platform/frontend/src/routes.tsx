@@ -7,7 +7,7 @@ import {
   Plug, Wrench, Bot, Cpu, Brain,
   Monitor, Terminal, BookOpen, FolderOpen, FileCode2, ScrollText, Compass,
   Radio, Heart, ShieldAlert, KeyRound, Settings, ShieldCheck, ListTodo,
-  Crosshair, Radar, ClipboardCheck,
+  Crosshair, Radar, ClipboardCheck, FileDiff,
 } from "lucide-react";
 import { StubPage } from "./pages/_stubs/StubPage";
 
@@ -18,6 +18,7 @@ const CveIntel     = lazy(() => import("./pages/hunt/CveIntel"));
 const Jobs         = lazy(() => import("./pages/hunt/Jobs"));
 const Cockpit      = lazy(() => import("./pages/hunt/Cockpit"));
 const Wstg         = lazy(() => import("./pages/hunt/Wstg"));
+const JsDiff       = lazy(() => import("./pages/hunt/JsDiff"));
 const Genome       = lazy(() => import("./pages/hunt/Genome"));
 const Surface      = lazy(() => import("./pages/hunt/Surface"));
 const Memory       = lazy(() => import("./pages/hunt/Memory"));
@@ -75,6 +76,7 @@ export const NAV_SECTIONS: NavSection[] = [
     { label: "Recon",     path: "/hunt/recon",     Icon: Search },
     { label: "Traffic",   path: "/hunt/traffic",   Icon: Activity },
     { label: "API Genome", path: "/hunt/genome",   Icon: Network },
+    { label: "JS Diff",    path: "/hunt/js-diff",  Icon: FileDiff },
     { label: "Surface",    path: "/hunt/surface",  Icon: Radar },
     { label: "Findings",  path: "/hunt/findings",  Icon: Flag },
     { label: "CVE Intel", path: "/hunt/cve-intel", Icon: ShieldAlert },
@@ -146,6 +148,7 @@ export const appRoutes: RouteObject[] = [
   { path: "hunt/traffic",   element: <Suspense fallback={null}><Traffic /></Suspense> },
   { path: "hunt/cockpit",   element: <Suspense fallback={null}><Cockpit /></Suspense> },
   { path: "hunt/wstg",      element: <Suspense fallback={null}><Wstg /></Suspense> },
+  { path: "hunt/js-diff",   element: <Suspense fallback={null}><JsDiff /></Suspense> },
   { path: "hunt/genome",    element: <Suspense fallback={null}><Genome /></Suspense> },
   { path: "hunt/surface",   element: <Suspense fallback={null}><Surface /></Suspense> },
   { path: "hunt/findings",  element: <Suspense fallback={null}><Findings /></Suspense> },

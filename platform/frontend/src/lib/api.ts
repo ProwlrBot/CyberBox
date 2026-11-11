@@ -607,3 +607,35 @@ export async function fetchWstgCoverage(projectId: string): Promise<WstgCoverage
   const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/wstg/coverage`, { headers: headers() });
   return r.ok ? r.json() : null;
 }
+
+// ── JS full-diff ─────────────────────────────────────────────────────────────────
+
+export type JsTracked = {
+  url: string; revisions: number; last_seen: string; hash: string; size: number;
+  endpoint_count: number; secret_count: number;
+};
+export type JsSecret = { kind: string; match: string };
+export type JsDiff = {
+  url: string; from: { hash: string; fetched_at: string }; to: { hash: string; fetched_at: string };
+  added_endpoints: string[]; removed_endpoints: string[]; added_secrets: JsSecret[];
+  unified_diff: string[]; unified_diff_truncated: boolean;
+};
+
+export async function fetchJsTracked(projectId: string): Promise<JsTracked[]> {
+  const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/js/tracked`, { headers: headers() });
+  return r.ok ? r.json() : [];
+}
+
+export async function snapshotJs(projectId: string, urls: string[]): Promise<{ snapshots: any[]; changed: number }> {
+  const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/js/snapshot`, {
+    method: "POST", headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify({ urls }),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || (await r.text()));
+  return r.json();
+}
+
+export async function fetchJsDiff(projectId: string, url: string): Promise<JsDiff | null> {
+  const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/js/diff?url=${encodeURIComponent(url)}`, { headers: headers() });
+  return r.ok ? r.json() : null;
+}

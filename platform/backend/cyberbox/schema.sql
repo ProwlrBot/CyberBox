@@ -999,6 +999,23 @@ CREATE TABLE IF NOT EXISTS class_methodology (
     updated_at TEXT NOT NULL
 );
 
+-- JS content snapshots for full-diff hunting: fetch a JS bundle over time, store each distinct
+-- revision, and diff them to surface NEW endpoints / params / secrets a fresh deploy introduced.
+-- Only a changed content hash makes a new row (same bundle re-fetched is a no-op).
+CREATE TABLE IF NOT EXISTS js_snapshots (
+    id           TEXT PRIMARY KEY,
+    project_id   TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    url          TEXT NOT NULL,
+    content_hash TEXT NOT NULL,              -- sha256 of the body; identity for de-dup + diff pairing
+    content      TEXT NOT NULL,
+    size         INTEGER NOT NULL DEFAULT 0,
+    endpoints    TEXT NOT NULL DEFAULT '[]', -- extracted endpoints at this revision (cached)
+    secrets      TEXT NOT NULL DEFAULT '[]', -- extracted secret-shaped tokens at this revision
+    fetched_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_js_snap_project_url ON js_snapshots(project_id, url, fetched_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_js_snap_hash ON js_snapshots(project_id, url, content_hash);
+
 -- Lightweight signals / leads bucket (audit fix): the sweep + import paths (cve-sweep,
 -- nuclei-sweep, caido import, preflight/dedup/howtohunt/loss notes) record findings-shaped
 -- leads here. This is NOT the research `hypotheses` table (claim/confidence under an engagement);

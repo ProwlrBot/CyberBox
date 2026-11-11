@@ -37,6 +37,7 @@ from ..services import engines as engines_svc
 from ..services import taxonomy as taxonomy_svc
 from ..services import wstg as wstg_svc
 from ..services import vulnx as vulnx_svc
+from ..services import js_diff as js_diff_svc
 
 router = APIRouter(prefix="/api/v1", tags=["api"])
 
@@ -2422,6 +2423,45 @@ def fingerprint_gl(project_id: str, body: FingerprintIn,
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     result["coverage_marked"] = _mark_fingerprint_coverage(project_id, "gitlab", result, body.target_url)
     return result
+
+
+# ---------------------------------------------------------------------------
+# JS full-diff — snapshot JS bundles over time, diff for new endpoints/secrets
+# ---------------------------------------------------------------------------
+
+class JsSnapshotIn(BaseModel):
+    urls: list[str] = Field(min_length=1, max_length=50, description="JS bundle URLs to snapshot")
+
+
+@router.post("/projects/{project_id}/js/snapshot", status_code=202)
+def js_snapshot(project_id: str, body: JsSnapshotIn, _user: dict = Depends(current_user)) -> dict:
+    """Fetch each JS URL (scope-gated, SSRF-guarded) and store it as a revision if it changed."""
+    results = []
+    for url in body.urls:
+        _gate_passive_probe(project_id, url)
+        try:
+            results.append(js_diff_svc.snapshot(project_id, url))
+        except js_diff_svc.ProbeBlocked as exc:
+            results.append({"url": url, "changed": False, "error": str(exc)})
+    return {"snapshots": results, "changed": sum(1 for r in results if r.get("changed"))}
+
+
+@router.get("/projects/{project_id}/js/tracked")
+def js_tracked(project_id: str, _user: dict = Depends(current_user)) -> list[dict]:
+    """Every tracked JS url with its revision count and latest endpoint/secret counts."""
+    _require_project(project_id)
+    return js_diff_svc.list_tracked(project_id)
+
+
+@router.get("/projects/{project_id}/js/diff")
+def js_diff_route(project_id: str, url: str, from_hash: str | None = None, to_hash: str | None = None,
+                  _user: dict = Depends(current_user)) -> dict:
+    """Full diff between two revisions of a JS url (default: previous vs latest) + added endpoints/secrets."""
+    _require_project(project_id)
+    try:
+        return js_diff_svc.diff(project_id, url, from_hash=from_hash, to_hash=to_hash)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 # ---------------------------------------------------------------------------
