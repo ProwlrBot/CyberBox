@@ -7,7 +7,7 @@ import {
   Plug, Wrench, Bot, Cpu, Brain,
   Monitor, Terminal, BookOpen, FolderOpen, FileCode2, ScrollText, Compass,
   Radio, Heart, ShieldAlert, KeyRound, Settings, ShieldCheck, ListTodo,
-  Crosshair,
+  Crosshair, Radar,
 } from "lucide-react";
 import { StubPage } from "./pages/_stubs/StubPage";
 
@@ -17,6 +17,7 @@ const Findings     = lazy(() => import("./pages/hunt/Findings"));
 const CveIntel     = lazy(() => import("./pages/hunt/CveIntel"));
 const Jobs         = lazy(() => import("./pages/hunt/Jobs"));
 const Genome       = lazy(() => import("./pages/hunt/Genome"));
+const Surface      = lazy(() => import("./pages/hunt/Surface"));
 const Traffic      = lazy(() => import("./pages/hunt/Traffic"));
 const Evidence     = lazy(() => import("./pages/hunt/Evidence"));
 const Workflows    = lazy(() => import("./pages/hunt/Workflows"));
@@ -68,6 +69,7 @@ export const NAV_SECTIONS: NavSection[] = [
     { label: "Recon",     path: "/hunt/recon",     Icon: Search },
     { label: "Traffic",   path: "/hunt/traffic",   Icon: Activity },
     { label: "API Genome", path: "/hunt/genome",   Icon: Network },
+    { label: "Surface",    path: "/hunt/surface",  Icon: Radar },
     { label: "Findings",  path: "/hunt/findings",  Icon: Flag },
     { label: "CVE Intel", path: "/hunt/cve-intel", Icon: ShieldAlert },
     { label: "Evidence",  path: "/hunt/evidence",  Icon: Archive },
@@ -135,6 +137,7 @@ export const appRoutes: RouteObject[] = [
   { path: "hunt/recon",     element: <Suspense fallback={null}><ReconPage /></Suspense> },
   { path: "hunt/traffic",   element: <Suspense fallback={null}><Traffic /></Suspense> },
   { path: "hunt/genome",    element: <Suspense fallback={null}><Genome /></Suspense> },
+  { path: "hunt/surface",   element: <Suspense fallback={null}><Surface /></Suspense> },
   { path: "hunt/findings",  element: <Suspense fallback={null}><Findings /></Suspense> },
   { path: "hunt/cve-intel", element: <Suspense fallback={null}><CveIntel /></Suspense> },
   { path: "hunt/evidence",  element: <Suspense fallback={null}><Evidence /></Suspense> },

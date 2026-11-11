@@ -180,6 +180,26 @@ export async function ingestOpenapi(projectId: string, spec: unknown): Promise<{
   return r.json();
 }
 
+// ── Attack-surface monitoring ───────────────────────────────────────────────────
+
+export type SurfaceDrift = {
+  added: string[]; removed: string[]; current_count: number;
+  baseline: boolean; compared: boolean; from?: string; to?: string;
+};
+
+export async function fetchSurfaceDrift(projectId: string): Promise<SurfaceDrift | null> {
+  const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/surface/drift`, { headers: headers() });
+  return r.ok ? r.json() : null;
+}
+
+export async function takeSurfaceSnapshot(projectId: string): Promise<{ id: string; host_count: number; created_at: string }> {
+  const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/surface/snapshot`, {
+    method: "POST", headers: headers(),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
 // ── Scheduler ─────────────────────────────────────────────────────────────────
 
 export type ScheduledJob = {
