@@ -280,9 +280,8 @@ async def _run_httpx(
     execution_id: str,
     phase: str,
     max_runtime: int,
-    subdomains: list[str] | None = None,
 ) -> tuple[int, list[dict]]:
-    hosts = subdomains or args.get("hosts", [])
+    hosts = args.get("hosts", [])
     if not hosts:
         target = args.get("target_url", args.get("domain", ""))
         hosts = [target] if target else []

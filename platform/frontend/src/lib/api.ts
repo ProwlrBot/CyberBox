@@ -156,6 +156,71 @@ export async function fetchGenomeSummary(projectId: string): Promise<{
   return r.ok ? r.json() : null;
 }
 
+export type GenomeEndpoint = {
+  id: string; source: string; method: string; host: string; path: string;
+  path_template: string | null; auth_required: number; drift_flags: string;
+};
+
+export async function fetchGenomeEndpoints(projectId: string, opts?: { drift?: boolean; source?: string }): Promise<GenomeEndpoint[]> {
+  const q = new URLSearchParams();
+  if (opts?.drift) q.set("drift", "true");
+  if (opts?.source) q.set("source", opts.source);
+  const qs = q.toString();
+  const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/genome/endpoints${qs ? `?${qs}` : ""}`, { headers: headers() });
+  return r.ok ? r.json() : [];
+}
+
+export async function ingestOpenapi(projectId: string, spec: unknown): Promise<{ imported?: number; source?: string }> {
+  const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/genome/ingest/openapi`, {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify(spec),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+// ── Scheduler ─────────────────────────────────────────────────────────────────
+
+export type ScheduledJob = {
+  id: string; kind: string; project_id: string | null; engagement_id: string | null;
+  spec: Record<string, unknown>; interval_seconds: number; enabled: number;
+  next_run_at: string; last_run_at: string | null; last_status: string | null;
+};
+
+export async function fetchScheduledJobs(): Promise<ScheduledJob[]> {
+  const r = await fetch("/api/v1/scheduler/jobs", { headers: headers() });
+  return r.ok ? r.json() : [];
+}
+
+export async function createScheduledJob(body: {
+  kind: string; interval_seconds: number; spec: Record<string, unknown>;
+  project_id?: string | null;
+}): Promise<ScheduledJob> {
+  const r = await fetch("/api/v1/scheduler/jobs", {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+export async function setScheduledJobEnabled(jobId: string, enabled: boolean): Promise<void> {
+  await fetch(`/api/v1/scheduler/jobs/${encodeURIComponent(jobId)}/enabled?enabled=${enabled}`, {
+    method: "POST", headers: headers(),
+  });
+}
+
+export async function deleteScheduledJob(jobId: string): Promise<void> {
+  await fetch(`/api/v1/scheduler/jobs/${encodeURIComponent(jobId)}`, { method: "DELETE", headers: headers() });
+}
+
+export async function runDueJobs(): Promise<{ ran: number; results: unknown[] }> {
+  const r = await fetch("/api/v1/scheduler/run-due", { method: "POST", headers: headers() });
+  return r.ok ? r.json() : { ran: 0, results: [] };
+}
+
 export async function fetchCampaign(id: string): Promise<{
   id: string; name: string; target_url: string; hunt_type: string; status: string;
   phase: string | null; progress: number; findings_count: number; agent_ids: string | null;
