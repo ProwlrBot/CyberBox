@@ -87,11 +87,15 @@ class Settings:
         return self.home / "artifacts"
 
     @property
+    def screenshots_dir(self) -> Path:
+        return self.home / "screenshots"
+
+    @property
     def config_path(self) -> Path:
         return self.home / "config.yaml"
 
     def ensure_dirs(self) -> None:
-        for p in (self.home, self.scans_dir, self.templates_dir, self.artifacts_dir):
+        for p in (self.home, self.scans_dir, self.templates_dir, self.artifacts_dir, self.screenshots_dir):
             p.mkdir(parents=True, exist_ok=True)
 
     def load_yaml(self) -> None:

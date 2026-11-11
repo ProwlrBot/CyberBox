@@ -999,6 +999,21 @@ CREATE TABLE IF NOT EXISTS class_methodology (
     updated_at TEXT NOT NULL
 );
 
+-- Visual recon: headless-browser screenshots of in-scope hosts for fast triage of attack surface.
+CREATE TABLE IF NOT EXISTS screenshots (
+    id          TEXT PRIMARY KEY,
+    project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    url         TEXT NOT NULL,
+    path        TEXT,                        -- PNG on disk under <home>/screenshots/<project>/
+    title       TEXT,
+    width       INTEGER NOT NULL DEFAULT 0,
+    height      INTEGER NOT NULL DEFAULT 0,
+    status      TEXT NOT NULL DEFAULT 'ok',  -- ok | error
+    error       TEXT,
+    captured_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_screenshots_project ON screenshots(project_id, captured_at);
+
 -- JS content snapshots for full-diff hunting: fetch a JS bundle over time, store each distinct
 -- revision, and diff them to surface NEW endpoints / params / secrets a fresh deploy introduced.
 -- Only a changed content hash makes a new row (same bundle re-fetched is a no-op).

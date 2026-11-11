@@ -639,3 +639,31 @@ export async function fetchJsDiff(projectId: string, url: string): Promise<JsDif
   const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/js/diff?url=${encodeURIComponent(url)}`, { headers: headers() });
   return r.ok ? r.json() : null;
 }
+
+// ── Visual recon (screenshots) ─────────────────────────────────────────────────────
+
+export type Screenshot = {
+  id: string; url: string; title: string | null; width: number; height: number;
+  status: string; error: string | null; captured_at: string;
+};
+
+export async function fetchScreenshots(projectId: string): Promise<Screenshot[]> {
+  const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/screenshots`, { headers: headers() });
+  return r.ok ? r.json() : [];
+}
+
+export async function captureScreenshots(projectId: string, urls: string[]): Promise<{ captured: number; results: any[] }> {
+  const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/screenshots`, {
+    method: "POST", headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify({ urls }),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || (await r.text()));
+  return r.json();
+}
+
+// The image endpoint needs an auth header, so fetch it as a blob and hand back an object URL.
+export async function fetchScreenshotImage(projectId: string, shotId: string): Promise<string | null> {
+  const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/screenshots/${encodeURIComponent(shotId)}/image`, { headers: headers() });
+  if (!r.ok) return null;
+  return URL.createObjectURL(await r.blob());
+}

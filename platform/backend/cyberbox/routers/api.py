@@ -38,6 +38,7 @@ from ..services import taxonomy as taxonomy_svc
 from ..services import wstg as wstg_svc
 from ..services import vulnx as vulnx_svc
 from ..services import js_diff as js_diff_svc
+from ..services import screenshots as screenshots_svc
 
 router = APIRouter(prefix="/api/v1", tags=["api"])
 
@@ -2462,6 +2463,49 @@ def js_diff_route(project_id: str, url: str, from_hash: str | None = None, to_ha
         return js_diff_svc.diff(project_id, url, from_hash=from_hash, to_hash=to_hash)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# Visual recon — headless-browser screenshots of in-scope hosts
+# ---------------------------------------------------------------------------
+
+class ScreenshotIn(BaseModel):
+    urls: list[str] = Field(min_length=1, max_length=30, description="In-scope URLs to screenshot")
+
+
+@router.post("/projects/{project_id}/screenshots", status_code=202)
+def capture_screenshots(project_id: str, body: ScreenshotIn, _user: dict = Depends(current_user)) -> dict:
+    """Screenshot each in-scope URL with headless Chromium (scope-gated, SSRF-guarded)."""
+    if not screenshots_svc.available():
+        raise HTTPException(status_code=503, detail="no headless browser available on this host")
+    results = []
+    for url in body.urls:
+        _gate_passive_probe(project_id, url)
+        try:
+            r = screenshots_svc.capture(project_id, url)
+        except screenshots_svc.ProbeBlocked as exc:
+            r = {"url": url, "status": "error", "error": str(exc)}
+        results.append({k: r.get(k) for k in ("id", "url", "status", "error", "title")})
+    return {"captured": sum(1 for r in results if r.get("status") == "ok"), "results": results}
+
+
+@router.get("/projects/{project_id}/screenshots")
+def list_screenshots(project_id: str, _user: dict = Depends(current_user)) -> list[dict]:
+    """Screenshot metadata for the project (newest first). Fetch the PNG at .../image."""
+    _require_project(project_id)
+    return screenshots_svc.list_shots(project_id)
+
+
+@router.get("/projects/{project_id}/screenshots/{shot_id}/image")
+def screenshot_image(project_id: str, shot_id: str, _user: dict = Depends(current_user)) -> FileResponse:
+    """Return the PNG bytes for a stored screenshot."""
+    shot = screenshots_svc.get_shot(shot_id)
+    if not shot or shot.get("project_id") != project_id or not shot.get("path"):
+        raise HTTPException(status_code=404, detail="screenshot not found")
+    path = os.path.abspath(shot["path"])
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="screenshot file missing")
+    return FileResponse(path, media_type="image/png")
 
 
 # ---------------------------------------------------------------------------
