@@ -4,15 +4,17 @@ import { ConnectionSection } from "./sections/ConnectionSection";
 import { EngagementSection } from "./sections/EngagementSection";
 import { AppearanceSection } from "./sections/AppearanceSection";
 import { ToolsSection }      from "./sections/ToolsSection";
+import { ApiSection }        from "./sections/ApiSection";
 import { AboutSection }      from "./sections/AboutSection";
 
-type Tab = "connection" | "profile" | "engagement" | "appearance" | "tools" | "about";
+type Tab = "connection" | "profile" | "engagement" | "appearance" | "tools" | "api" | "about";
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "connection", label: "Connection" },
   { id: "profile",    label: "Profile" },
   { id: "engagement", label: "Engagement" },
   { id: "appearance", label: "Appearance" },
   { id: "tools",      label: "Tools" },
+  { id: "api",        label: "API & Webhooks" },
   { id: "about",      label: "About" },
 ];
 
@@ -38,6 +40,7 @@ export default function Settings() {
         {active === "engagement" && <EngagementSection />}
         {active === "appearance" && <AppearanceSection />}
         {active === "tools"      && <ToolsSection />}
+        {active === "api"        && <ApiSection />}
         {active === "about"      && <AboutSection />}
       </main>
     </div>

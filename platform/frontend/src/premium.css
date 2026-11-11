@@ -174,3 +174,5 @@
 }
 .cbx-empty { text-align: center; color: var(--muted); padding: 44px 0; }
 .cbx-empty svg { opacity: 0.35; }
+.spin { animation: cbx-spin 0.9s linear infinite; }
+@keyframes cbx-spin { to { transform: rotate(360deg); } }

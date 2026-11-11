@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Brain, Save, RefreshCw } from "lucide-react";
 import { getApiKey } from "../../lib/api";
+import ProviderPicker from "../../components/ProviderPicker";
 
 type Profile = {
   id: string;
@@ -136,6 +137,10 @@ export default function Models() {
             Refresh
           </button>
         </div>
+      </div>
+
+      <div style={{ padding: "0 16px" }}>
+        <ProviderPicker />
       </div>
 
       {loading ? (
