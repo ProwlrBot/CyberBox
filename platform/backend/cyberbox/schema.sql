@@ -468,6 +468,7 @@ CREATE TABLE IF NOT EXISTS finding_reviews (
     id            TEXT PRIMARY KEY,
     vulnerability_id TEXT NOT NULL REFERENCES vulnerabilities(id) ON DELETE CASCADE,
     reviewer_type TEXT NOT NULL,
+    reviewer_id   TEXT,
     verdict       TEXT NOT NULL,
     confidence    TEXT NOT NULL,
     rationale     TEXT NOT NULL,
@@ -481,6 +482,33 @@ CREATE TABLE IF NOT EXISTS finding_links (
     experiment_id    TEXT REFERENCES experiments(id) ON DELETE SET NULL,
     PRIMARY KEY (vulnerability_id, experiment_id)
 );
+
+-- Six-stage investigation lifecycle: LEARN -> MAP -> COORDINATE -> TEST -> PROVE -> VERIFY.
+-- A mission is the unit of investigation. Its stage advances only when the entry
+-- prerequisite for the target stage is met (real hypotheses/experiments/findings exist),
+-- so the stage label can never run ahead of the evidence. Every transition is logged.
+CREATE TABLE IF NOT EXISTS missions (
+    id            TEXT PRIMARY KEY,
+    project_id    TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    engagement_id TEXT NOT NULL REFERENCES engagements(id) ON DELETE CASCADE,
+    title         TEXT NOT NULL,
+    stage         TEXT NOT NULL DEFAULT 'LEARN',
+    status        TEXT NOT NULL DEFAULT 'active',  -- active | paused | done | abandoned
+    created_by    TEXT,
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS mission_stage_log (
+    id          TEXT PRIMARY KEY,
+    mission_id  TEXT NOT NULL REFERENCES missions(id) ON DELETE CASCADE,
+    from_stage  TEXT,
+    to_stage    TEXT NOT NULL,
+    note        TEXT,
+    actor       TEXT,
+    occurred_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_mission_stage_log_mission ON mission_stage_log(mission_id);
 
 CREATE TABLE IF NOT EXISTS evidence_bundles (
     id          TEXT PRIMARY KEY,

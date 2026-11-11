@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from .. import db
 from ..auth import current_user, require_internal_service
 from ..config import get_settings
-from ..services import advisories, analytics, artifacts, bundles, capabilities, events, executions, knowledge, memory, playbooks, policy, project_templates, research, tool_registry, triage, wordfence
+from ..services import advisories, analytics, artifacts, bundles, capabilities, events, executions, knowledge, lifecycle, memory, playbooks, policy, project_templates, research, tool_registry, triage, wordfence
 from ..services import gori as gori_svc
 from ..services import cve as cve_svc
 from ..services import model as model_svc
@@ -1139,6 +1139,80 @@ def review_finding(finding_id: str, body: FindingReviewCreate,
     try:
         return research.review_finding(finding_id, body.reviewer_type, body.verdict,
                                        body.confidence, body.rationale, body.artifact_ids)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+class MissionCreate(BaseModel):
+    engagement_id: str
+    title: str
+    created_by: str | None = None
+
+
+class MissionAdvance(BaseModel):
+    to_stage: str
+    note: str | None = None
+    actor: str | None = None
+
+
+class CoverageCheck(BaseModel):
+    engagement_id: str
+    target_url: str
+    method: str = "GET"
+    procedure: str
+
+
+class FindingVerify(BaseModel):
+    reviewer_type: str
+    reviewer_id: str
+    verdict: str
+    confidence: str = "medium"
+    rationale: str
+    artifact_ids: list[str] = Field(default_factory=list)
+
+
+@router.post("/projects/{project_id}/missions", status_code=201)
+def create_mission(project_id: str, body: MissionCreate,
+                   _user: dict = Depends(current_user)) -> dict:
+    return lifecycle.create_mission(project_id, body.engagement_id, body.title, body.created_by)
+
+
+@router.get("/projects/{project_id}/missions")
+def list_missions(project_id: str, engagement_id: str | None = None,
+                  _user: dict = Depends(current_user)) -> list[dict]:
+    return lifecycle.list_missions(engagement_id=engagement_id, project_id=project_id)
+
+
+@router.get("/missions/{mission_id}")
+def get_mission(mission_id: str, _user: dict = Depends(current_user)) -> dict:
+    mission = lifecycle.get_mission(mission_id)
+    if not mission:
+        raise HTTPException(status_code=404, detail="mission not found")
+    return mission
+
+
+@router.post("/missions/{mission_id}/advance")
+def advance_mission(mission_id: str, body: MissionAdvance,
+                    _user: dict = Depends(current_user)) -> dict:
+    try:
+        return lifecycle.advance_stage(mission_id, body.to_stage, body.note, body.actor)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/lifecycle/coverage-check")
+def coverage_check(body: CoverageCheck, _user: dict = Depends(current_user)) -> dict:
+    hit = lifecycle.is_covered(body.engagement_id, body.target_url, body.method, body.procedure)
+    return {"covered": hit is not None, "prior_experiment": hit,
+            "fingerprint": lifecycle.coverage_fingerprint(body.target_url, body.method, body.procedure)}
+
+
+@router.post("/findings/{finding_id}/verify", status_code=201)
+def verify_finding(finding_id: str, body: FindingVerify,
+                   _user: dict = Depends(current_user)) -> dict:
+    try:
+        return lifecycle.verify_finding(finding_id, body.reviewer_type, body.reviewer_id,
+                                        body.verdict, body.confidence, body.rationale, body.artifact_ids)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

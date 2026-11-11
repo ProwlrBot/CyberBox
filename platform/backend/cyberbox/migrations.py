@@ -16,6 +16,8 @@ from . import db
 MIGRATIONS: list[tuple[int, str, list[str]]] = [
     (1, "campaigns.engagement_id — bind autonomous runs to an authorization for policy",
      ["ALTER TABLE campaigns ADD COLUMN engagement_id TEXT REFERENCES engagements(id)"]),
+    (2, "finding_reviews.reviewer_id — identify the reviewer to enforce finder != validator",
+     ["ALTER TABLE finding_reviews ADD COLUMN reviewer_id TEXT"]),
 ]
 
 
