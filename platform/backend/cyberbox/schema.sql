@@ -920,3 +920,28 @@ CREATE TABLE IF NOT EXISTS surface_snapshots (
     created_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_surface_snapshots_project ON surface_snapshots(project_id, created_at);
+
+-- Notification channels (Discord / ntfy / generic webhook / JSONL), mirroring cve-intel's
+-- model. Secrets are NEVER stored: url_env/secret_env name OS env vars the service reads at
+-- send time. Non-secret config (ntfy topic, jsonl path) lives in config. The scheduler and
+-- code-scan gate emit events through these channels.
+CREATE TABLE IF NOT EXISTS notification_channels (
+    id          TEXT PRIMARY KEY,
+    kind        TEXT NOT NULL,                 -- discord | ntfy | webhook | jsonl
+    name        TEXT NOT NULL,
+    url_env     TEXT,                           -- env var holding the webhook URL / ntfy server
+    secret_env  TEXT,                           -- env var holding an HMAC key (generic webhook)
+    config      TEXT NOT NULL DEFAULT '{}',     -- non-secret: {topic, path, min_severity}
+    enabled     INTEGER NOT NULL DEFAULT 1,
+    created_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS notifications_log (
+    id          TEXT PRIMARY KEY,
+    channel_id  TEXT REFERENCES notification_channels(id) ON DELETE SET NULL,
+    event       TEXT NOT NULL,
+    status      TEXT NOT NULL,                  -- sent | skipped | error
+    detail      TEXT,
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_log_created ON notifications_log(created_at);

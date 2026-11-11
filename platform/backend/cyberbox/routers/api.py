@@ -25,6 +25,7 @@ from ..services import github as github_svc
 from ..services import scheduler as scheduler_svc
 from ..services import surface as surface_svc
 from ..services import sarif as sarif_svc
+from ..services import notify as notify_svc
 from ..services import gori as gori_svc
 from ..services import cve as cve_svc
 from ..services import model as model_svc
@@ -1428,6 +1429,57 @@ def surface_snapshot(project_id: str, _user: dict = Depends(current_user)) -> di
 @router.get("/projects/{project_id}/surface/drift")
 def surface_drift(project_id: str, _user: dict = Depends(current_user)) -> dict:
     return surface_svc.drift(project_id)
+
+
+class NotifyChannelIn(BaseModel):
+    kind: str                       # discord | ntfy | webhook | jsonl
+    name: str
+    url_env: str | None = None
+    secret_env: str | None = None
+    config: dict = Field(default_factory=dict)
+
+
+class NotifyTestIn(BaseModel):
+    title: str = "CyberBox test notification"
+    body: str = "If you can read this, the channel works."
+    severity: str = "info"
+
+
+@router.get("/notifications/channels")
+def list_notification_channels(_user: dict = Depends(current_user)) -> list[dict]:
+    return notify_svc.list_channels()
+
+
+@router.post("/notifications/channels", status_code=201)
+def create_notification_channel(body: NotifyChannelIn,
+                                _user: dict = Depends(current_user)) -> dict:
+    try:
+        return notify_svc.create_channel(body.kind, body.name, url_env=body.url_env,
+                                         secret_env=body.secret_env, config=body.config)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/notifications/channels/{channel_id}", status_code=204)
+def delete_notification_channel(channel_id: str, _user: dict = Depends(current_user)) -> None:
+    notify_svc.delete_channel(channel_id)
+
+
+@router.post("/notifications/channels/{channel_id}/enabled")
+def enable_notification_channel(channel_id: str, enabled: bool,
+                                _user: dict = Depends(current_user)) -> dict:
+    notify_svc.set_enabled(channel_id, enabled)
+    return {"id": channel_id, "enabled": enabled}
+
+
+@router.post("/notifications/test")
+def test_notifications(body: NotifyTestIn, _user: dict = Depends(current_user)) -> dict:
+    return {"results": notify_svc.send("test", body.title, body.body, body.severity)}
+
+
+@router.get("/notifications/log")
+def notification_log(_user: dict = Depends(current_user)) -> list[dict]:
+    return notify_svc.recent_log()
 
 
 @router.post("/projects/{project_id}/evidence-bundles", status_code=201)

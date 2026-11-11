@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .. import db
-from . import pr_review, source_revision
+from . import notify, pr_review, source_revision
 
 _SEVERITY_RANK = {"low": 1, "medium": 2, "high": 3, "critical": 4}
 # Files we never scan as source (binary, vendored, VCS internals).
@@ -147,6 +147,15 @@ def scan_repository(repo: str, base: str | None = None, scope: str = "diff",
     summary = {"counts": counts, "total": sum(counts.values()), "fail_on": fail_on}
     db.execute("UPDATE github_scans SET status='completed', exit_code=?, summary=?, finished_at=? "
                "WHERE id=?", [exit_code, json.dumps(summary), _now(), scan_id])
+    if exit_code == 2:
+        top = "critical" if counts.get("critical") else "high"
+        notify.send(
+            "scan.gate_failed",
+            f"Code scan gate failed: {repo.split('/')[-1]}"
+            + (f" PR #{pr_number}" if pr_number else ""),
+            f"{summary['total']} finding(s) ≥ {fail_on} — "
+            + ", ".join(f"{n} {s}" for s, n in counts.items() if n),
+            severity=top)
     return get_scan(scan_id)
 
 

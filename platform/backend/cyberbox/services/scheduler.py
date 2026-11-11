@@ -16,7 +16,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from .. import db
-from . import events, github, surface
+from . import events, github, notify, surface
 
 _LEASE_SECONDS = 300
 
@@ -97,7 +97,12 @@ def _execute(job: dict) -> dict:
         project_id = spec.get("project_id") or job.get("project_id")
         if not project_id:
             raise ValueError("surface_rescan job missing project_id")
-        return surface.snapshot_and_drift(project_id)
+        drift = surface.snapshot_and_drift(project_id)
+        if drift.get("added"):
+            notify.send("surface.drift",
+                        f"Attack surface changed: {len(drift['added'])} new host(s)",
+                        "New: " + ", ".join(drift["added"][:10]), severity="medium")
+        return drift
     raise ValueError(f"unknown job kind {job['kind']!r}")
 
 
