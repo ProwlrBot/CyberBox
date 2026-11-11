@@ -154,18 +154,41 @@ def _category_for(rec: dict) -> str:
     return "Misconfiguration"
 
 
-def _ingest_finding(project_id: str, task_id: str | None, rec: dict, scan_id: str) -> bool:
+def parse_nuclei_record(rec: dict) -> dict:
+    """Normalize a nuclei JSONL record into finding fields. Pure — no DB, no network.
+
+    Shared by the scan path (scanner.run_nuclei) and the campaign tool path
+    (tool_runner), so both produce the SAME dedup_key, category, cve and tags for a
+    given record instead of diverging.
+    """
     info = rec.get("info", {})
-    severity = (info.get("severity") or "info").lower()
     template_id = rec.get("template-id") or "unknown"
     matched_at = rec.get("matched-at") or rec.get("host", "")
-    host = rec.get("host", "")
-    name = info.get("name", template_id)
-    cve = None
     cve_ids = (info.get("classification") or {}).get("cve-id") or []
-    if cve_ids:
-        cve = cve_ids[0] if isinstance(cve_ids, list) else cve_ids
-    dedup_key = f"{template_id}|{matched_at}"
+    if isinstance(cve_ids, list):
+        cve = cve_ids[0] if cve_ids else None
+    else:
+        cve = cve_ids or None
+    raw_tags = info.get("tags", [])
+    tags = raw_tags if isinstance(raw_tags, list) else [t for t in str(raw_tags).split(",") if t]
+    return {
+        "template_id": template_id,
+        "severity": (info.get("severity") or "info").lower(),
+        "matched_at": matched_at,
+        "host": rec.get("host", ""),
+        "name": info.get("name", template_id),
+        "description": info.get("description", ""),
+        "cve": cve,
+        "category": _category_for(rec),
+        "tags": tags,
+        "dedup_key": f"{template_id}|{matched_at}",
+    }
+
+
+def _ingest_finding(project_id: str, task_id: str | None, rec: dict, scan_id: str) -> bool:
+    f = parse_nuclei_record(rec)
+    severity, matched_at, host = f["severity"], f["matched_at"], f["host"]
+    name, template_id, dedup_key = f["name"], f["template_id"], f["dedup_key"]
     if db.query_one("SELECT id FROM vulnerabilities WHERE project_id=? AND dedup_key=?",
                     [project_id, dedup_key]):
         return False
@@ -183,13 +206,12 @@ def _ingest_finding(project_id: str, task_id: str | None, rec: dict, scan_id: st
     vuln = {
         "id": str(uuid.uuid4()), "project_id": project_id,
         "asset_id": asset["id"] if asset else None, "template_id": template_id,
-        "name": name, "severity": severity, "category": _category_for(rec),
-        "description": info.get("description", ""), "cve": cve,
+        "name": name, "severity": severity, "category": f["category"],
+        "description": f["description"], "cve": f["cve"],
         "host": host, "matched_at": matched_at, "status": "open",
         "verified": 1 if verified else 0, "poc": poc,
         "request_chain": json.dumps(chain),
-        "tags": json.dumps(info.get("tags", []) if isinstance(info.get("tags"), list)
-                           else str(info.get("tags", "")).split(",")),
+        "tags": json.dumps(f["tags"]),
         "dedup_key": dedup_key, "sla_due": sla_due, "detected_at": _now(), "fixed_at": None,
     }
     db.insert("vulnerabilities", vuln)

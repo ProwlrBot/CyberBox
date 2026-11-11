@@ -8,6 +8,7 @@ from pathlib import Path
 
 from cyberbox import db
 from cyberbox.config import Settings
+from cyberbox.services import scanner
 from cyberbox.services.tool_runner import _insert_nuclei_finding
 
 
@@ -94,7 +95,19 @@ class NucleiFindingDedupTest(unittest.TestCase):
         )
         self.assertEqual(row["count"], 2)
 
-    def test_stored_dedup_key_uses_nuclei_format(self) -> None:
+    def test_parser_handles_empty_cve_and_maps_category(self) -> None:
+        # Regression: an empty cve-id list must not IndexError; category comes from tags.
+        rec = {"template-id": "cve-2024-x", "matched-at": "https://h/p", "host": "https://h",
+               "info": {"name": "n", "severity": "high", "tags": ["sqli", "injection"],
+                        "classification": {"cve-id": []}}}
+        parsed = scanner.parse_nuclei_record(rec)
+        self.assertIsNone(parsed["cve"])
+        self.assertEqual(parsed["dedup_key"], "cve-2024-x|https://h/p")
+        self.assertEqual(parsed["category"], "SQL Injection")
+
+    def test_stored_dedup_key_matches_scan_path(self) -> None:
+        # The campaign tool path and the scan path share one dedup_key format
+        # ("<template_id>|<matched_at>") so a finding seen by both deduplicates.
         template_id = "exposed-endpoint"
         matched_at = "https://example.test/debug"
 
@@ -106,4 +119,4 @@ class NucleiFindingDedupTest(unittest.TestCase):
             "SELECT dedup_key FROM vulnerabilities WHERE project_id=?",
             [self.project_id],
         )
-        self.assertEqual(row["dedup_key"], f"nuclei|{template_id}|{matched_at}")
+        self.assertEqual(row["dedup_key"], f"{template_id}|{matched_at}")

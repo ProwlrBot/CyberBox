@@ -17,6 +17,7 @@ from pathlib import Path
 from .. import db
 from . import campaign as campaign_svc
 from . import policy as policy_svc
+from . import scanner
 from . import tool_registry
 
 _POLL_INTERVAL = 5          # seconds between polls
@@ -452,35 +453,30 @@ async def _stream_subprocess(
 # ── Finding insertion ──────────────────────────────────────────────────────────
 
 def _insert_nuclei_finding(obj: dict, project_id: str, campaign_id: str | None) -> None:
-    template_id = obj.get("template-id", "unknown")
-    matched_at = obj.get("matched-at", "")
-    info = obj.get("info", {})
-    name = info.get("name") or template_id
-    severity = (info.get("severity") or "info").lower()
-    description = info.get("description", "")
-    host = obj.get("host", "")
-
-    tags = ["nuclei", "auto"]
+    # Share the scan path's parser so a given record yields the same dedup_key,
+    # category, cve and tags regardless of which path ingested it. The campaign path
+    # stays verified=0 (no inline outbound PoC check) and adds campaign provenance tags.
+    f = scanner.parse_nuclei_record(obj)
+    tags = [*f["tags"], "auto"]
     if campaign_id:
         tags.append(campaign_id)
-
-    dedup_key = f"nuclei|{template_id}|{matched_at}"
     row = {
         "id":          str(uuid.uuid4()),
         "project_id":  project_id,
-        "name":        name[:500],
-        "severity":    severity,
-        "category":    "Nuclei",
-        "description": description[:4000],
-        "template_id": template_id,
-        "host":        host[:500],
-        "matched_at":  matched_at[:500],
+        "name":        f["name"][:500],
+        "severity":    f["severity"],
+        "category":    f["category"],
+        "description": f["description"][:4000],
+        "template_id": f["template_id"],
+        "cve":         f["cve"],
+        "host":        f["host"][:500],
+        "matched_at":  f["matched_at"][:500],
         "status":      "open",
         "verified":    0,
         "poc":         "",
         "request_chain": "[]",
         "tags":        json.dumps(tags),
-        "dedup_key":   dedup_key,
+        "dedup_key":   f["dedup_key"],
         "detected_at": _now(),
     }
 
