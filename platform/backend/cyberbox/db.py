@@ -160,7 +160,7 @@ JSON_COLUMNS = {
     "inputs", "context", "supporting_artifacts", "contradicting_artifacts",
     "knowledge_citations", "result", "artifact_ids", "finding_ids",
     "technology_tags", "evidence_ids", "expected",
-    "allowed_methods", "permissions", "reference_urls",
+    "allowed_methods", "permissions", "reference_urls", "files_changed",
 }
 
 

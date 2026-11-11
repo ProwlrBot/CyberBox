@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from .. import db
 from ..auth import current_user, require_internal_service
 from ..config import get_settings
-from ..services import advisories, analytics, artifacts, bundles, capabilities, events, executions, knowledge, lifecycle, memory, playbooks, policy, project_templates, research, tool_registry, triage, wordfence
+from ..services import advisories, analytics, artifacts, bundles, capabilities, events, executions, knowledge, lifecycle, memory, playbooks, policy, project_templates, research, source_revision, tool_registry, triage, wordfence
 from ..services import gori as gori_svc
 from ..services import cve as cve_svc
 from ..services import model as model_svc
@@ -1215,6 +1215,88 @@ def verify_finding(finding_id: str, body: FindingVerify,
                                         body.verdict, body.confidence, body.rationale, body.artifact_ids)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+class SourceIn(BaseModel):
+    kind: str
+    identifier: str
+    project_id: str | None = None
+    engagement_id: str | None = None
+    label: str | None = None
+    observed_revision: str | None = None
+    metadata: dict = Field(default_factory=dict)
+
+
+class RevisionIn(BaseModel):
+    revision: str
+    parent_revision: str | None = None
+    ref: str | None = None
+    authored_at: str | None = None
+    metadata: dict = Field(default_factory=dict)
+
+
+class DiffIn(BaseModel):
+    from_revision: str
+    to_revision: str
+    files_changed: list[str] = Field(default_factory=list)
+    summary: str | None = None
+    security_relevant: bool = False
+    advisory_id: str | None = None
+
+
+class ObservedRevisionIn(BaseModel):
+    revision: str
+
+
+@router.get("/sources")
+def list_sources(project_id: str | None = None, engagement_id: str | None = None,
+                 kind: str | None = None, _user: dict = Depends(current_user)) -> list[dict]:
+    return source_revision.list_sources(project_id=project_id, engagement_id=engagement_id, kind=kind)
+
+
+@router.post("/sources", status_code=201)
+def register_source(body: SourceIn, _user: dict = Depends(current_user)) -> dict:
+    source_id = source_revision.register_source(
+        body.kind, body.identifier, project_id=body.project_id, engagement_id=body.engagement_id,
+        label=body.label, observed_revision=body.observed_revision, metadata=body.metadata)
+    return source_revision.get_source(source_id)
+
+
+@router.get("/sources/regression-candidates")
+def regression_candidates(source_id: str | None = None, project_id: str | None = None,
+                          _user: dict = Depends(current_user)) -> list[dict]:
+    return source_revision.regression_candidates(source_id=source_id, project_id=project_id)
+
+
+@router.get("/sources/{source_id}")
+def get_source(source_id: str, _user: dict = Depends(current_user)) -> dict:
+    source = source_revision.get_source(source_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="source not found")
+    return source
+
+
+@router.post("/sources/{source_id}/observed-revision")
+def set_observed_revision(source_id: str, body: ObservedRevisionIn,
+                          _user: dict = Depends(current_user)) -> dict:
+    source_revision.set_observed_revision(source_id, body.revision)
+    return source_revision.get_source(source_id)
+
+
+@router.post("/sources/{source_id}/revisions", status_code=201)
+def add_revision(source_id: str, body: RevisionIn, _user: dict = Depends(current_user)) -> dict:
+    rev_id = source_revision.add_revision(
+        source_id, body.revision, parent_revision=body.parent_revision, ref=body.ref,
+        authored_at=body.authored_at, metadata=body.metadata)
+    return {"id": rev_id, "source_id": source_id, "revision": body.revision}
+
+
+@router.post("/sources/{source_id}/diffs", status_code=201)
+def record_diff(source_id: str, body: DiffIn, _user: dict = Depends(current_user)) -> dict:
+    diff_id = source_revision.record_diff(
+        source_id, body.from_revision, body.to_revision, files_changed=body.files_changed,
+        summary=body.summary, security_relevant=body.security_relevant, advisory_id=body.advisory_id)
+    return {"id": diff_id, "source_id": source_id}
 
 
 @router.post("/projects/{project_id}/evidence-bundles", status_code=201)

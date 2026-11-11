@@ -798,3 +798,49 @@ CREATE INDEX IF NOT EXISTS idx_advisories_product ON advisories(product_slug);
 CREATE INDEX IF NOT EXISTS idx_advisories_source ON advisories(source);
 CREATE INDEX IF NOT EXISTS idx_affected_versions_advisory ON affected_versions(advisory_id);
 CREATE INDEX IF NOT EXISTS idx_affected_versions_product ON affected_versions(product_slug);
+
+-- Source-revision model (audit #9): track a watched source (GitLab/GitHub/Vercel/WordPress
+-- plugin) through its revisions, record the diff between two revisions, and surface
+-- "regression candidates" — a security-relevant fix diff whose pre-fix revision is still
+-- the one observed deployed. This is the patch-diff -> silent-fix -> still-vulnerable chain.
+CREATE TABLE IF NOT EXISTS sources (
+    id            TEXT PRIMARY KEY,
+    project_id    TEXT REFERENCES projects(id) ON DELETE CASCADE,
+    engagement_id TEXT REFERENCES engagements(id) ON DELETE SET NULL,
+    kind          TEXT NOT NULL,                 -- gitlab | github | vercel | wordpress-plugin | ...
+    identifier    TEXT NOT NULL,                 -- repo URL, project slug, deploy project
+    label         TEXT,
+    observed_revision TEXT,                       -- the revision seen live on the target, if known
+    metadata      TEXT NOT NULL DEFAULT '{}',
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL,
+    UNIQUE (kind, identifier)
+);
+
+CREATE TABLE IF NOT EXISTS source_revisions (
+    id              TEXT PRIMARY KEY,
+    source_id       TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    revision        TEXT NOT NULL,               -- commit sha / deploy id / version
+    parent_revision TEXT,
+    ref             TEXT,                         -- branch / tag
+    authored_at     TEXT,
+    metadata        TEXT NOT NULL DEFAULT '{}',
+    created_at      TEXT NOT NULL,
+    UNIQUE (source_id, revision)
+);
+
+CREATE TABLE IF NOT EXISTS revision_diffs (
+    id                TEXT PRIMARY KEY,
+    source_id         TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    from_revision     TEXT NOT NULL,
+    to_revision       TEXT NOT NULL,
+    files_changed     TEXT NOT NULL DEFAULT '[]',
+    summary           TEXT,
+    security_relevant INTEGER NOT NULL DEFAULT 0,
+    advisory_id       TEXT REFERENCES advisories(id) ON DELETE SET NULL,
+    created_at        TEXT NOT NULL,
+    UNIQUE (source_id, from_revision, to_revision)
+);
+
+CREATE INDEX IF NOT EXISTS idx_source_revisions_source ON source_revisions(source_id);
+CREATE INDEX IF NOT EXISTS idx_revision_diffs_source ON revision_diffs(source_id);
