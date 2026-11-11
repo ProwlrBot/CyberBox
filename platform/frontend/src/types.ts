@@ -53,6 +53,8 @@ export interface EngagementSummary {
   id: string;
   name: string;
   profile_id: string;
+  autonomy?: "guided" | "balanced" | "autonomous";
+  status?: string;
 }
 
 export interface WorkspaceData {

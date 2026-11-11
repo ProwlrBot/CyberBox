@@ -7,7 +7,7 @@ import {
   Plug, Wrench, Bot, Cpu, Brain,
   Monitor, Terminal, BookOpen, FolderOpen, FileCode2, ScrollText, Compass,
   Radio, Heart, ShieldAlert, KeyRound, Settings, ShieldCheck, ListTodo,
-  Crosshair, Radar, ClipboardCheck, FileDiff, Camera,
+  Crosshair, Radar, ClipboardCheck, FileDiff, Camera, Table2,
 } from "lucide-react";
 import { StubPage } from "./pages/_stubs/StubPage";
 
@@ -21,6 +21,7 @@ const Wstg         = lazy(() => import("./pages/hunt/Wstg"));
 const JsDiff       = lazy(() => import("./pages/hunt/JsDiff"));
 const Screenshots  = lazy(() => import("./pages/hunt/Screenshots"));
 const Genome       = lazy(() => import("./pages/hunt/Genome"));
+const NodeInspector = lazy(() => import("./pages/hunt/NodeInspector"));
 const Surface      = lazy(() => import("./pages/hunt/Surface"));
 const Memory       = lazy(() => import("./pages/hunt/Memory"));
 const Traffic      = lazy(() => import("./pages/hunt/Traffic"));
@@ -77,6 +78,7 @@ export const NAV_SECTIONS: NavSection[] = [
     { label: "Recon",     path: "/hunt/recon",     Icon: Search },
     { label: "Traffic",   path: "/hunt/traffic",   Icon: Activity },
     { label: "API Genome", path: "/hunt/genome",   Icon: Network },
+    { label: "Node Inspector", path: "/hunt/inspector", Icon: Table2 },
     { label: "JS Diff",    path: "/hunt/js-diff",  Icon: FileDiff },
     { label: "Screenshots", path: "/hunt/screenshots", Icon: Camera },
     { label: "Surface",    path: "/hunt/surface",  Icon: Radar },
@@ -153,6 +155,7 @@ export const appRoutes: RouteObject[] = [
   { path: "hunt/js-diff",   element: <Suspense fallback={null}><JsDiff /></Suspense> },
   { path: "hunt/screenshots", element: <Suspense fallback={null}><Screenshots /></Suspense> },
   { path: "hunt/genome",    element: <Suspense fallback={null}><Genome /></Suspense> },
+  { path: "hunt/inspector", element: <Suspense fallback={null}><NodeInspector /></Suspense> },
   { path: "hunt/surface",   element: <Suspense fallback={null}><Surface /></Suspense> },
   { path: "hunt/findings",  element: <Suspense fallback={null}><Findings /></Suspense> },
   { path: "hunt/cve-intel", element: <Suspense fallback={null}><CveIntel /></Suspense> },

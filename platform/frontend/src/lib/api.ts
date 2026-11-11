@@ -161,6 +161,26 @@ export type GenomeEndpoint = {
   path_template: string | null; auth_required: number; drift_flags: string;
 };
 
+// Full endpoint row for the Node Inspector dense grid (the /genome/endpoints route returns
+// SELECT * — every column below is present even though GenomeEndpoint under-declares it).
+export type InspectorEndpoint = {
+  id: string; project_id: string; source: string; method: string; host: string;
+  path: string; path_template: string | null; params: string; auth_required: number;
+  auth_schemes: string; content_types: string; status_codes: string; tags: string;
+  drift_flags: string; first_seen_at: string; last_seen_at: string;
+};
+
+export async function fetchInspectorEndpoints(
+  projectId: string, opts?: { host?: string; source?: string },
+): Promise<InspectorEndpoint[]> {
+  const q = new URLSearchParams();
+  if (opts?.host) q.set("host", opts.host);
+  if (opts?.source) q.set("source", opts.source);
+  const qs = q.toString();
+  const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/genome/endpoints${qs ? `?${qs}` : ""}`, { headers: headers() });
+  return r.ok ? r.json() : [];
+}
+
 export async function fetchGenomeEndpoints(projectId: string, opts?: { drift?: boolean; source?: string }): Promise<GenomeEndpoint[]> {
   const q = new URLSearchParams();
   if (opts?.drift) q.set("drift", "true");
@@ -547,6 +567,23 @@ export async function fetchEngines(): Promise<Engine[]> {
   return r.ok ? r.json() : [];
 }
 
+export async function fetchEngagements(projectId: string): Promise<EngagementSummary[]> {
+  const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/engagements`, { headers: headers() });
+  return r.ok ? r.json() : [];
+}
+
+export async function setEngagementAutonomy(
+  engagementId: string, autonomy: "guided" | "balanced" | "autonomous",
+): Promise<EngagementSummary> {
+  const r = await fetch(`/api/v1/engagements/${encodeURIComponent(engagementId)}/autonomy`, {
+    method: "PATCH",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify({ autonomy }),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || (await r.text()));
+  return r.json();
+}
+
 export async function fetchTaxonomyChecklist(): Promise<Checklist | null> {
   const r = await fetch(`/api/v1/taxonomy/checklist`, { headers: headers() });
   return r.ok ? r.json() : null;
@@ -652,10 +689,12 @@ export async function fetchScreenshots(projectId: string): Promise<Screenshot[]>
   return r.ok ? r.json() : [];
 }
 
-export async function captureScreenshots(projectId: string, urls: string[]): Promise<{ captured: number; results: any[] }> {
+export async function captureScreenshots(
+  projectId: string, urls: string[], backend: "auto" | "chromium" | "gowitness" = "auto",
+): Promise<{ captured: number; results: any[] }> {
   const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/screenshots`, {
     method: "POST", headers: { ...headers(), "Content-Type": "application/json" },
-    body: JSON.stringify({ urls }),
+    body: JSON.stringify({ urls, backend }),
   });
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || (await r.text()));
   return r.json();

@@ -1,7 +1,11 @@
 """Visual recon — headless-browser screenshots of in-scope hosts for fast attack-surface triage.
 
-Shells out to a headless Chromium (the Playwright-cached chrome-headless-shell if present, else a
-system chromium/chrome) to screenshot a URL. No gowitness dependency. The target host is checked
+Two interchangeable backends behind one capture():
+  - "chromium": shell out to a headless Chromium (Playwright-cached chrome-headless-shell if
+    present, else a system chromium/chrome). Fast, zero extra dependency — the default.
+  - "gowitness": drive ProjectDiscovery/sensepost gowitness v3 (`scan single`). Useful when you
+    want gowitness's own chrome management or its report/jsonl pipeline for bulk host sweeps.
+"auto" picks chromium when available, else gowitness. Either way the target host is checked
 against the same SSRF guard as the fingerprint probe (cloud-metadata hard-blocked) and the caller
 scope-gates the URL. PNGs are written under <home>/screenshots/<project>/ and served by an endpoint;
 only the metadata lives in the DB.
@@ -52,36 +56,41 @@ def _chrome_binary() -> str | None:
     return None
 
 
-def available() -> bool:
-    return _chrome_binary() is not None
+def _gowitness_binary() -> str | None:
+    found = shutil.which("gowitness")
+    if found:
+        return found
+    cand = Path.home() / "go/bin/gowitness"
+    return str(cand) if cand.exists() else None
 
 
-def capture(project_id: str, url: str) -> dict:
-    """Screenshot `url` with headless Chromium and store the PNG + a metadata row.
+def _resolve_backend(backend: str) -> str:
+    """Map 'auto' to a concrete backend. chromium preferred (proven, fast single-shot)."""
+    if backend == "chromium":
+        return "chromium"
+    if backend == "gowitness":
+        return "gowitness"
+    # auto
+    if _chrome_binary():
+        return "chromium"
+    if _gowitness_binary():
+        return "gowitness"
+    return "chromium"  # will error cleanly downstream with "no headless browser available"
 
-    SSRF-guarded (cloud-metadata blocked). Returns the stored row dict. On a browser failure the
-    row is recorded with status='error' rather than raising, so a batch never half-fails silently."""
-    sp = urlsplit(url)
-    if sp.scheme not in ("http", "https") or not sp.hostname:
-        raise ProbeBlocked("invalid screenshot URL")
-    _assert_not_metadata(sp.hostname)  # raises ProbeBlocked on a metadata host
 
+def available(backend: str = "auto") -> bool:
+    if backend == "gowitness":
+        return _gowitness_binary() is not None
+    if backend == "chromium":
+        return _chrome_binary() is not None
+    return _chrome_binary() is not None or _gowitness_binary() is not None
+
+
+def _capture_chromium(url: str, out_path: Path) -> str | None:
+    """Run headless Chromium → out_path (PNG). Returns an error string or None on success."""
     binary = _chrome_binary()
-    shot_id = str(uuid.uuid4())
     if not binary:
-        row = {"id": shot_id, "project_id": project_id, "url": url, "path": None, "title": None,
-               "width": 0, "height": 0, "status": "error", "error": "no headless browser available",
-               "captured_at": _now()}
-        db.insert("screenshots", row)
-        return row
-
-    settings = get_settings()
-    settings.ensure_dirs()
-    out_dir = settings.screenshots_dir / project_id
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"{shot_id}.png"
-
-    error = None
+        return "no headless browser available"
     with tempfile.TemporaryDirectory() as profile:
         try:
             subprocess.run(
@@ -90,7 +99,57 @@ def capture(project_id: str, url: str) -> dict:
                  "--virtual-time-budget=5000", f"--screenshot={out_path}", url],
                 capture_output=True, timeout=_TIMEOUT, check=False)
         except (subprocess.TimeoutExpired, OSError) as exc:
-            error = str(exc)[:200]
+            return str(exc)[:200]
+    return None
+
+
+def _capture_gowitness(url: str, out_path: Path) -> str | None:
+    """Run gowitness v3 `scan single` into a temp dir, move the produced PNG to out_path."""
+    binary = _gowitness_binary()
+    if not binary:
+        return "gowitness not installed"
+    chrome = _chrome_binary()  # reuse our cached chrome; else gowitness manages its own
+    with tempfile.TemporaryDirectory() as shot_dir:
+        cmd = [binary, "scan", "single", "-u", url, "-s", shot_dir,
+               "--screenshot-format", "png", "--timeout", str(_TIMEOUT), "--delay", "2",
+               "--chrome-window-x", str(_WINDOW[0]), "--chrome-window-y", str(_WINDOW[1])]
+        if chrome:
+            cmd += ["--chrome-path", chrome]
+        try:
+            subprocess.run(cmd, capture_output=True, timeout=_TIMEOUT + 20, check=False)
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            return str(exc)[:200]
+        pngs = sorted(glob.glob(str(Path(shot_dir) / "*.png")),
+                      key=lambda p: Path(p).stat().st_size, reverse=True)
+        if not pngs:
+            return "gowitness produced no image"
+        shutil.move(pngs[0], out_path)
+    return None
+
+
+def capture(project_id: str, url: str, backend: str = "auto") -> dict:
+    """Screenshot `url` and store the PNG + a metadata row.
+
+    SSRF-guarded (cloud-metadata blocked). `backend` is one of auto|chromium|gowitness. Returns
+    the stored row dict. On a browser failure the row is recorded with status='error' rather than
+    raising, so a batch never half-fails silently."""
+    sp = urlsplit(url)
+    if sp.scheme not in ("http", "https") or not sp.hostname:
+        raise ProbeBlocked("invalid screenshot URL")
+    _assert_not_metadata(sp.hostname)  # raises ProbeBlocked on a metadata host
+
+    chosen = _resolve_backend(backend)
+    shot_id = str(uuid.uuid4())
+    settings = get_settings()
+    settings.ensure_dirs()
+    out_dir = settings.screenshots_dir / project_id
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"{shot_id}.png"
+
+    if chosen == "gowitness":
+        error = _capture_gowitness(url, out_path)
+    else:
+        error = _capture_chromium(url, out_path)
 
     ok = out_path.exists() and out_path.stat().st_size > 0
     row = {

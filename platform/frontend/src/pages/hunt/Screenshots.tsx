@@ -49,6 +49,7 @@ export default function Screenshots() {
   const [projectId, setProjectId] = useState("");
   const [shots, setShots] = useState<Screenshot[]>([]);
   const [urls, setUrls] = useState("");
+  const [backend, setBackend] = useState<"auto" | "chromium" | "gowitness">("auto");
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState("");
 
@@ -68,7 +69,7 @@ export default function Screenshots() {
     if (!list.length) return;
     setBusy(true); setToast("");
     try {
-      const r = await captureScreenshots(projectId, list);
+      const r = await captureScreenshots(projectId, list, backend);
       setToast(`${r.captured} of ${r.results.length} captured`);
       await load(projectId);
     } catch (e: any) {
@@ -96,6 +97,12 @@ export default function Screenshots() {
           style={{ flex: 1, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 6,
                    padding: "8px 12px", color: "var(--text)", fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}
         />
+        <select className="action-btn" value={backend} onChange={(e) => setBackend(e.target.value as any)}
+                title="Capture backend">
+          <option value="auto">auto</option>
+          <option value="chromium">chromium</option>
+          <option value="gowitness">gowitness</option>
+        </select>
         <button className="action-btn" disabled={busy} onClick={doCapture} style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <Camera size={13} /> {busy ? "capturing…" : "Capture"}
         </button>

@@ -134,6 +134,10 @@ class EngagementCreate(BaseModel):
     )
 
 
+class EngagementAutonomyUpdate(BaseModel):
+    autonomy: str = Field(pattern="^(guided|balanced|autonomous)$")
+
+
 class TargetCreate(BaseModel):
     name: str = Field(min_length=1, max_length=160)
     target_type: str = Field(default="domain", pattern="^(domain|cidr|ip|url|repository|package|cloud-resource)$")
@@ -461,6 +465,30 @@ def create_engagement(project_id: str, body: EngagementCreate,
 def list_engagements(project_id: str, _user: dict = Depends(current_user)) -> list[dict]:
     return [db.decode_row(r) for r in db.query(
         "SELECT * FROM engagements WHERE project_id=? ORDER BY created_at DESC", [project_id])]
+
+
+@router.patch("/engagements/{engagement_id}/autonomy")
+def update_engagement_autonomy(engagement_id: str, body: EngagementAutonomyUpdate,
+                               user: dict = Depends(current_user)) -> dict:
+    """Switch an engagement between manual (guided) and AI (autonomous) operation.
+
+    guided   = default-deny, operator approves every live action (manual mode)
+    balanced = low-impact passive runs, state-changing needs approval
+    autonomous = campaign orchestrator may act up to its risk ceiling (AI mode)
+
+    This only moves the autonomy dial; the scope/authorization gate is unchanged —
+    even 'autonomous' still passes policy.evaluate() per action, so it can never
+    exceed the engagement's authorized scope.
+    """
+    engagement = db.query_one("SELECT * FROM engagements WHERE id=?", [engagement_id])
+    if not engagement:
+        raise HTTPException(status_code=404, detail="engagement not found")
+    db.execute("UPDATE engagements SET autonomy=? WHERE id=?", [body.autonomy, engagement_id])
+    events.append(engagement["project_id"], "engagement.autonomy_changed",
+                  {"engagement_id": engagement_id, "from": engagement["autonomy"],
+                   "to": body.autonomy}, actor_type="user", actor_id=user["id"])
+    row = db.query_one("SELECT * FROM engagements WHERE id=?", [engagement_id])
+    return db.decode_row(row)
 
 
 @router.post("/projects/{project_id}/targets", status_code=201)
@@ -2471,18 +2499,24 @@ def js_diff_route(project_id: str, url: str, from_hash: str | None = None, to_ha
 
 class ScreenshotIn(BaseModel):
     urls: list[str] = Field(min_length=1, max_length=30, description="In-scope URLs to screenshot")
+    backend: str = Field(default="auto", pattern="^(auto|chromium|gowitness)$",
+                         description="Capture backend: auto (chromium, else gowitness), chromium, or gowitness")
 
 
 @router.post("/projects/{project_id}/screenshots", status_code=202)
 def capture_screenshots(project_id: str, body: ScreenshotIn, _user: dict = Depends(current_user)) -> dict:
-    """Screenshot each in-scope URL with headless Chromium (scope-gated, SSRF-guarded)."""
-    if not screenshots_svc.available():
-        raise HTTPException(status_code=503, detail="no headless browser available on this host")
+    """Screenshot each in-scope URL with a headless browser (scope-gated, SSRF-guarded).
+
+    backend=chromium uses the cached headless Chromium; backend=gowitness drives gowitness v3;
+    backend=auto prefers chromium and falls back to gowitness."""
+    if not screenshots_svc.available(body.backend):
+        raise HTTPException(status_code=503,
+                            detail=f"screenshot backend '{body.backend}' unavailable on this host")
     results = []
     for url in body.urls:
         _gate_passive_probe(project_id, url)
         try:
-            r = screenshots_svc.capture(project_id, url)
+            r = screenshots_svc.capture(project_id, url, backend=body.backend)
         except screenshots_svc.ProbeBlocked as exc:
             r = {"url": url, "status": "error", "error": str(exc)}
         results.append({k: r.get(k) for k in ("id", "url", "status", "error", "title")})

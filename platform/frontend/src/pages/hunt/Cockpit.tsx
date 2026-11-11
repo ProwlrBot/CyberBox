@@ -5,10 +5,19 @@ import {
 } from "lucide-react";
 import {
   fetchProjects, fetchTaxonomyFamilies, fetchProjectCoverage, fetchProjectChains,
-  fetchEngines, setCoverage, fetchMethodology,
+  fetchEngines, setCoverage, fetchMethodology, fetchEngagements, setEngagementAutonomy,
   type TaxFamily, type CoverageClass, type CoverageResponse, type Chain, type Engine,
   type Methodology,
 } from "../../lib/api";
+import type { EngagementSummary } from "../../types";
+
+// Autonomy dial — manual (guided) ↔ AI (autonomous). Scope/authorization gate is
+// unchanged by this; even AI mode still passes policy.evaluate() per live action.
+const AUTONOMY = [
+  { key: "guided" as const,     label: "Manual",   hint: "approve every live action", color: "var(--info)" },
+  { key: "balanced" as const,   label: "Balanced", hint: "low-risk passive runs auto", color: "var(--warn)" },
+  { key: "autonomous" as const, label: "AI",       hint: "orchestrator acts to its ceiling", color: "var(--accent)" },
+];
 
 // Payout "heat" ramp — acid-yellow family; brighter = more money once dupe/triage drift is priced in.
 const PAYOUT_COLOR: Record<number, string> = {
@@ -35,6 +44,7 @@ export default function Cockpit() {
   const [engines, setEngines] = useState<Engine[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<CoverageClass | null>(null);
+  const [engagement, setEngagement] = useState<EngagementSummary | null>(null);
   const [toast, setToast] = useState("");
 
   // filters
@@ -46,9 +56,26 @@ export default function Cockpit() {
   function flash(m: string) { setToast(m); setTimeout(() => setToast(""), 3000); }
 
   async function loadProject(pid: string) {
-    const [c, ch] = await Promise.all([fetchProjectCoverage(pid), fetchProjectChains(pid)]);
+    const [c, ch, engs] = await Promise.all([
+      fetchProjectCoverage(pid), fetchProjectChains(pid), fetchEngagements(pid),
+    ]);
     setCov(c);
     setChains(ch);
+    setEngagement(engs[0] ?? null); // most-recent engagement drives the autonomy dial
+  }
+
+  async function changeAutonomy(key: "guided" | "balanced" | "autonomous") {
+    if (!engagement || engagement.autonomy === key) return;
+    const prev = engagement;
+    setEngagement({ ...engagement, autonomy: key }); // optimistic
+    try {
+      const updated = await setEngagementAutonomy(engagement.id, key);
+      setEngagement(updated);
+      flash(`Autonomy → ${AUTONOMY.find((a) => a.key === key)?.label}`);
+    } catch (e) {
+      setEngagement(prev);
+      flash(e instanceof Error ? e.message : "autonomy change failed");
+    }
   }
 
   useEffect(() => {
@@ -130,6 +157,26 @@ export default function Cockpit() {
           <small>{total} classes · {families.length} families</small>
         </div>
         <div className="toolbar-actions">
+          {engagement && (
+            <div title="Operating mode for the active engagement — manual asks before every live action, AI lets the orchestrator act up to its risk ceiling (scope gate unchanged either way)"
+                 style={{ display: "flex", gap: 1, border: "1px solid var(--border)", borderRadius: 6, overflow: "hidden", background: "var(--border)" }}>
+              {AUTONOMY.map((a) => {
+                const on = (engagement.autonomy ?? "balanced") === a.key;
+                return (
+                  <button key={a.key} onClick={() => changeAutonomy(a.key)} title={a.hint}
+                    style={{
+                      border: "none", padding: "5px 10px", fontSize: 10, letterSpacing: "0.06em",
+                      textTransform: "uppercase", cursor: "pointer", fontFamily: "'JetBrains Mono', monospace",
+                      fontWeight: on ? 700 : 500,
+                      background: on ? a.color : "var(--panel)",
+                      color: on ? "var(--bg)" : "var(--muted)",
+                    }}>
+                    {a.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {projects.length > 1 && (
             <select className="action-btn" value={projectId} onChange={(e) => changeProject(e.target.value)}>
               {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}

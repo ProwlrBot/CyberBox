@@ -55,6 +55,21 @@ class ScreenshotsTest(unittest.TestCase):
         self.assertEqual(screenshots.list_shots(self.project_id), [])
         self.assertIsNone(screenshots.get_shot("nope"))
 
+    def test_backend_availability_is_bool_per_backend(self) -> None:
+        for backend in ("auto", "chromium", "gowitness"):
+            self.assertIsInstance(screenshots.available(backend), bool)
+
+    def test_resolve_backend_honors_explicit_choice(self) -> None:
+        # Explicit choices are passed through verbatim; 'auto' resolves to a concrete one.
+        self.assertEqual(screenshots._resolve_backend("chromium"), "chromium")
+        self.assertEqual(screenshots._resolve_backend("gowitness"), "gowitness")
+        self.assertIn(screenshots._resolve_backend("auto"), ("chromium", "gowitness"))
+
+    def test_gowitness_backend_still_ssrf_guarded(self) -> None:
+        # The metadata hard-block must hold regardless of which backend is selected.
+        with self.assertRaises(ProbeBlocked):
+            screenshots.capture(self.project_id, "http://169.254.169.254/", backend="gowitness")
+
 
 if __name__ == "__main__":
     unittest.main()
