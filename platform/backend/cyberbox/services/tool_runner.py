@@ -541,3 +541,11 @@ toolspec.bind_runner("subfinder", _run_subfinder)
 toolspec.bind_runner("httpx", _run_httpx)
 toolspec.bind_runner("nuclei", _run_nuclei)
 toolspec.bind_runner("ffuf", _run_ffuf)
+
+# Importing the runner must guarantee EVERY built-in tool's spec is registered + bound,
+# independent of import order — a campaign can queue gowitness/vulnx, and _dispatch_tool
+# must resolve them even if the implementing module wasn't imported elsewhere yet. These
+# modules self-register their specs on import (engines → vulnx runner; screenshots →
+# gowitness spec + runner). No cycle: neither imports tool_runner.
+from . import engines as _engines  # noqa: E402,F401
+from . import screenshots as _screenshots  # noqa: E402,F401

@@ -31,6 +31,16 @@ class ToolSpecContractTest(unittest.TestCase):
         self.assertEqual(gw.danger_tier, "active")      # live GET to the target
         self.assertEqual(gw.scope_required, 1)
 
+    def test_importing_tool_runner_binds_every_builtin(self) -> None:
+        # Guards the harden-import: a campaign can queue gowitness/vulnx, and _dispatch_tool
+        # must resolve them even if screenshots/engines weren't imported elsewhere. Importing
+        # the runner alone must leave all six built-ins registered AND bound.
+        from cyberbox.services import tool_runner  # noqa: F401
+        for name in ("subfinder", "httpx", "nuclei", "ffuf", "vulnx", "gowitness"):
+            spec = toolspec.get(name)
+            self.assertIsNotNone(spec, f"{name} spec missing")
+            self.assertIsNotNone(spec.runner, f"{name} runner not bound after tool_runner import")
+
     def test_bad_danger_tier_rejected(self) -> None:
         with self.assertRaises(ValueError):
             toolspec.ToolSpec(name="x", category="recon", danger_tier="nuclear",
