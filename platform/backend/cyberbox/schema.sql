@@ -618,6 +618,7 @@ CREATE INDEX IF NOT EXISTS idx_model_providers_enabled ON model_providers(enable
 CREATE TABLE IF NOT EXISTS campaigns (
     id             TEXT PRIMARY KEY,
     project_id     TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    engagement_id  TEXT REFERENCES engagements(id),
     name           TEXT NOT NULL,
     target_url     TEXT NOT NULL,
     hunt_type      TEXT NOT NULL DEFAULT 'full_auto',

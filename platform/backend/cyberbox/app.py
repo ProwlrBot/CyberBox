@@ -9,7 +9,7 @@ from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import db, seed
+from . import db, migrations, seed
 from .auth import authenticate_key, bootstrap_admin, current_user
 from .config import get_settings
 from .hub import hub
@@ -28,6 +28,7 @@ async def lifespan(_app: FastAPI):
     # Bring DB to the configured journal mode before concurrent threads open connections
     db.ensure_journal_mode()
     db.init_db()
+    migrations.migrate()
     seed.seed()
     model_svc.seed_providers()
     bootstrap_admin()

@@ -131,12 +131,19 @@ def _append_event(
 # ── Tool job queuing (sandbox runner picks these up) ──────────────────────────
 
 def queue_tool_job(campaign_id: str, project_id: str, tool_name: str, args: dict) -> str:
-    """Queue an execution record for sandbox tool dispatch. Returns execution_id."""
+    """Queue an execution record for sandbox tool dispatch. Returns execution_id.
+
+    The campaign's engagement_id rides on the execution so the tool runner can evaluate
+    scope/authorization policy before the tool runs. A campaign with no engagement produces
+    executions the runner default-denies.
+    """
     exec_id = str(uuid.uuid4())
+    campaign = db.query_one("SELECT engagement_id FROM campaigns WHERE id=?", [campaign_id])
+    engagement_id = campaign["engagement_id"] if campaign else None
     row = {
         "id":           exec_id,
         "project_id":   project_id,
-        "engagement_id": None,
+        "engagement_id": engagement_id,
         "kind":         f"tool:{tool_name}",
         "status":       "queued",
         "risk_class":   "active",

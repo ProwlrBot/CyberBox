@@ -15,6 +15,7 @@ from pathlib import Path
 
 from .. import db
 from . import campaign as campaign_svc
+from . import policy as policy_svc
 
 _POLL_INTERVAL = 5          # seconds between polls
 _LEASE_MINUTES = 5          # lease duration per job
@@ -101,6 +102,18 @@ async def _run_tool_job(execution_id: str) -> None:
 
     phase = args.get("phase") or _guess_phase(tool_name)
 
+    # ── Scope/authorization gate — default-deny before any live tool runs ──
+    engagement_id = row["engagement_id"]
+    gate = _policy_gate(engagement_id, tool_name, args)
+    if not gate["allowed"]:
+        msg = f"blocked by policy: {gate['reason']}"
+        _finish_execution(execution_id, project_id, "blocked", {"policy": gate}, msg)
+        if campaign_id:
+            _campaign_event(campaign_id, "tool.blocked",
+                            f"{tool_name} blocked — {gate['reason']}", phase,
+                            {"execution_id": execution_id, "tool": tool_name})
+        return
+
     try:
         rc, result = await _dispatch_tool(
             tool_name, campaign_id, project_id, args, execution_id, phase, max_runtime
@@ -161,6 +174,44 @@ def _campaign_event(campaign_id: str, event_type: str, summary: str,
 def _guess_phase(tool_name: str) -> str:
     return {"subfinder": "recon", "httpx": "recon",
             "nuclei": "fuzz", "ffuf": "fuzz"}.get(tool_name, "recon")
+
+
+# Active tools whose risk class escalates past passive recon.
+_TOOL_RISK = {"subfinder": "passive", "httpx": "low-impact",
+              "nuclei": "state-changing", "ffuf": "high-volume"}
+
+
+def _target_url(args: dict) -> str | None:
+    """Best-effort target URL for policy evaluation from a tool's args."""
+    url = args.get("target_url") or args.get("url")
+    if url:
+        return url if "://" in url else f"https://{url}"
+    domain = args.get("domain") or args.get("target") or args.get("host")
+    return f"https://{domain}" if domain else None
+
+
+def _policy_gate(engagement_id: str | None, tool_name: str, args: dict) -> dict:
+    """Default-deny gate. No engagement, no target, or policy denial → not allowed.
+
+    This is the single enforcement point for the autonomous path: every tool the runner
+    dispatches passes through here, so a campaign cannot reach a live tool without an
+    authorized engagement whose scope covers the target.
+    """
+    if not engagement_id:
+        return {"allowed": False, "reason": "no engagement — autonomous run is unauthorized"}
+    url = _target_url(args)
+    if not url:
+        return {"allowed": False, "reason": "no resolvable target to scope-check"}
+    risk = _TOOL_RISK.get(tool_name, "low-impact")
+    try:
+        decision = policy_svc.evaluate(engagement_id, url, method="GET", risk_class=risk)
+    except Exception as exc:  # noqa: BLE001 — a failing policy check must deny, not pass
+        return {"allowed": False, "reason": f"policy evaluation error: {exc}"}
+    if not decision.get("allowed"):
+        return {"allowed": False, "reason": decision.get("reason", "policy denied")}
+    if decision.get("requires_approval"):
+        return {"allowed": False, "reason": "requires operator approval"}
+    return {"allowed": True, "reason": decision.get("reason", "policy allowed")}
 
 
 # ── Tool dispatcher ────────────────────────────────────────────────────────────
