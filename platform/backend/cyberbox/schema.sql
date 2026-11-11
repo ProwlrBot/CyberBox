@@ -1,5 +1,8 @@
--- CyberBox platform — local-first schema (SQLite, WAL mode).
-PRAGMA journal_mode = WAL;
+-- CyberBox platform — local-first schema (SQLite).
+-- Journal mode is NOT set here: it is owned by config/_connect/ensure_journal_mode
+-- (env-aware: DELETE+NORMAL on WSL2, WAL+NORMAL on a real FS). A hardcoded
+-- `PRAGMA journal_mode = WAL` here would re-flip the DB to WAL on every init_db()
+-- run, re-triggering the WSL2 mmap/SHM lock after startup already set DELETE.
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS users (
