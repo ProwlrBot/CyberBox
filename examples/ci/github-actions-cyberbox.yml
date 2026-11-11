@@ -1,0 +1,55 @@
+# CyberBox diff-scoped security scan on every PR (Strix/Semgrep-style gate).
+# Copy to .github/workflows/security.yml in the target repo.
+#
+# Gate semantics: the job fails (exit 2) when a finding at or above --fail-on is found on the
+# PR diff; SARIF 2.1.0 is uploaded to GitHub code scanning so findings show inline on the PR.
+name: CyberBox Security Scan
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write   # required to upload SARIF to code scanning
+
+jobs:
+  cyberbox-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0     # needed so the diff base resolves
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Vendor CyberBox's scanner. Point this at your CyberBox checkout, a pip package,
+      # or a container image — it only needs the `cyberbox` package importable.
+      - name: Install CyberBox scanner
+        run: |
+          git clone --depth 1 https://github.com/kdairatchi/CyberBox /tmp/cyberbox
+          pip install -r /tmp/cyberbox/platform/backend/requirements.txt || true
+          echo "PYTHONPATH=/tmp/cyberbox/platform/backend" >> "$GITHUB_ENV"
+
+      - name: Resolve diff base
+        run: echo "DIFF_BASE=origin/${{ github.base_ref }}" >> "$GITHUB_ENV"
+
+      - name: Run CyberBox scan
+        env:
+          CYBERBOX_HOME: ${{ runner.temp }}/cyberbox-home   # ephemeral DB per run
+        run: |
+          python -m cyberbox.cli github-scan ./ \
+            --scope diff --base "$DIFF_BASE" \
+            --fail-on high --sarif cyberbox.sarif
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: cyberbox.sarif
+
+# Alternative (managed, no CLI): point a GitHub webhook at your running CyberBox instance's
+#   POST /api/v1/github/webhook
+# with a secret matching $GITHUB_WEBHOOK_SECRET. Every pull_request event then triggers a
+# diff-scoped scan server-side; results land under Code Scanning in the CyberBox UI.

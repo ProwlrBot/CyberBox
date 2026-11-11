@@ -29,6 +29,7 @@ const HQ           = lazy(() => import("./pages/workspace/HQ"));
 const ReconPage    = lazy(() => import("./pages/hunt/Recon"));
 const Raptor       = lazy(() => import("./pages/source/Raptor"));
 const Repositories = lazy(() => import("./pages/source/Repositories"));
+const CodeScanning = lazy(() => import("./pages/source/CodeScanning"));
 const SourceGraph  = lazy(() => import("./pages/source/SourceGraph"));
 const PatchIntel      = lazy(() => import("./pages/source/PatchIntel"));
 const GitLabProfile   = lazy(() => import("./pages/source/GitLabProfile"));
@@ -74,6 +75,7 @@ export const NAV_SECTIONS: NavSection[] = [
   { id: "source", label: "SOURCE", items: [
     { label: "Raptor",       path: "/source/raptor",    Icon: Code2 },
     { label: "Repositories", path: "/source/repos",     Icon: GitBranch },
+    { label: "Code Scanning", path: "/source/code-scan", Icon: GitMerge },
     { label: "Source Graph", path: "/source/graph",     Icon: Network },
     { label: "Patch Intel",  path: "/source/patch",     Icon: GitMerge },
     { label: "Variant Hunt", path: "/source/variants",  Icon: Layers },
@@ -138,7 +140,8 @@ export const appRoutes: RouteObject[] = [
   { path: "hunt/techniques",   element: <Suspense fallback={null}><Techniques /></Suspense> },
   // Source
   { path: "source/raptor",    element: <Suspense fallback={null}><Raptor /></Suspense> },
-  { path: "source/repos",     element: <Suspense fallback={null}><Repositories /></Suspense> },
+  { path: "source/code-scan", element: <Suspense fallback={null}><CodeScanning /></Suspense> },
+  { path: "source/repos",     element: <Suspense fallback={null}><Repositories/></Suspense> },
   { path: "source/graph",     element: <Suspense fallback={null}><SourceGraph /></Suspense> },
   { path: "source/patch",     element: <Suspense fallback={null}><PatchIntel /></Suspense> },
   { path: "source/variants",  element: <Suspense fallback={null}><VariantHunt /></Suspense> },
