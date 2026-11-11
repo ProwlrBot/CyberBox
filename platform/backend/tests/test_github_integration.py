@@ -49,8 +49,9 @@ class GithubIntegrationTest(unittest.TestCase):
         self.temp.cleanup()
 
     def _add_vuln_commit(self) -> None:
+        # A realistic-looking key (not the AKIA...EXAMPLE placeholder, which is suppressed as FP).
         (self.repo / "bad.py").write_text(
-            'import os\nAWS="AKIAIOSFODNN7EXAMPLE"\nos.system("rm " + user)\n')
+            'import os\nAWS="AKIA1234567890ABCDEF"\nos.system("rm " + user)\n')
         _git(self.repo, "add", "-A")
         _git(self.repo, "commit", "-q", "-m", "vuln")
 
@@ -89,6 +90,44 @@ class GithubIntegrationTest(unittest.TestCase):
         _git(self.repo, "commit", "-q", "-m", "key")
         scan = github.scan_repository(str(self.repo), scope="full", fail_on="critical")
         self.assertEqual(scan["exit_code"], 2)
+
+    # --- false-positive suppression --------------------------------------
+    def test_example_key_is_suppressed(self) -> None:
+        (self.repo / "readme.py").write_text('AWS="AKIAIOSFODNN7EXAMPLE"\n')  # canonical fake
+        _git(self.repo, "add", "-A")
+        _git(self.repo, "commit", "-q", "-m", "doc")
+        scan = github.scan_repository(str(self.repo), scope="full", fail_on="low")
+        self.assertEqual(scan["summary"]["total"], 0)
+
+    def test_env_lookup_secret_is_suppressed(self) -> None:
+        (self.repo / "cfg.py").write_text('api_key = os.environ["API_KEY"]\n')
+        _git(self.repo, "add", "-A")
+        _git(self.repo, "commit", "-q", "-m", "cfg")
+        scan = github.scan_repository(str(self.repo), scope="full", fail_on="low")
+        self.assertEqual(scan["summary"]["total"], 0)
+
+    def test_secret_in_test_path_is_suppressed(self) -> None:
+        tdir = self.repo / "tests"
+        tdir.mkdir()
+        (tdir / "fixtures.py").write_text('KEY="AKIA1234567890ABCDEF"\n')
+        _git(self.repo, "add", "-A")
+        _git(self.repo, "commit", "-q", "-m", "fixtures")
+        scan = github.scan_repository(str(self.repo), scope="full", fail_on="low")
+        self.assertEqual(scan["summary"]["total"], 0)
+
+    def test_commented_out_line_is_suppressed(self) -> None:
+        (self.repo / "note.py").write_text('# password = "sup3rsecretvalue123"\n')
+        _git(self.repo, "add", "-A")
+        _git(self.repo, "commit", "-q", "-m", "note")
+        scan = github.scan_repository(str(self.repo), scope="full", fail_on="low")
+        self.assertEqual(scan["summary"]["total"], 0)
+
+    def test_real_secret_still_flagged(self) -> None:
+        (self.repo / "prod.py").write_text('password = "h7Kp2wQ9zXm4Lr8T"\n')
+        _git(self.repo, "add", "-A")
+        _git(self.repo, "commit", "-q", "-m", "prod")
+        scan = github.scan_repository(str(self.repo), scope="full", fail_on="high")
+        self.assertTrue(any(f["detector"] == "Hardcoded generic secret" for f in scan["findings"]))
 
     # --- SARIF ------------------------------------------------------------
     def test_sarif_structure(self) -> None:

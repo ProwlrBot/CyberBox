@@ -80,12 +80,11 @@ def _scan_tree(repo: str, source_id: str | None, revision: str | None) -> list[d
             continue
         rel = str(path.relative_to(root))
         for lineno, added in enumerate(text.splitlines(), start=1):
-            for name, severity, rx in pr_review.DETECTORS:
-                if rx.search(added):
-                    findings.append(_normalize(
-                        {"file": rel, "line": lineno, "severity": severity,
-                         "detector": name, "snippet": added, "comment": None},
-                        source_id, revision))
+            for name, severity in pr_review.scan_line(added, rel):
+                findings.append(_normalize(
+                    {"file": rel, "line": lineno, "severity": severity,
+                     "detector": name, "snippet": added, "comment": None},
+                    source_id, revision))
     return findings
 
 
