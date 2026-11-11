@@ -5,8 +5,8 @@ A campaign runs phases in sequence:
 
 Each phase is orchestrated by a supervisor LLM that plans the attack surface,
 generates test cases, and validates candidate findings. Actual tool execution
-(nuclei, ffuf, nmap, subfinder) is queued as execution records for the sandbox
-runner — this module does not shell out directly.
+(subfinder, httpx, gowitness, nuclei, ffuf, vulnx) is queued as ToolSpec-backed
+execution records for the runner — this module does not shell out directly.
 """
 from __future__ import annotations
 
@@ -396,12 +396,18 @@ async def _phase_recon(campaign_id: str, campaign: dict, ctx: dict) -> dict:
     _update_campaign(campaign_id, phase="recon", progress=10)
     _append_event(campaign_id, "phase.change", "Starting recon phase", phase="recon")
 
-    # Queue actual tool jobs
+    # Queue actual tool jobs. subfinder+httpx map the surface; gowitness captures a visual of
+    # the target. All ride the campaign engagement, so the runner scope-gates each: the active
+    # tools (httpx/gowitness) only run when autonomy=autonomous, under balanced they're held for
+    # approval — the autonomy dial still governs the unattended path.
     queue_tool_job(campaign_id, campaign["project_id"], "subfinder",
                    {"target": campaign["target_url"]})
     queue_tool_job(campaign_id, campaign["project_id"], "httpx",
                    {"target": campaign["target_url"]})
-    _append_event(campaign_id, "tool.queued", "Queued subfinder + httpx for live recon", phase="recon")
+    queue_tool_job(campaign_id, campaign["project_id"], "gowitness",
+                   {"urls": [campaign["target_url"]]})
+    _append_event(campaign_id, "tool.queued",
+                  "Queued subfinder + httpx + gowitness for live recon", phase="recon")
 
     # LLM attack surface planning
     provider = _resolve_provider(campaign.get("provider_id"))
@@ -412,6 +418,15 @@ async def _phase_recon(campaign_id: str, campaign: dict, ctx: dict) -> dict:
 
     hypotheses = parsed.get("hypotheses", [])
     attack_surface = parsed.get("attack_surface", [])
+
+    # Pull CVE intel for the stack the LLM fingerprinted. vulnx is passive intel (no target),
+    # so it runs regardless of autonomy level and auto-marks taxonomy coverage from each hit.
+    tech_stack = [t for t in parsed.get("tech_stack", []) if isinstance(t, str) and t.strip()]
+    if tech_stack:
+        queue_tool_job(campaign_id, campaign["project_id"], "vulnx",
+                       {"techs": tech_stack[:5], "limit": 5})
+        _append_event(campaign_id, "tool.queued",
+                      f"Queued vulnx CVE intel for {', '.join(tech_stack[:5])}", phase="recon")
 
     created = len(hypotheses)
     # Store hypotheses as a campaign event (no engagement_id available to insert into hypotheses table)

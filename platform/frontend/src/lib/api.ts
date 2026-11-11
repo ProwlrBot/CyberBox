@@ -567,6 +567,29 @@ export async function fetchEngines(): Promise<Engine[]> {
   return r.ok ? r.json() : [];
 }
 
+export type ToolSpec = {
+  name: string; category: string; danger_tier: "passive" | "active" | "exploit";
+  scope_required: number; description: string; modes: string[]; covers: string[];
+  executable: boolean; available: boolean;
+};
+
+export async function fetchToolSpecs(mode?: "manual" | "ai"): Promise<ToolSpec[]> {
+  const qs = mode ? `?mode=${mode}` : "";
+  const r = await fetch(`/api/v1/tools/specs${qs}`, { headers: headers() });
+  return r.ok ? r.json() : [];
+}
+
+export async function runTool(
+  projectId: string, name: string, args: Record<string, unknown>,
+): Promise<{ execution_id: string; status: string; output: any; error: string | null }> {
+  const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/tools/${encodeURIComponent(name)}/run`, {
+    method: "POST", headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify({ args }),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || (await r.text()));
+  return r.json();
+}
+
 export async function fetchEngagements(projectId: string): Promise<EngagementSummary[]> {
   const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/engagements`, { headers: headers() });
   return r.ok ? r.json() : [];
