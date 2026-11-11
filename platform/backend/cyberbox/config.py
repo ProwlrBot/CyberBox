@@ -15,6 +15,31 @@ def _home() -> Path:
     return Path(preferred).expanduser()
 
 
+def _is_wsl() -> bool:
+    """WSL2's drvfs/mmap quirks make WAL unreliable; detect it to pick a safe journal mode."""
+    try:
+        return "microsoft" in Path("/proc/version").read_text().lower()
+    except OSError:
+        return False
+
+
+def _default_journal_mode() -> str:
+    # WSL2 → DELETE (avoids WAL's mmap-based SHM hang). Real FS (VPS/ext4) → WAL (fast + durable).
+    env = os.environ.get("CYBERBOX_DB_JOURNAL", "").strip().upper()
+    if env in ("WAL", "DELETE", "TRUNCATE", "PERSIST"):
+        return env
+    return "DELETE" if _is_wsl() else "WAL"
+
+
+def _default_synchronous() -> str:
+    # NEVER OFF on authoritative data. NORMAL is durable under WAL (loses at most the
+    # last uncommitted txn on power loss, never corrupts). Floor any override at NORMAL.
+    env = os.environ.get("CYBERBOX_DB_SYNC", "").strip().upper()
+    if env in ("NORMAL", "FULL", "EXTRA"):
+        return env
+    return "NORMAL"
+
+
 @dataclass
 class Settings:
     home: Path = field(default_factory=_home)
@@ -38,6 +63,8 @@ class Settings:
     )
     gori_url: str = os.environ.get("CYBERBOX_GORI_URL", "http://127.0.0.1:8080")
     gori_pat: str = os.environ.get("CYBERBOX_GORI_PAT", os.environ.get("CAIDO_PAT", ""))
+    db_journal_mode: str = field(default_factory=_default_journal_mode)
+    db_synchronous: str = field(default_factory=_default_synchronous)
 
     @property
     def db_path(self) -> Path:

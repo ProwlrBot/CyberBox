@@ -14,15 +14,17 @@ _lock = threading.RLock()  # RLock: init_db() holds lock then calls conn()→_co
 
 
 def _connect() -> sqlite3.Connection:
-    # Serialize initial connections — journal_mode=DELETE conversion needs exclusive lock.
-    # On WSL2, WAL mode's mmap-based SHM causes permanent hangs; DELETE mode avoids it.
+    # Serialize initial connections (journal-mode conversion needs an exclusive lock).
+    # Journal mode + synchronous are env-aware (config): WAL+NORMAL on a real FS (durable
+    # and fast), DELETE+NORMAL on WSL2 (WAL's mmap SHM hangs there). Never synchronous=OFF.
+    s = get_settings()
     with _lock:
-        c = sqlite3.connect(get_settings().db_path, check_same_thread=False, timeout=60)
+        c = sqlite3.connect(s.db_path, check_same_thread=False, timeout=60)
         c.row_factory = sqlite3.Row
-        c.execute("PRAGMA journal_mode = DELETE")
+        c.execute(f"PRAGMA journal_mode = {s.db_journal_mode}")
         c.execute("PRAGMA foreign_keys = ON")
         c.execute("PRAGMA busy_timeout = 15000")
-        c.execute("PRAGMA synchronous = OFF")  # WSL2: skip fsync on every commit
+        c.execute(f"PRAGMA synchronous = {s.db_synchronous}")
         return c
 
 
@@ -34,51 +36,76 @@ def conn() -> sqlite3.Connection:
     return c
 
 
-def ensure_delete_journal() -> None:
-    """WAL→DELETE migration. Uses backup() API to avoid WSL2 mmap/SHM hang.
-    Safe to call every startup — no-op when already in DELETE mode."""
-    import shutil
+def ensure_journal_mode() -> None:
+    """Bring the DB to the configured journal mode before uvicorn spawns threads.
+
+    WAL (or other) target: a plain PRAGMA sets it, non-destructively.
+    DELETE target on a DB currently in WAL (WSL2): migrate via the backup() API to avoid
+    the mmap/SHM hang. Guarded by a cross-process lock, verified with integrity_check, and
+    non-destructive — the original is copied to <db>.pre_migrate.bak before replacement and
+    stale WAL/SHM are removed only after their committed content is confirmed in the new DB.
+    """
     import os
-    db_path = get_settings().db_path
+    import fcntl
+    import shutil
+    s = get_settings()
+    db_path = str(s.db_path)
+    target = s.db_journal_mode.lower()
 
-    # Quick check: if already in DELETE mode and no WAL file, skip
-    wal_path = str(db_path) + "-wal"
-    shm_path = str(db_path) + "-shm"
-    has_wal = os.path.exists(wal_path)
-    if not has_wal:
-        c = sqlite3.connect(str(db_path), timeout=10)
-        mode = c.execute("PRAGMA journal_mode").fetchone()[0]
-        c.close()
-        if mode == "delete":
-            return  # already good
-
-    # Merge WAL into a fresh DB in DELETE mode via backup() API (no SHM needed)
-    tmp_path = str(db_path) + ".migrate_tmp"
+    lock_path = db_path + ".migrate.lock"
+    lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
     try:
-        src = sqlite3.connect(str(db_path), timeout=10, isolation_level=None)
-        src.execute("PRAGMA busy_timeout = 5000")
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        has_wal = os.path.exists(db_path + "-wal")
+
+        c = sqlite3.connect(db_path, timeout=30)
+        try:
+            current = c.execute("PRAGMA journal_mode").fetchone()[0].lower()
+            if target != "delete":
+                new = c.execute(f"PRAGMA journal_mode = {s.db_journal_mode}").fetchone()[0].lower()
+                c.execute(f"PRAGMA synchronous = {s.db_synchronous}")
+                if new != target:
+                    raise RuntimeError(f"could not set journal_mode={target}, got {new}")
+                return
+            if current == "delete" and not has_wal:
+                return  # already in the target state
+        finally:
+            c.close()
+
+        # target == delete but DB is in WAL (or a stale WAL exists): migrate via backup().
+        tmp_path = db_path + ".migrate_tmp"
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
+        src = sqlite3.connect(db_path, timeout=30, isolation_level=None)
+        src.execute("PRAGMA busy_timeout = 10000")
+        try:
+            src.execute("PRAGMA wal_checkpoint(PASSIVE)")  # fold committed frames in if possible
+        except sqlite3.OperationalError:
+            pass  # may fail on WSL2 SHM; backup() still copies committed WAL content
         dst = sqlite3.connect(tmp_path, isolation_level=None)
         src.backup(dst)
         src.close()
         dst.execute("PRAGMA journal_mode = DELETE")
-        dst.execute("PRAGMA synchronous = OFF")
+        dst.execute(f"PRAGMA synchronous = {s.db_synchronous}")
+        integ = dst.execute("PRAGMA integrity_check").fetchone()[0]
         dst.close()
-        # Remove any WAL/SHM created during dst operations
         for ext in ["-wal", "-shm"]:
             p = tmp_path + ext
             if os.path.exists(p):
                 os.unlink(p)
-        shutil.move(tmp_path, str(db_path))
+        if integ != "ok":
+            os.unlink(tmp_path)
+            raise RuntimeError(f"migrated DB failed integrity_check: {integ!r}")
+
+        shutil.copy2(db_path, db_path + ".pre_migrate.bak")  # keep a recoverable original
+        shutil.move(tmp_path, db_path)
         for ext in ["-wal", "-shm"]:
-            p = str(db_path) + ext
+            p = db_path + ext
             if os.path.exists(p):
                 os.unlink(p)
-    except Exception as exc:
-        if os.path.exists(tmp_path):
-            os.unlink(tmp_path)
-        raise RuntimeError(f"journal_mode migration failed: {exc}") from exc
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        os.close(lock_fd)
 
 
 def init_db() -> None:

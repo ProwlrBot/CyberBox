@@ -25,8 +25,8 @@ TITLE = "CyberBox"
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     get_settings().ensure_dirs()
-    # Migrate WAL→DELETE before any concurrent threads open connections (WSL2 fix)
-    db.ensure_delete_journal()
+    # Bring DB to the configured journal mode before concurrent threads open connections
+    db.ensure_journal_mode()
     db.init_db()
     seed.seed()
     model_svc.seed_providers()
