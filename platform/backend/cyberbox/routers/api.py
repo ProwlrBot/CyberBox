@@ -14,7 +14,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from .. import db
@@ -25,6 +25,7 @@ from ..services import github as github_svc
 from ..services import scheduler as scheduler_svc
 from ..services import surface as surface_svc
 from ..services import sarif as sarif_svc
+from ..services import remediation as remediation_svc
 from ..services import notify as notify_svc
 from ..services import gori as gori_svc
 from ..services import cve as cve_svc
@@ -1344,6 +1345,27 @@ def github_scan_sarif(scan_id: str, _user: dict = Depends(current_user)) -> dict
     if not scan:
         raise HTTPException(status_code=404, detail="scan not found")
     return sarif_svc.to_sarif(scan["findings"])
+
+
+@router.get("/github/scans/{scan_id}/fix-plan")
+def github_scan_fix_plan(scan_id: str, _user: dict = Depends(current_user)) -> dict:
+    """Detect→remediate: per-finding guidance + deterministic suggested fixes (read-only)."""
+    try:
+        return remediation_svc.build_plan(scan_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/github/scans/{scan_id}/fix.patch")
+def github_scan_fix_patch(scan_id: str, _user: dict = Depends(current_user)) -> Response:
+    """Unified-diff patch of every deterministic single-line fix. Operator applies it;
+    CyberBox never writes to the repo or opens a PR on its own."""
+    try:
+        patch = remediation_svc.unified_diff(scan_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return Response(content=patch, media_type="text/x-patch",
+                    headers={"Content-Disposition": f'attachment; filename="{scan_id}.patch"'})
 
 
 class PostResultsIn(BaseModel):

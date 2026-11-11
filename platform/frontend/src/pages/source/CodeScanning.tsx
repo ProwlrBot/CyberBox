@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { GitPullRequest, Play, Download, FileCode2, ShieldAlert } from "lucide-react";
+import { GitPullRequest, Play, Download, FileCode2, ShieldAlert, Wrench } from "lucide-react";
 import { getApiKey } from "../../lib/api";
 
 type Finding = {
@@ -12,6 +12,12 @@ type Scan = {
   summary: { counts?: Record<string, number>; total?: number }; created_at: string;
   findings?: Finding[];
 };
+
+type FixItem = {
+  finding_id: string; detector: string; cwe: string | null; guidance: string;
+  original_line: string | null; suggested_line: string | null; auto_fixable: boolean;
+};
+type FixPlan = { scan_id: string; total: number; auto_fixable: number; items: FixItem[] };
 
 const SEV_CLASS: Record<string, string> = {
   critical: "crit", high: "high", medium: "med", low: "low",
@@ -37,6 +43,8 @@ function Gate({ scan }: { scan: Scan }) {
 export default function CodeScanning() {
   const [scans, setScans] = useState<Scan[]>([]);
   const [selected, setSelected] = useState<Scan | null>(null);
+  const [fixPlan, setFixPlan] = useState<FixPlan | null>(null);
+  const [loadingFixes, setLoadingFixes] = useState(false);
   const [loading, setLoading] = useState(true);
   const [repo, setRepo] = useState("");
   const [scope, setScope] = useState("full");
@@ -60,8 +68,30 @@ export default function CodeScanning() {
   useEffect(() => { loadScans(); }, [loadScans]);
 
   async function openScan(id: string) {
+    setFixPlan(null);
     const resp = await fetch(`/api/v1/github/scans/${id}`, { headers: headers() });
     if (resp.ok) setSelected(await resp.json());
+  }
+
+  async function loadFixes(id: string) {
+    setLoadingFixes(true);
+    try {
+      const resp = await fetch(`/api/v1/github/scans/${id}/fix-plan`, { headers: headers() });
+      if (resp.ok) setFixPlan(await resp.json());
+    } finally {
+      setLoadingFixes(false);
+    }
+  }
+
+  async function downloadPatch(id: string) {
+    const resp = await fetch(`/api/v1/github/scans/${id}/fix.patch`, { headers: headers() });
+    if (!resp.ok) return;
+    const text = await resp.text();
+    if (!text.trim()) return;
+    const url = URL.createObjectURL(new Blob([text], { type: "text/x-patch" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = `cyberbox-${id.slice(0, 8)}.patch`; a.click();
+    URL.revokeObjectURL(url);
   }
 
   async function runScan() {
@@ -189,10 +219,36 @@ export default function CodeScanning() {
                     {selected.scope} · <Gate scan={selected} /> · {selected.summary?.total ?? 0} finding(s)
                   </div>
                 </div>
-                <button className="cbx-btn cbx-btn-ghost" onClick={() => downloadSarif(selected.id)}>
-                  <Download size={13} /> SARIF
-                </button>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {(selected.findings ?? []).length > 0 && (
+                    <button className="cbx-btn cbx-btn-ghost" onClick={() => loadFixes(selected.id)}>
+                      <Wrench size={13} /> {loadingFixes ? "…" : "Suggest fixes"}
+                    </button>
+                  )}
+                  <button className="cbx-btn cbx-btn-ghost" onClick={() => downloadSarif(selected.id)}>
+                    <Download size={13} /> SARIF
+                  </button>
+                </div>
               </div>
+
+              {fixPlan && (
+                <div className="cbx-panel" style={{ marginBottom: 12, background: "var(--bg)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span className="cbx-panel-title" style={{ margin: 0 }}>
+                      Remediation · {fixPlan.auto_fixable}/{fixPlan.total} auto-fixable
+                    </span>
+                    {fixPlan.auto_fixable > 0 && (
+                      <button className="cbx-btn cbx-btn-primary" style={{ padding: "6px 12px", fontSize: 12 }}
+                        onClick={() => downloadPatch(selected.id)}>
+                        <Download size={12} /> Download .patch
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 6 }}>
+                    Suggestions only — CyberBox never edits your repo or opens a PR. Review the patch and apply it yourself.
+                  </div>
+                </div>
+              )}
               {(selected.findings ?? []).length === 0 ? (
                 <div style={{ color: "var(--good)", padding: "14px 0", fontSize: 13 }}>No findings — gate passed.</div>
               ) : (
@@ -215,6 +271,25 @@ export default function CodeScanning() {
                           {f.snippet}
                         </pre>
                       )}
+                      {(() => {
+                        const fix = fixPlan?.items.find((i) => i.finding_id === f.id);
+                        if (!fix) return null;
+                        return (
+                          <div style={{ marginTop: 8, borderLeft: "2px solid var(--accent)", paddingLeft: 10 }}>
+                            <div style={{ fontSize: 11.5, color: "var(--text)" }}>
+                              {fix.cwe && <span className="cbx-mono" style={{ color: "var(--accent)", marginRight: 6 }}>{fix.cwe}</span>}
+                              {fix.guidance}
+                            </div>
+                            {fix.suggested_line && (
+                              <pre className="cbx-mono" style={{ fontSize: 11, background: "rgba(74,222,128,0.07)",
+                                padding: "7px 9px", borderRadius: 5, marginTop: 6, marginBottom: 0, overflow: "auto",
+                                color: "var(--good)", border: "1px solid rgba(74,222,128,0.25)" }}>
+                                + {fix.suggested_line.trim()}
+                              </pre>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   ))}
                 </div>
