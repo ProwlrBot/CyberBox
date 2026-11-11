@@ -30,6 +30,7 @@ const ReconPage    = lazy(() => import("./pages/hunt/Recon"));
 const Raptor       = lazy(() => import("./pages/source/Raptor"));
 const Repositories = lazy(() => import("./pages/source/Repositories"));
 const CodeScanning = lazy(() => import("./pages/source/CodeScanning"));
+const NewPentest   = lazy(() => import("./pages/pentests/NewPentest"));
 const SourceGraph  = lazy(() => import("./pages/source/SourceGraph"));
 const PatchIntel      = lazy(() => import("./pages/source/PatchIntel"));
 const GitLabProfile   = lazy(() => import("./pages/source/GitLabProfile"));
@@ -61,6 +62,7 @@ export interface NavSection { id: string; label: string; items: NavItem[] }
 
 export const NAV_SECTIONS: NavSection[] = [
   { id: "hunt", label: "HUNT", items: [
+    { label: "New Pentest", path: "/pentests/new", Icon: Crosshair },
     { label: "Targets",   path: "/hunt/targets",   Icon: Target },
     { label: "Recon",     path: "/hunt/recon",     Icon: Search },
     { label: "Traffic",   path: "/hunt/traffic",   Icon: Activity },
@@ -140,6 +142,7 @@ export const appRoutes: RouteObject[] = [
   { path: "hunt/techniques",   element: <Suspense fallback={null}><Techniques /></Suspense> },
   // Source
   { path: "source/raptor",    element: <Suspense fallback={null}><Raptor /></Suspense> },
+  { path: "pentests/new",     element: <Suspense fallback={null}><NewPentest /></Suspense> },
   { path: "source/code-scan", element: <Suspense fallback={null}><CodeScanning /></Suspense> },
   { path: "source/repos",     element: <Suspense fallback={null}><Repositories/></Suspense> },
   { path: "source/graph",     element: <Suspense fallback={null}><SourceGraph /></Suspense> },

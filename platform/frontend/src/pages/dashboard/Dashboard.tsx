@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, X, RefreshCw } from "lucide-react";
+import SecurityOverview from "../../components/SecurityOverview";
 import {
   fetchProjects, fetchScore, fetchEvents, fetchCampaigns,
   createCampaign, fetchProviders,
@@ -85,6 +86,12 @@ export default function Dashboard() {
 
   return (
     <div className="mc-page">
+      <SecurityOverview
+        score={score?.score ?? 100}
+        openFindings={totalFindings}
+        critical={critical}
+        campaigns={campaigns.length}
+      />
       <div className="mc-kpi-row">
         <KPI label="Active Campaigns" value={campaigns.length} sub={`${running} running`} subClass={running > 0 ? "good" : undefined} />
         <KPI label="Open Findings" value={totalFindings} sub={critical > 0 ? `${critical} critical` : "clear"} subClass={critical > 0 ? "bad" : "good"} />

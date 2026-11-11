@@ -3,53 +3,35 @@ import { GitPullRequest, Play, Download, FileCode2, ShieldAlert } from "lucide-r
 import { getApiKey } from "../../lib/api";
 
 type Finding = {
-  id: string;
-  severity: string;
-  file: string;
-  line: number;
-  detector: string;
-  message: string;
-  snippet: string | null;
+  id: string; severity: string; file: string; line: number;
+  detector: string; message: string; snippet: string | null;
 };
-
 type Scan = {
-  id: string;
-  repo: string;
-  revision: string | null;
-  base_revision: string | null;
-  pr_number: number | null;
-  trigger: string;
-  scope: string;
-  status: string;
-  fail_on: string;
-  exit_code: number | null;
-  summary: { counts?: Record<string, number>; total?: number };
-  created_at: string;
+  id: string; repo: string; revision: string | null; pr_number: number | null;
+  trigger: string; scope: string; status: string; fail_on: string; exit_code: number | null;
+  summary: { counts?: Record<string, number>; total?: number }; created_at: string;
   findings?: Finding[];
 };
 
-const SEV_COLOR: Record<string, string> = {
-  critical: "var(--bad)",
-  high: "var(--red, var(--bad))",
-  medium: "var(--warn)",
-  low: "var(--info)",
+const SEV_CLASS: Record<string, string> = {
+  critical: "crit", high: "high", medium: "med", low: "low",
 };
 
 function headers(): Record<string, string> {
   const key = getApiKey();
-  return key ? { "X-Api-Key": key, "Content-Type": "application/json" } : { "Content-Type": "application/json" };
+  return key
+    ? { "X-Api-Key": key, "Content-Type": "application/json" }
+    : { "Content-Type": "application/json" };
 }
 
 function Gate({ scan }: { scan: Scan }) {
-  if (scan.status !== "completed") {
-    return <span style={{ color: "var(--muted)" }}>{scan.status}</span>;
+  if (scan.status === "running") {
+    return <span className="cbx-gate idle"><span className="cbx-pulse" /> scanning</span>;
   }
-  const failed = scan.exit_code === 2;
-  return (
-    <span style={{ color: failed ? "var(--bad)" : "var(--good)", fontWeight: 600 }}>
-      {failed ? "✗ failed" : "✓ passed"}
-    </span>
-  );
+  if (scan.status !== "completed") return <span className="cbx-gate idle">{scan.status}</span>;
+  return scan.exit_code === 2
+    ? <span className="cbx-gate fail">✗ failed</span>
+    : <span className="cbx-gate pass">✓ passed</span>;
 }
 
 export default function CodeScanning() {
@@ -75,9 +57,7 @@ export default function CodeScanning() {
     }
   }, []);
 
-  useEffect(() => {
-    loadScans();
-  }, [loadScans]);
+  useEffect(() => { loadScans(); }, [loadScans]);
 
   async function openScan(id: string) {
     const resp = await fetch(`/api/v1/github/scans/${id}`, { headers: headers() });
@@ -86,8 +66,7 @@ export default function CodeScanning() {
 
   async function runScan() {
     if (!repo.trim()) return;
-    setRunning(true);
-    setError("");
+    setRunning(true); setError("");
     try {
       const body: Record<string, unknown> = { repo: repo.trim(), scope, fail_on: failOn };
       if (scope === "diff" && base.trim()) body.base = base.trim();
@@ -115,100 +94,77 @@ export default function CodeScanning() {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url;
-    a.download = `cyberbox-${id.slice(0, 8)}.sarif`;
-    a.click();
+    a.href = url; a.download = `cyberbox-${id.slice(0, 8)}.sarif`; a.click();
     URL.revokeObjectURL(url);
   }
 
-  const card: React.CSSProperties = {
-    background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 8, padding: 16,
-  };
-
   return (
-    <div style={{ padding: 24, color: "var(--text)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-        <GitPullRequest size={20} />
-        <h1 style={{ margin: 0, fontSize: 20 }}>Code Scanning</h1>
-      </div>
-      <p style={{ color: "var(--muted)", marginTop: 4, marginBottom: 20, fontSize: 13 }}>
-        Diff-scoped or full-tree security scan of a repo. Exit code 2 fails the CI gate at or
-        above the <code>fail_on</code> severity. SARIF 2.1.0 exportable to GitHub code scanning.
+    <div className="cbx-page">
+      <div className="cbx-eyebrow">Repositories / code scanning</div>
+      <h1 className="cbx-h1">Code Scanning</h1>
+      <p className="cbx-sub">
+        Diff-scoped or full-tree security scan with false-positive suppression. The gate fails
+        (exit 2) at or above <code>fail_on</code>; SARIF 2.1.0 exports to GitHub code scanning.
       </p>
 
-      {/* run form */}
-      <div style={{ ...card, marginBottom: 20 }}>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
-          <label style={{ flex: "2 1 280px", fontSize: 12, color: "var(--muted)" }}>
-            Repository (local checkout path)
-            <input value={repo} onChange={(e) => setRepo(e.target.value)}
-              placeholder="/path/to/repo"
-              style={{ width: "100%", marginTop: 4, padding: "8px 10px", background: "var(--bg)",
-                border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)" }} />
+      {/* run bar */}
+      <div className="cbx-panel" style={{ marginBottom: 20 }}>
+        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-end" }}>
+          <label className="cbx-field" style={{ flex: "2 1 280px" }}>
+            Repository (local checkout)
+            <input value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="/path/to/repo" />
           </label>
-          <label style={{ fontSize: 12, color: "var(--muted)" }}>
+          <label className="cbx-field">
             Scope
-            <select value={scope} onChange={(e) => setScope(e.target.value)}
-              style={{ display: "block", marginTop: 4, padding: "8px 10px", background: "var(--bg)",
-                border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)" }}>
+            <select value={scope} onChange={(e) => setScope(e.target.value)}>
               <option value="full">full tree</option>
               <option value="diff">diff (PR)</option>
             </select>
           </label>
           {scope === "diff" && (
-            <label style={{ fontSize: 12, color: "var(--muted)" }}>
+            <label className="cbx-field">
               Diff base
-              <input value={base} onChange={(e) => setBase(e.target.value)} placeholder="origin/main"
-                style={{ display: "block", marginTop: 4, padding: "8px 10px", background: "var(--bg)",
-                  border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", width: 130 }} />
+              <input value={base} onChange={(e) => setBase(e.target.value)} placeholder="origin/main" style={{ width: 130 }} />
             </label>
           )}
-          <label style={{ fontSize: 12, color: "var(--muted)" }}>
+          <label className="cbx-field">
             Fail on
-            <select value={failOn} onChange={(e) => setFailOn(e.target.value)}
-              style={{ display: "block", marginTop: 4, padding: "8px 10px", background: "var(--bg)",
-                border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)" }}>
+            <select value={failOn} onChange={(e) => setFailOn(e.target.value)}>
               <option value="critical">critical</option>
               <option value="high">high</option>
               <option value="medium">medium</option>
               <option value="low">low</option>
             </select>
           </label>
-          <button onClick={runScan} disabled={running || !repo.trim()}
-            style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 16px",
-              background: "var(--accent)", color: "var(--bg)", border: "none", borderRadius: 6,
-              fontWeight: 600, cursor: running ? "wait" : "pointer", opacity: running ? 0.6 : 1 }}>
+          <button className="cbx-btn cbx-btn-primary" onClick={runScan} disabled={running || !repo.trim()}>
             <Play size={14} /> {running ? "Scanning…" : "Run scan"}
           </button>
         </div>
         {error && <div style={{ color: "var(--bad)", fontSize: 12, marginTop: 10 }}>{error}</div>}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.2fr)", gap: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 0.9fr) minmax(0, 1.25fr)", gap: 20 }}>
         {/* scans list */}
-        <div style={card}>
-          <h2 style={{ fontSize: 14, marginTop: 0, marginBottom: 12, color: "var(--muted)" }}>Recent scans</h2>
+        <div className="cbx-panel">
+          <div className="cbx-panel-title">Recent scans</div>
           {loading ? (
             <div style={{ color: "var(--muted)" }}>Loading…</div>
           ) : scans.length === 0 ? (
-            <div style={{ textAlign: "center", color: "var(--muted)", padding: "32px 0" }}>
-              <GitPullRequest size={28} style={{ opacity: 0.4 }} />
+            <div className="cbx-empty">
+              <GitPullRequest size={28} />
               <div style={{ marginTop: 8 }}>No scans yet</div>
             </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
               {scans.map((s) => (
-                <button key={s.id} onClick={() => openScan(s.id)}
-                  style={{ textAlign: "left", background: selected?.id === s.id ? "var(--surface)" : "transparent",
-                    border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)",
-                    cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontFamily: "monospace", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {s.repo.split("/").slice(-1)[0]}
-                    {s.pr_number ? ` #${s.pr_number}` : ""}
+                <button key={s.id} className={`cbx-row ${selected?.id === s.id ? "is-active" : ""}`}
+                  onClick={() => openScan(s.id)}>
+                  <span className="cbx-mono" style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {s.repo.split("/").slice(-1)[0]}{s.pr_number ? ` #${s.pr_number}` : ""}
                     <span style={{ color: "var(--muted)", marginLeft: 8 }}>{s.scope}</span>
                   </span>
                   <span style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 12 }}>
-                    <span style={{ color: "var(--muted)" }}>{s.summary?.total ?? 0}</span>
+                    <span className="cbx-mono" style={{ color: "var(--muted)" }}>{s.summary?.total ?? 0}</span>
                     <Gate scan={s} />
                   </span>
                 </button>
@@ -217,48 +173,45 @@ export default function CodeScanning() {
           )}
         </div>
 
-        {/* findings detail */}
-        <div style={card}>
+        {/* detail */}
+        <div className="cbx-panel">
           {!selected ? (
-            <div style={{ textAlign: "center", color: "var(--muted)", padding: "48px 0" }}>
-              <FileCode2 size={28} style={{ opacity: 0.4 }} />
+            <div className="cbx-empty">
+              <FileCode2 size={28} />
               <div style={{ marginTop: 8 }}>Select a scan to view findings</div>
             </div>
           ) : (
             <>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
                 <div>
-                  <div style={{ fontFamily: "monospace", fontSize: 13 }}>{selected.repo}</div>
-                  <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-                    {selected.scope} · gate <Gate scan={selected} /> · {selected.summary?.total ?? 0} finding(s)
+                  <div className="cbx-mono" style={{ fontSize: 13 }}>{selected.repo}</div>
+                  <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4, display: "flex", gap: 8, alignItems: "center" }}>
+                    {selected.scope} · <Gate scan={selected} /> · {selected.summary?.total ?? 0} finding(s)
                   </div>
                 </div>
-                <button onClick={() => downloadSarif(selected.id)}
-                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px",
-                    background: "transparent", color: "var(--text)", border: "1px solid var(--border)",
-                    borderRadius: 6, cursor: "pointer", fontSize: 12 }}>
+                <button className="cbx-btn cbx-btn-ghost" onClick={() => downloadSarif(selected.id)}>
                   <Download size={13} /> SARIF
                 </button>
               </div>
               {(selected.findings ?? []).length === 0 ? (
-                <div style={{ color: "var(--good)", padding: "16px 0" }}>No findings — gate passed.</div>
+                <div style={{ color: "var(--good)", padding: "14px 0", fontSize: 13 }}>No findings — gate passed.</div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {(selected.findings ?? []).map((f) => (
-                    <div key={f.id} style={{ border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <ShieldAlert size={13} style={{ color: SEV_COLOR[f.severity] }} />
-                        <span style={{ color: SEV_COLOR[f.severity], fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>
-                          {f.severity}
+                    <div key={f.id} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                        <span className={`cbx-sev ${SEV_CLASS[f.severity]}`}>
+                          <ShieldAlert size={11} /> {f.severity}
                         </span>
-                        <span style={{ fontSize: 12 }}>{f.detector}</span>
+                        <span style={{ fontSize: 12.5 }}>{f.detector}</span>
                       </div>
-                      <div style={{ fontFamily: "monospace", fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
+                      <div className="cbx-mono" style={{ fontSize: 11, color: "var(--muted)", marginTop: 6 }}>
                         {f.file}:{f.line}
                       </div>
                       {f.snippet && (
-                        <pre style={{ fontFamily: "monospace", fontSize: 11, background: "var(--bg)", padding: "6px 8px",
-                          borderRadius: 4, marginTop: 6, marginBottom: 0, overflow: "auto", color: "var(--text)" }}>
+                        <pre className="cbx-mono" style={{ fontSize: 11, background: "var(--bg)", padding: "7px 9px",
+                          borderRadius: 5, marginTop: 7, marginBottom: 0, overflow: "auto", color: "var(--text)",
+                          border: "1px solid var(--border)" }}>
                           {f.snippet}
                         </pre>
                       )}

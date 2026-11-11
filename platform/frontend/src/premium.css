@@ -1,0 +1,176 @@
+/* ============================================================================
+   CyberBox premium component layer — a distinctive security-tool visual system.
+   Signature: near-black depth, acid-yellow (#e4f222) signal with low-alpha glow,
+   JetBrains Mono for every datum, scanline texture, left-rail severity coding.
+   Built on the Prowlr tokens in styles.css. Classes are prefixed .cbx- to avoid
+   colliding with the existing .cb- component classes.
+   ============================================================================ */
+
+:root {
+  --cbx-accent-dim: #b8c21a;
+  --cbx-glow: 0 0 0 1px rgba(228, 242, 34, 0.14), 0 8px 30px -12px rgba(228, 242, 34, 0.25);
+  --cbx-radius: 10px;
+  --cbx-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* ---- page scaffold ---- */
+.cbx-page { padding: 28px 32px; color: var(--text); max-width: 1180px; }
+.cbx-eyebrow {
+  font-family: var(--cbx-mono); font-size: 10px; letter-spacing: 0.22em;
+  text-transform: uppercase; color: var(--accent); font-weight: 500;
+}
+.cbx-h1 { font-size: 24px; font-weight: 600; margin: 6px 0 4px; letter-spacing: -0.01em; }
+.cbx-sub { color: var(--muted); font-size: 13px; margin: 0 0 24px; max-width: 62ch; line-height: 1.5; }
+
+/* ---- hero band with scanline + radial glow ---- */
+.cbx-hero {
+  position: relative; overflow: hidden; border: 1px solid var(--border);
+  border-radius: var(--cbx-radius); padding: 26px 28px; margin-bottom: 24px;
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(228,242,34,0.08), transparent 42%),
+    linear-gradient(180deg, var(--panel-2), var(--panel));
+}
+.cbx-hero::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0.4;
+  background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(255,255,255,0.012) 3px 4px);
+}
+.cbx-hero > * { position: relative; }
+
+/* ---- panels ---- */
+.cbx-panel {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--cbx-radius); padding: 18px;
+}
+.cbx-panel-title {
+  font-family: var(--cbx-mono); font-size: 10px; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--muted); margin: 0 0 14px;
+}
+
+/* ---- metric tiles ---- */
+.cbx-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.cbx-metric {
+  position: relative; background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--cbx-radius); padding: 16px 16px 14px; overflow: hidden;
+  transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.cbx-metric::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, var(--accent), transparent 70%); opacity: 0.8;
+}
+.cbx-metric:hover { transform: translateY(-2px); border-color: #2d323a; box-shadow: var(--cbx-glow); }
+.cbx-metric-label {
+  font-family: var(--cbx-mono); font-size: 10px; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--muted);
+}
+.cbx-metric-value {
+  font-family: var(--cbx-mono); font-size: 30px; font-weight: 500; line-height: 1.1;
+  margin-top: 10px; color: var(--text); font-variant-numeric: tabular-nums;
+}
+.cbx-metric-value.is-accent { color: var(--accent); }
+.cbx-metric-foot { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+/* ---- security score ring ---- */
+.cbx-ring-wrap { display: flex; align-items: center; gap: 20px; }
+.cbx-ring { position: relative; width: 112px; height: 112px; flex-shrink: 0; }
+.cbx-ring svg { transform: rotate(-90deg); }
+.cbx-ring-num {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  font-family: var(--cbx-mono); font-size: 26px; font-weight: 500; color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- severity chips (left-rail coded) ---- */
+.cbx-sev {
+  display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px 2px 7px;
+  border-radius: 4px; font-family: var(--cbx-mono); font-size: 10px; font-weight: 500;
+  letter-spacing: 0.06em; text-transform: uppercase; border: 1px solid var(--border);
+  border-left-width: 3px;
+}
+.cbx-sev.crit { border-left-color: var(--bad); color: var(--bad); background: rgba(248,113,113,0.07); }
+.cbx-sev.high { border-left-color: #fb7185; color: #fb7185; background: rgba(251,113,133,0.07); }
+.cbx-sev.med  { border-left-color: var(--warn); color: var(--warn); background: rgba(251,191,36,0.07); }
+.cbx-sev.low  { border-left-color: var(--info); color: var(--info); background: rgba(96,165,250,0.07); }
+
+/* ---- gate pill (pass/fail) ---- */
+.cbx-gate { display: inline-flex; align-items: center; gap: 5px; font-family: var(--cbx-mono);
+  font-size: 11px; font-weight: 500; padding: 2px 9px; border-radius: 20px; }
+.cbx-gate.pass { color: var(--good); background: rgba(74,222,128,0.1); border: 1px solid rgba(74,222,128,0.25); }
+.cbx-gate.fail { color: var(--bad); background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.25); }
+.cbx-gate.idle { color: var(--muted); background: var(--panel-2); border: 1px solid var(--border); }
+
+/* ---- choice cards (Pentests type chooser) ---- */
+.cbx-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.cbx-choice {
+  position: relative; text-align: left; cursor: pointer; background: var(--panel);
+  border: 1px solid var(--border); border-radius: var(--cbx-radius); padding: 22px;
+  transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+  overflow: hidden;
+}
+.cbx-choice::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0;
+  background: radial-gradient(90% 60% at 100% 0%, rgba(228,242,34,0.08), transparent 55%);
+  transition: opacity 0.14s ease;
+}
+.cbx-choice:hover { transform: translateY(-3px); border-color: #30353d; box-shadow: 0 14px 40px -18px rgba(0,0,0,0.8); }
+.cbx-choice.is-selected { border-color: var(--accent); box-shadow: var(--cbx-glow); }
+.cbx-choice.is-selected::after { opacity: 1; }
+.cbx-choice-badge {
+  width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center;
+  background: rgba(228,242,34,0.1); color: var(--accent); border: 1px solid rgba(228,242,34,0.22);
+  margin-bottom: 14px;
+}
+.cbx-choice-title { font-size: 16px; font-weight: 600; margin: 0 0 6px; }
+.cbx-choice-desc { font-size: 12.5px; color: var(--muted); line-height: 1.5; margin: 0 0 16px; }
+.cbx-choice-feat { display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: var(--text); padding: 5px 0; }
+.cbx-choice-feat svg { color: var(--accent); flex-shrink: 0; }
+.cbx-choice-radio {
+  position: absolute; top: 20px; right: 20px; width: 18px; height: 18px; border-radius: 50%;
+  border: 1.5px solid var(--border);
+}
+.cbx-choice.is-selected .cbx-choice-radio { border-color: var(--accent); background:
+  radial-gradient(circle, var(--accent) 0 42%, transparent 46%); }
+
+/* ---- buttons ---- */
+.cbx-btn {
+  display: inline-flex; align-items: center; gap: 7px; font: inherit; font-size: 13px;
+  font-weight: 600; padding: 9px 18px; border-radius: 7px; cursor: pointer; border: 1px solid transparent;
+  transition: filter 0.12s ease, transform 0.08s ease;
+}
+.cbx-btn:active { transform: translateY(1px); }
+.cbx-btn-primary { background: var(--accent); color: #0a0b0c; }
+.cbx-btn-primary:hover { filter: brightness(1.08); }
+.cbx-btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+.cbx-btn-ghost { background: transparent; color: var(--text); border-color: var(--border); }
+.cbx-btn-ghost:hover { border-color: #3a404a; background: var(--panel-2); }
+
+/* ---- inputs ---- */
+.cbx-field { display: grid; gap: 5px; font-family: var(--cbx-mono); font-size: 10px;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.cbx-field input, .cbx-field select {
+  font-family: Inter, sans-serif; font-size: 13px; text-transform: none; letter-spacing: 0;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 7px;
+  color: var(--text); padding: 9px 11px; outline: none; transition: border-color 0.12s ease;
+}
+.cbx-field input:focus, .cbx-field select:focus { border-color: var(--accent); }
+
+/* ---- data rows ---- */
+.cbx-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  border: 1px solid var(--border); border-left: 2px solid var(--border);
+  border-radius: 7px; padding: 10px 12px; background: var(--panel);
+  cursor: pointer; transition: border-color 0.1s ease, background 0.1s ease;
+}
+.cbx-row:hover { border-left-color: var(--accent); background: var(--panel-2); }
+.cbx-row.is-active { border-left-color: var(--accent); background: var(--panel-2); }
+.cbx-mono { font-family: var(--cbx-mono); font-variant-numeric: tabular-nums; }
+
+/* ---- scan status pulse ---- */
+.cbx-pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+  box-shadow: 0 0 0 0 rgba(228,242,34,0.5); animation: cbx-pulse 1.6s infinite; }
+@keyframes cbx-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(228,242,34,0.5); }
+  70% { box-shadow: 0 0 0 7px rgba(228,242,34,0); }
+  100% { box-shadow: 0 0 0 0 rgba(228,242,34,0); }
+}
+.cbx-empty { text-align: center; color: var(--muted); padding: 44px 0; }
+.cbx-empty svg { opacity: 0.35; }
