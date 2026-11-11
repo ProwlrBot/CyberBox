@@ -15,6 +15,7 @@ from .config import get_settings
 from .hub import hub
 from .services import executions
 from .services import model as model_svc
+from .services import tool_runner
 from .routers import api
 from . import __version__
 
@@ -24,12 +25,15 @@ TITLE = "CyberBox"
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     get_settings().ensure_dirs()
+    # Migrate WAL→DELETE before any concurrent threads open connections (WSL2 fix)
+    db.ensure_delete_journal()
     db.init_db()
     seed.seed()
     model_svc.seed_providers()
     bootstrap_admin()
     hub.bind_loop(asyncio.get_running_loop())
     executions.recover()
+    asyncio.create_task(tool_runner.start_runner())
     yield
 
 

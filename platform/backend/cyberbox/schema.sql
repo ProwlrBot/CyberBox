@@ -651,3 +651,65 @@ CREATE TABLE IF NOT EXISTS campaign_events (
     occurred_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_campaign_events_campaign ON campaign_events(campaign_id);
+
+-- ── Techniques (active methodology guides) ────────────────────────────────────
+CREATE TABLE IF NOT EXISTS techniques (
+    id           TEXT PRIMARY KEY,
+    name         TEXT NOT NULL,
+    slug         TEXT NOT NULL UNIQUE,
+    description  TEXT,
+    category     TEXT NOT NULL DEFAULT 'web',
+    difficulty   TEXT NOT NULL DEFAULT 'medium',
+    cwe_classes  TEXT NOT NULL DEFAULT '[]',
+    tags         TEXT NOT NULL DEFAULT '[]',
+    builtin      INTEGER NOT NULL DEFAULT 1,
+    created_at   TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS technique_stages (
+    id            TEXT PRIMARY KEY,
+    technique_id  TEXT NOT NULL REFERENCES techniques(id) ON DELETE CASCADE,
+    stage_order   INTEGER NOT NULL,
+    name          TEXT NOT NULL,
+    description   TEXT,
+    goal          TEXT
+);
+
+CREATE TABLE IF NOT EXISTS technique_tests (
+    id          TEXT PRIMARY KEY,
+    stage_id    TEXT NOT NULL REFERENCES technique_stages(id) ON DELETE CASCADE,
+    test_order  INTEGER NOT NULL,
+    name        TEXT NOT NULL,
+    description TEXT,
+    payload     TEXT,
+    tool        TEXT,
+    endpoint    TEXT,
+    expected    TEXT,
+    manual      INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS technique_runs (
+    id            TEXT PRIMARY KEY,
+    technique_id  TEXT NOT NULL REFERENCES techniques(id),
+    project_id    TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    target_host   TEXT,
+    status        TEXT NOT NULL DEFAULT 'active',
+    created_at    TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS technique_test_results (
+    id           TEXT PRIMARY KEY,
+    run_id       TEXT NOT NULL REFERENCES technique_runs(id) ON DELETE CASCADE,
+    test_id      TEXT NOT NULL REFERENCES technique_tests(id),
+    status       TEXT NOT NULL DEFAULT 'pending',
+    notes        TEXT,
+    result       TEXT,
+    completed_at TEXT,
+    UNIQUE (run_id, test_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_techniques_category ON techniques(category);
+CREATE INDEX IF NOT EXISTS idx_technique_stages_tech ON technique_stages(technique_id, stage_order);
+CREATE INDEX IF NOT EXISTS idx_technique_tests_stage ON technique_tests(stage_id, test_order);
+CREATE INDEX IF NOT EXISTS idx_technique_runs_project ON technique_runs(project_id);
+CREATE INDEX IF NOT EXISTS idx_technique_results_run ON technique_test_results(run_id);

@@ -13,7 +13,7 @@ import urllib.request
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -910,6 +910,98 @@ def complete_playbook_step(run_id: str, step_id: str, body: StepComplete,
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+# ── Techniques ────────────────────────────────────────────────────────────────
+
+@router.get("/techniques")
+def list_techniques(category: str | None = None,
+                    _user: dict = Depends(current_user)) -> list[dict]:
+    if category:
+        rows = db.query("SELECT * FROM techniques WHERE category=? ORDER BY name", [category])
+    else:
+        rows = db.query("SELECT * FROM techniques ORDER BY category, name")
+    return [db.decode_row(r) for r in rows]
+
+
+@router.get("/techniques/{technique_id}")
+def get_technique(technique_id: str, _user: dict = Depends(current_user)) -> dict:
+    tech = db.query_one("SELECT * FROM techniques WHERE id=? OR slug=?",
+                        [technique_id, technique_id])
+    if not tech:
+        raise HTTPException(status_code=404, detail="technique not found")
+    tech = db.decode_row(tech)
+    stages = db.query(
+        "SELECT * FROM technique_stages WHERE technique_id=? ORDER BY stage_order",
+        [tech["id"]]
+    )
+    for stage in stages:
+        stage["tests"] = db.query(
+            "SELECT * FROM technique_tests WHERE stage_id=? ORDER BY test_order",
+            [stage["id"]]
+        )
+    tech["stages"] = stages
+    return tech
+
+
+class TechniqueRunCreate(BaseModel):
+    project_id: str
+    target_host: str = ""
+
+
+@router.post("/techniques/{technique_id}/runs", status_code=201)
+def create_technique_run(technique_id: str, body: TechniqueRunCreate,
+                         user: dict = Depends(current_user)) -> dict:
+    tech = db.query_one("SELECT id FROM techniques WHERE id=? OR slug=?",
+                        [technique_id, technique_id])
+    if not tech:
+        raise HTTPException(status_code=404, detail="technique not found")
+    proj = db.query_one("SELECT id FROM projects WHERE id=?", [body.project_id])
+    if not proj:
+        raise HTTPException(status_code=404, detail="project not found")
+    run_id = str(uuid.uuid4())
+    db.insert("technique_runs", {
+        "id": run_id, "technique_id": tech["id"],
+        "project_id": body.project_id, "target_host": body.target_host,
+        "status": "active", "created_at": _now(),
+    })
+    return {"id": run_id, "technique_id": tech["id"], "status": "active"}
+
+
+@router.get("/techniques/{technique_id}/runs/{run_id}")
+def get_technique_run(technique_id: str, run_id: str,
+                      _user: dict = Depends(current_user)) -> dict:
+    run = db.query_one("SELECT * FROM technique_runs WHERE id=?", [run_id])
+    if not run:
+        raise HTTPException(status_code=404, detail="run not found")
+    results = db.query(
+        "SELECT * FROM technique_test_results WHERE run_id=?", [run_id]
+    )
+    run["results"] = {r["test_id"]: r for r in results}
+    return run
+
+
+class TestResultUpdate(BaseModel):
+    status: str  # pending | done | skipped | finding
+    notes: str = ""
+    result: str = ""
+
+
+@router.put("/technique-runs/{run_id}/tests/{test_id}")
+def update_test_result(run_id: str, test_id: str, body: TestResultUpdate,
+                       _user: dict = Depends(current_user)) -> dict:
+    run = db.query_one("SELECT id FROM technique_runs WHERE id=?", [run_id])
+    if not run:
+        raise HTTPException(status_code=404, detail="run not found")
+    db.upsert(
+        "technique_test_results",
+        {"id": str(uuid.uuid4()), "run_id": run_id, "test_id": test_id,
+         "status": body.status, "notes": body.notes, "result": body.result,
+         "completed_at": _now() if body.status != "pending" else None},
+        conflict_cols=["run_id", "test_id"],
+        update_cols=["status", "notes", "result", "completed_at"],
+    )
+    return {"run_id": run_id, "test_id": test_id, "status": body.status}
+
+
 @router.post("/projects/{project_id}/hypotheses", status_code=201)
 def create_hypothesis(project_id: str, body: HypothesisCreate,
                       user: dict = Depends(current_user)) -> dict:
@@ -1134,9 +1226,15 @@ def hunt_dashboard() -> FileResponse:
 def gori_status(_user: dict = Depends(current_user)) -> dict:
     """Return whether Caido is reachable and which project is active."""
     s = get_settings()
-    info = gori_svc.get_project_info(s)
+    caido_local = gori_svc.probe_caido_local()
+    # Only call GraphQL if PAT is configured — avoids 2s timeout on every page load
+    info: dict = {}
+    if s.gori_pat:
+        info = gori_svc.get_project_info(s)
     return {
-        "reachable": bool(info),
+        "reachable": bool(info) or caido_local,
+        "caido_local": caido_local,
+        "caido_local_port": gori_svc.CAIDO_DEFAULT_PORT,
         "gori_url": s.gori_url,
         "pat_configured": bool(s.gori_pat),
         "caido_project": info,

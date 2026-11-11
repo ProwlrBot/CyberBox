@@ -174,3 +174,57 @@ export async function fetchCampaignReport(id: string): Promise<{ report_md: stri
   const r = await fetch(`/api/v1/campaigns/${encodeURIComponent(id)}/report`, { headers: headers() });
   return r.ok ? r.json() : { report_md: null };
 }
+
+// ── Techniques ────────────────────────────────────────────────────────────────
+
+export type TechniqueTest = {
+  id: string; name: string; description?: string; payload?: string;
+  tool?: string; endpoint?: string; expected?: string; manual: number;
+};
+
+export type TechniqueStage = {
+  id: string; name: string; description?: string; goal?: string;
+  stage_order: number; tests: TechniqueTest[];
+};
+
+export type Technique = {
+  id: string; name: string; slug: string; description?: string;
+  category: string; difficulty: string; cwe_classes: string[];
+  tags: string[]; stages?: TechniqueStage[];
+};
+
+export async function fetchTechniques(): Promise<Technique[]> {
+  const r = await fetch("/api/v1/techniques", { headers: headers() });
+  return r.ok ? r.json() : [];
+}
+
+export async function fetchTechnique(id: string): Promise<Technique | null> {
+  const r = await fetch(`/api/v1/techniques/${encodeURIComponent(id)}`, { headers: headers() });
+  return r.ok ? r.json() : null;
+}
+
+export async function createTechniqueRun(techniqueId: string, projectId: string, targetHost: string): Promise<{ id: string }> {
+  const r = await fetch(`/api/v1/techniques/${encodeURIComponent(techniqueId)}/runs`, {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify({ project_id: projectId, target_host: targetHost }),
+  });
+  if (!r.ok) throw new Error(`${r.status}`);
+  return r.json();
+}
+
+export async function fetchTechniqueRun(techniqueId: string, runId: string): Promise<{
+  id: string; technique_id: string; project_id: string; target_host: string;
+  status: string; results: Record<string, { status: string; notes?: string; result?: string }>;
+} | null> {
+  const r = await fetch(`/api/v1/techniques/${encodeURIComponent(techniqueId)}/runs/${encodeURIComponent(runId)}`, { headers: headers() });
+  return r.ok ? r.json() : null;
+}
+
+export async function updateTestResult(runId: string, testId: string, status: string, notes: string, result: string): Promise<void> {
+  await fetch(`/api/v1/technique-runs/${encodeURIComponent(runId)}/tests/${encodeURIComponent(testId)}`, {
+    method: "PUT",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify({ status, notes, result }),
+  });
+}

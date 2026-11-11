@@ -7,9 +7,21 @@ or CYBERBOX_GORI_PAT is not set — never raise.
 from __future__ import annotations
 
 import json
+import socket
 import sys
 import urllib.error
 import urllib.request
+
+CAIDO_DEFAULT_PORT = 8080
+
+
+def probe_caido_local(port: int = CAIDO_DEFAULT_PORT) -> bool:
+    """Fast TCP probe: is Caido UI reachable on localhost:{port}?"""
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=0.5):
+            return True
+    except (OSError, ConnectionRefusedError, socket.timeout):
+        return False
 
 
 def _caido_gql(query: str, variables: dict, settings) -> dict:
@@ -26,7 +38,7 @@ def _caido_gql(query: str, variables: dict, settings) -> dict:
         },
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=8) as resp:
+    with urllib.request.urlopen(req, timeout=2) as resp:
         return json.loads(resp.read())
 
 

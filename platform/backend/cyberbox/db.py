@@ -1,4 +1,4 @@
-"""SQLite access layer (WAL mode)."""
+"""SQLite access layer."""
 from __future__ import annotations
 
 import json
@@ -10,16 +10,20 @@ from typing import Any, Iterable
 from .config import get_settings
 
 _local = threading.local()
-_lock = threading.Lock()
+_lock = threading.RLock()  # RLock: init_db() holds lock then calls conn()→_connect()
 
 
 def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(get_settings().db_path, check_same_thread=False, timeout=30)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode = WAL")
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA busy_timeout = 5000")
-    return conn
+    # Serialize initial connections — journal_mode=DELETE conversion needs exclusive lock.
+    # On WSL2, WAL mode's mmap-based SHM causes permanent hangs; DELETE mode avoids it.
+    with _lock:
+        c = sqlite3.connect(get_settings().db_path, check_same_thread=False, timeout=60)
+        c.row_factory = sqlite3.Row
+        c.execute("PRAGMA journal_mode = DELETE")
+        c.execute("PRAGMA foreign_keys = ON")
+        c.execute("PRAGMA busy_timeout = 15000")
+        c.execute("PRAGMA synchronous = OFF")  # WSL2: skip fsync on every commit
+        return c
 
 
 def conn() -> sqlite3.Connection:
@@ -28,6 +32,53 @@ def conn() -> sqlite3.Connection:
         c = _connect()
         _local.conn = c
     return c
+
+
+def ensure_delete_journal() -> None:
+    """WAL→DELETE migration. Uses backup() API to avoid WSL2 mmap/SHM hang.
+    Safe to call every startup — no-op when already in DELETE mode."""
+    import shutil
+    import os
+    db_path = get_settings().db_path
+
+    # Quick check: if already in DELETE mode and no WAL file, skip
+    wal_path = str(db_path) + "-wal"
+    shm_path = str(db_path) + "-shm"
+    has_wal = os.path.exists(wal_path)
+    if not has_wal:
+        c = sqlite3.connect(str(db_path), timeout=10)
+        mode = c.execute("PRAGMA journal_mode").fetchone()[0]
+        c.close()
+        if mode == "delete":
+            return  # already good
+
+    # Merge WAL into a fresh DB in DELETE mode via backup() API (no SHM needed)
+    tmp_path = str(db_path) + ".migrate_tmp"
+    try:
+        src = sqlite3.connect(str(db_path), timeout=10, isolation_level=None)
+        src.execute("PRAGMA busy_timeout = 5000")
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        dst = sqlite3.connect(tmp_path, isolation_level=None)
+        src.backup(dst)
+        src.close()
+        dst.execute("PRAGMA journal_mode = DELETE")
+        dst.execute("PRAGMA synchronous = OFF")
+        dst.close()
+        # Remove any WAL/SHM created during dst operations
+        for ext in ["-wal", "-shm"]:
+            p = tmp_path + ext
+            if os.path.exists(p):
+                os.unlink(p)
+        shutil.move(tmp_path, str(db_path))
+        for ext in ["-wal", "-shm"]:
+            p = str(db_path) + ext
+            if os.path.exists(p):
+                os.unlink(p)
+    except Exception as exc:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise RuntimeError(f"journal_mode migration failed: {exc}") from exc
 
 
 def init_db() -> None:
