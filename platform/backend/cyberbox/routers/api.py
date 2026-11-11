@@ -33,6 +33,7 @@ from ..services import model as model_svc
 from ..services import api_genome as genome_svc
 from ..services import campaign as campaign_svc
 from ..services import fingerprint as fingerprint_svc
+from ..services import taxonomy as taxonomy_svc
 
 router = APIRouter(prefix="/api/v1", tags=["api"])
 
@@ -2181,6 +2182,63 @@ def create_provider(body: ProviderCreate, _user: dict = Depends(current_user)) -
 @router.delete("/providers/{provider_id}", status_code=204, response_model=None)
 def delete_provider(provider_id: str, _user: dict = Depends(current_user)) -> None:
     model_svc.delete_provider(provider_id)
+
+
+# ---------------------------------------------------------------------------
+# Methodology spine — taxonomy, per-target coverage, chain escalation
+# ---------------------------------------------------------------------------
+
+class CoverageIn(BaseModel):
+    status: str = Field(pattern="^(none|partial|covered)$")
+    evidence_ids: list[str] = Field(default_factory=list)
+    note: str | None = None
+
+
+@router.get("/taxonomy/families")
+def taxonomy_families(_user: dict = Depends(current_user)) -> list[dict]:
+    return taxonomy_svc.list_families()
+
+
+@router.get("/taxonomy/classes")
+def taxonomy_classes(family: int | None = None, _user: dict = Depends(current_user)) -> list[dict]:
+    return taxonomy_svc.list_classes(family)
+
+
+@router.get("/taxonomy/checklist")
+def taxonomy_checklist(_user: dict = Depends(current_user)) -> dict:
+    return {"reporting_checklist": taxonomy_svc.reporting_checklist(),
+            "informational_standalone": taxonomy_svc.informational_list()}
+
+
+@router.get("/taxonomy/classes/{class_id}/reportability")
+def taxonomy_reportability(class_id: str, _user: dict = Depends(current_user)) -> dict:
+    try:
+        return taxonomy_svc.reportability(class_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/projects/{project_id}/coverage")
+def project_coverage(project_id: str, _user: dict = Depends(current_user)) -> dict:
+    _require_project(project_id)
+    return {"summary": taxonomy_svc.coverage_summary(project_id),
+            "classes": taxonomy_svc.coverage(project_id)}
+
+
+@router.post("/projects/{project_id}/coverage/{class_id}")
+def set_project_coverage(project_id: str, class_id: str, body: CoverageIn,
+                         _user: dict = Depends(current_user)) -> dict:
+    _require_project(project_id)
+    try:
+        return taxonomy_svc.set_coverage(project_id, class_id, body.status, body.evidence_ids, body.note)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/projects/{project_id}/chains")
+def project_chains(project_id: str, _user: dict = Depends(current_user)) -> list[dict]:
+    _require_project(project_id)
+    return taxonomy_svc.reachable_chains(project_id)
 
 
 # ---------------------------------------------------------------------------

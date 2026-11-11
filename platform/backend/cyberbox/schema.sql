@@ -945,3 +945,49 @@ CREATE TABLE IF NOT EXISTS notifications_log (
     created_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_notifications_log_created ON notifications_log(created_at);
+
+-- ── Methodology spine: the bug-bounty finding taxonomy ──────────────────────────
+-- Families, classes, chain recipes, and per-target coverage. This is the framework
+-- backbone: tools and AI are swappable engines that execute methodologies for classes;
+-- coverage and chains are the non-commoditized intelligence layer.
+
+CREATE TABLE IF NOT EXISTS taxonomy_families (
+    num         INTEGER PRIMARY KEY,
+    name        TEXT NOT NULL,
+    owasp       TEXT,
+    money_rank  INTEGER,                       -- 1..5 payout concentration (null = not a top-money family)
+    note        TEXT
+);
+
+CREATE TABLE IF NOT EXISTS taxonomy_classes (
+    id                TEXT PRIMARY KEY,         -- deterministic slug from family+name
+    family_num        INTEGER NOT NULL REFERENCES taxonomy_families(num),
+    name              TEXT NOT NULL,
+    priority          TEXT NOT NULL,            -- P1..P5 (Bugcrowd VRT baseline)
+    payout_rank       INTEGER NOT NULL,         -- 1..5 ($..$$$$$), runs opposite to priority
+    cwe               TEXT,
+    signal            TEXT,                     -- the tell that gives the class away
+    informational_only INTEGER NOT NULL DEFAULT 0, -- never report standalone (chain-only)
+    chain_component   INTEGER NOT NULL DEFAULT 0  -- participates in a §23 chain recipe
+);
+CREATE INDEX IF NOT EXISTS idx_taxonomy_classes_family ON taxonomy_classes(family_num);
+
+CREATE TABLE IF NOT EXISTS chain_recipes (
+    id              TEXT PRIMARY KEY,
+    name            TEXT NOT NULL,
+    result_impact   TEXT NOT NULL,
+    result_priority TEXT NOT NULL,              -- escalated priority the chain reaches
+    components      TEXT NOT NULL DEFAULT '[]'   -- JSON array of component descriptions
+);
+
+CREATE TABLE IF NOT EXISTS target_coverage (
+    id           TEXT PRIMARY KEY,
+    project_id   TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    class_id     TEXT NOT NULL REFERENCES taxonomy_classes(id),
+    status       TEXT NOT NULL DEFAULT 'none',  -- none | partial | covered
+    evidence_ids TEXT NOT NULL DEFAULT '[]',     -- JSON array of artifact/finding ids
+    note         TEXT,
+    updated_at   TEXT NOT NULL,
+    UNIQUE(project_id, class_id)
+);
+CREATE INDEX IF NOT EXISTS idx_target_coverage_project ON target_coverage(project_id);

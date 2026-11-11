@@ -1,0 +1,174 @@
+{
+  "version": "1.0.0",
+  "source": "RedAmon Bug Bounty Coverage 7.5.0 taxonomy (2026-10-30), adapted as the CyberBox methodology spine",
+  "priority_scale": {
+    "P1": "critical", "P2": "high", "P3": "medium", "P4": "low", "P5": "informational / not applicable"
+  },
+  "payout_scale": {
+    "note": "payout_rank 1..5 maps $..$$$$$ — what the class actually pays once dupe saturation and triage drift are priced in. Runs OPPOSITE to priority: a P5 primitive can be $$$$$ inside a chain.",
+    "1": "$", "2": "$$", "3": "$$$", "4": "$$$$", "5": "$$$$$"
+  },
+  "families": [
+    {"num": 1, "name": "Information Disclosure and Secrets", "owasp": "A02/A04:2025", "money_rank": null, "note": "The finding is the credential, not the disclosure."},
+    {"num": 2, "name": "HTTP Desync, Caching and Proxy", "owasp": "A05:2025", "money_rank": null, "note": "Front-end/back-end parsing disagreement; cache keyed wrong."},
+    {"num": 3, "name": "API and GraphQL Specific", "owasp": "API:2023", "money_rank": null, "note": "Object- and function-level authz on machine surface."},
+    {"num": 4, "name": "Infrastructure, DNS and Cloud", "owasp": "A05:2025", "money_rank": null, "note": "Dangling records, metadata, misconfigured buckets."},
+    {"num": 5, "name": "OAuth, SSO and Federation", "owasp": "A07:2025", "money_rank": 2, "note": "redirect_uri, state, token confusion — account takeover surface."},
+    {"num": 6, "name": "AI and LLM Attack Surface", "owasp": "LLM:2025", "money_rank": null, "note": "Indirect prompt injection into tool-calling agents (CWE-1427) fastest-growing scoped surface."},
+    {"num": 7, "name": "Supply Chain and CI/CD", "owasp": "A03:2025", "money_rank": null, "note": "Dependency confusion, runner poisoning, build-system compromise."},
+    {"num": 8, "name": "Cryptography and Token Handling", "owasp": "A02:2025", "money_rank": null, "note": "JWT confusion, weak secrets, predictable tokens."},
+    {"num": 9, "name": "Server-Side Request Forgery", "owasp": "A01:2025 (folded in)", "money_rank": 4, "note": "Value is reaching cloud metadata / internal services, not the DNS ping."},
+    {"num": 10, "name": "Server-Side Injection", "owasp": "A03:2025", "money_rank": 3, "note": "SQLi / RCE / SSTI at the top."},
+    {"num": 11, "name": "XML, Deserialization and Parser Attacks", "owasp": "A03/A08:2025", "money_rank": null, "note": "XXE, insecure deserialization, parser differentials."},
+    {"num": 12, "name": "Business Logic, Race Conditions and Workflow", "owasp": "A04:2025", "money_rank": 5, "note": "State machines, TOCTOU, idempotency, value extraction."},
+    {"num": 13, "name": "Authentication and Session Management", "owasp": "A07:2025", "money_rank": 2, "note": "Password reset, session fixation, 2FA bypass."},
+    {"num": 14, "name": "Broken Access Control and Authorization", "owasp": "A01:2025", "money_rank": 1, "note": "IDOR / BOLA / BFLA — highest paid family by concentration."},
+    {"num": 15, "name": "File Upload and Path Handling", "owasp": "A03/A04:2025", "money_rank": null, "note": "Unrestricted upload, path traversal, LFI."},
+    {"num": 16, "name": "Cross-Site Scripting and Client-Side Injection", "owasp": "A03:2025", "money_rank": null, "note": "Highest report VOLUME, not highest payout; dupe-heavy standalone."},
+    {"num": 17, "name": "Cross-Origin and Browser Trust", "owasp": "A05:2025", "money_rank": null, "note": "CORS, postMessage, cookie scope, CSP bypass."},
+    {"num": 18, "name": "Client-Side Request and Path Manipulation", "owasp": "A05:2025", "money_rank": null, "note": "CSPT, client-side path traversal into trusted fetches."},
+    {"num": 19, "name": "Content Spoofing, Redirects and Impersonation", "owasp": "A01:2025", "money_rank": null, "note": "Open redirect, dangling markup — chain fuel, weak alone."},
+    {"num": 20, "name": "Denial of Service and Resource Abuse", "owasp": "A04:2025", "money_rank": null, "note": "Mostly out of scope; narrow exceptions, isolated instances only."},
+    {"num": 21, "name": "Adjacent scope worth knowing", "owasp": null, "money_rank": null, "note": "Mobile, thick-client, binary surface bordering web scope."},
+    {"num": 22, "name": "Frontier classes, 2025 to 2026", "owasp": null, "money_rank": null, "note": "Newest techniques: agentic AI, HTTP/1.1 desync endgame, CSPT2CSRF."},
+    {"num": 23, "name": "Chains that turn a medium into a critical", "owasp": null, "money_rank": null, "note": "The escalation catalog. Most large payouts are 2-3 ordinary findings stacked."},
+    {"num": 24, "name": "Commonly closed as informational", "owasp": null, "money_rank": null, "note": "Never report standalone — only inside a chain or when the program explicitly asks."},
+    {"num": 25, "name": "Reporting checklist", "owasp": null, "money_rank": null, "note": "What moves a finding to the top of the triage queue."}
+  ],
+  "classes": [
+    {"family": 1, "name": "Disclosure of secrets for a publicly accessible asset", "priority": "P1", "payout_rank": 4, "cwe": "CWE-798", "signal": "Live provider key / token reachable without auth."},
+    {"family": 1, "name": "Disclosure of secrets for an internal asset", "priority": "P3", "payout_rank": 2, "cwe": "CWE-798", "signal": "Credential for an internal-only system."},
+    {"family": 1, "name": "Secrets in JavaScript bundles", "priority": "P2", "payout_rank": 3, "cwe": "CWE-798", "signal": "Keys inlined at build time; grep provider formats and identifiers containing secret/token/key/password/apiKey."},
+    {"family": 1, "name": "Disclosure of known public information / intentionally public samples", "priority": "P5", "payout_rank": 1, "cwe": "CWE-200", "signal": "Sample/demo data; usually informational.", "informational_only": true},
+
+    {"family": 14, "name": "IDOR reading another user's object (BOLA)", "priority": "P2", "payout_rank": 5, "cwe": "CWE-639", "signal": "Object id in path/body swaps to another tenant's record; read one record, not the table.", "chain_component": true},
+    {"family": 14, "name": "IDOR writing/modifying another user's object", "priority": "P1", "payout_rank": 5, "cwe": "CWE-639", "signal": "Mutation accepts a foreign object id and persists.", "chain_component": true},
+    {"family": 14, "name": "Broken function-level authorization (BFLA)", "priority": "P1", "payout_rank": 5, "cwe": "CWE-285", "signal": "Admin/privileged action reachable by a lower role; test the same action across roles.", "chain_component": true},
+    {"family": 14, "name": "Horizontal/vertical privilege escalation via mass assignment", "priority": "P1", "payout_rank": 4, "cwe": "CWE-915", "signal": "Role/owner field accepted on an update it shouldn't be.", "chain_component": true},
+
+    {"family": 13, "name": "Account takeover via password reset flaw", "priority": "P1", "payout_rank": 5, "cwe": "CWE-640", "signal": "Reset token predictable, host-header-poisoned, or trusts an attacker-controlled email.", "chain_component": true},
+    {"family": 13, "name": "2FA/OTP bypass", "priority": "P1", "payout_rank": 4, "cwe": "CWE-287", "signal": "OTP brute inside rate limit, response differential, or step skippable.", "chain_component": true},
+    {"family": 13, "name": "Session fixation / not invalidated on credential change", "priority": "P3", "payout_rank": 2, "cwe": "CWE-384", "signal": "Old session still valid after password/2FA/email change."},
+
+    {"family": 5, "name": "OAuth redirect_uri accepts attacker value", "priority": "P2", "payout_rank": 4, "cwe": "CWE-601", "signal": "redirect_uri validation loose; code/token leaks to attacker origin.", "chain_component": true},
+    {"family": 5, "name": "Missing/weak state parameter (OAuth CSRF)", "priority": "P3", "payout_rank": 2, "cwe": "CWE-352", "signal": "No per-request state; attacker binds their account.", "chain_component": true},
+
+    {"family": 10, "name": "SQL injection", "priority": "P1", "payout_rank": 4, "cwe": "CWE-89", "signal": "Error/boolean/time differential on a param reaching a query without prepare."},
+    {"family": 10, "name": "Server-side template injection (SSTI)", "priority": "P1", "payout_rank": 4, "cwe": "CWE-1336", "signal": "Template expression evaluates in a response field (e.g. {{7*7}} -> 49)."},
+    {"family": 10, "name": "OS command injection / RCE", "priority": "P1", "payout_rank": 5, "cwe": "CWE-78", "signal": "Shell metacharacters reach a command; OOB confirms blind."},
+
+    {"family": 9, "name": "SSRF reaching cloud metadata (IMDS)", "priority": "P1", "payout_rank": 5, "cwe": "CWE-918", "signal": "Request reaches 169.254.169.254 and returns role credentials.", "chain_component": true},
+    {"family": 9, "name": "Blind SSRF (OOB only)", "priority": "P3", "payout_rank": 2, "cwe": "CWE-918", "signal": "OOB DNS/HTTP callback, no internal reach yet — chain fuel.", "chain_component": true},
+
+    {"family": 12, "name": "Race condition on a limit (coupon/withdrawal/balance)", "priority": "P2", "payout_rank": 5, "cwe": "CWE-362", "signal": "Parallel requests exceed a server-enforced limit; measure state, not just status.", "chain_component": true},
+    {"family": 12, "name": "Business-logic workflow bypass", "priority": "P2", "payout_rank": 4, "cwe": "CWE-840", "signal": "Step skippable, price/quantity tamperable, state transition out of order."},
+
+    {"family": 16, "name": "Stored XSS (authenticated context)", "priority": "P2", "payout_rank": 3, "cwe": "CWE-79", "signal": "Payload persists and executes in another user's session.", "chain_component": true},
+    {"family": 16, "name": "Reflected XSS", "priority": "P3", "payout_rank": 2, "cwe": "CWE-79", "signal": "Param reflected into HTML/JS sink without encoding; dupe-heavy alone.", "chain_component": true},
+    {"family": 16, "name": "Self-XSS", "priority": "P5", "payout_rank": 1, "cwe": "CWE-79", "signal": "Only fires in attacker's own session — report only in a chain.", "informational_only": true, "chain_component": true},
+
+    {"family": 4, "name": "Subdomain takeover", "priority": "P2", "payout_rank": 3, "cwe": null, "signal": "Dangling CNAME to an unclaimed service.", "chain_component": true},
+    {"family": 15, "name": "Unrestricted file upload to web-exec path", "priority": "P1", "payout_rank": 4, "cwe": "CWE-434", "signal": "Upload reaches a path the server executes.", "chain_component": true},
+    {"family": 15, "name": "Path traversal / LFI", "priority": "P2", "payout_rank": 3, "cwe": "CWE-22", "signal": "../ reaches files outside the intended root.", "chain_component": true},
+
+    {"family": 6, "name": "Indirect prompt injection into a tool-calling agent", "priority": "P2", "payout_rank": 4, "cwe": "CWE-1427", "signal": "Untrusted content steers an agent's tool calls (fetch/exec).", "chain_component": true},
+    {"family": 2, "name": "HTTP request smuggling / desync", "priority": "P1", "payout_rank": 4, "cwe": "CWE-444", "signal": "Front-end/back-end disagree on request boundaries.", "chain_component": true},
+    {"family": 2, "name": "Web cache deception", "priority": "P2", "payout_rank": 3, "cwe": "CWE-525", "signal": "Authenticated page cached under a static-looking path.", "chain_component": true},
+    {"family": 18, "name": "Client-side path traversal (CSPT)", "priority": "P3", "payout_rank": 2, "cwe": "CWE-22", "signal": "Client builds a fetch path from user input into a trusted API call.", "chain_component": true},
+    {"family": 19, "name": "Open redirect", "priority": "P4", "payout_rank": 1, "cwe": "CWE-601", "signal": "redirect/next param sends user off-origin; chain fuel, weak alone.", "informational_only": true, "chain_component": true},
+    {"family": 7, "name": "Dependency confusion (internal package name)", "priority": "P1", "payout_rank": 4, "cwe": "CWE-427", "signal": "Internal package name resolvable from a public registry.", "chain_component": true}
+  ],
+  "chains": [
+    {"name": "Open redirect -> OAuth code theft -> ATO", "result_impact": "Full account takeover via leaked authorization code", "result_priority": "P1", "components": [
+      {"text": "Open redirect", "family": 19, "name": "Open redirect"},
+      {"text": "OAuth redirect_uri accepts attacker value", "family": 5, "name": "OAuth redirect_uri accepts attacker value"}]},
+    {"name": "Self-XSS + login CSRF -> stored XSS", "result_impact": "Real stored XSS against a victim", "result_priority": "P2", "components": [
+      {"text": "Self-XSS", "family": 16, "name": "Self-XSS"},
+      {"text": "login CSRF"}]},
+    {"name": "Blind SSRF + IMDSv1 -> cloud role credentials", "result_impact": "Cloud role credential theft — stops being a web bug", "result_priority": "P1", "components": [
+      {"text": "Blind SSRF (OOB only)", "family": 9, "name": "Blind SSRF (OOB only)"},
+      {"text": "IMDSv1 reachable"}]},
+    {"name": "IDOR email read + reset flow -> ATO", "result_impact": "Account takeover", "result_priority": "P1", "components": [
+      {"text": "IDOR reading another user's object (BOLA)", "family": 14, "name": "IDOR reading another user's object (BOLA)"},
+      {"text": "reset flow that trusts that email", "family": 13, "name": "Account takeover via password reset flaw"}]},
+    {"name": "Subdomain takeover + parent cookie -> session theft", "result_impact": "Session theft on the parent app", "result_priority": "P1", "components": [
+      {"text": "Subdomain takeover", "family": 4, "name": "Subdomain takeover"},
+      {"text": "cookie scoped to .example.com"}]},
+    {"name": "Cookie tossing + cookie-based XSS", "result_impact": "XSS from a P5 primitive", "result_priority": "P2", "components": [
+      {"text": "Cookie tossing"},
+      {"text": "cookie-based XSS"}]},
+    {"name": "Cache poisoning + self-only reflected XSS", "result_impact": "Stored, unauthenticated, served to everyone", "result_priority": "P1", "components": [
+      {"text": "Cache poisoning"},
+      {"text": "Reflected XSS", "family": 16, "name": "Reflected XSS"}]},
+    {"name": "Web cache deception + authed token page -> mass credential theft", "result_impact": "Mass credential theft", "result_priority": "P1", "components": [
+      {"text": "Web cache deception", "family": 2, "name": "Web cache deception"},
+      {"text": "authenticated page containing a token"}]},
+    {"name": "File upload + LFI -> RCE", "result_impact": "RCE when neither alone is exploitable", "result_priority": "P1", "components": [
+      {"text": "Unrestricted file upload to web-exec path", "family": 15, "name": "Unrestricted file upload to web-exec path"},
+      {"text": "Path traversal / LFI", "family": 15, "name": "Path traversal / LFI"}]},
+    {"name": "Prototype pollution + gadget -> XSS/RCE", "result_impact": "XSS in the browser or RCE on Node", "result_priority": "P1", "components": [
+      {"text": "Prototype pollution"},
+      {"text": "gadget already on the page"}]},
+    {"name": "DOM clobbering + HTML injection", "result_impact": "Script execution with no script tag", "result_priority": "P2", "components": [
+      {"text": "DOM clobbering"},
+      {"text": "HTML injection"}]},
+    {"name": "CSPT + user-uploaded JSON -> OAuth takeover", "result_impact": "Forged API response the SPA trusts -> OAuth takeover", "result_priority": "P1", "components": [
+      {"text": "Client-side path traversal (CSPT)", "family": 18, "name": "Client-side path traversal (CSPT)"},
+      {"text": "user-uploaded JSON the SPA trusts"}]},
+    {"name": "Request smuggling + authed internal route", "result_impact": "Capturing other users' requests and credentials", "result_priority": "P1", "components": [
+      {"text": "HTTP request smuggling / desync", "family": 2, "name": "HTTP request smuggling / desync"},
+      {"text": "authenticated internal route"}]},
+    {"name": "Parser differential + proxy authz rule", "result_impact": "Admin access at the origin", "result_priority": "P1", "components": [
+      {"text": "Parser differential"},
+      {"text": "proxy authorization rule"}]},
+    {"name": "GraphQL alias batching + OTP -> 2FA brute", "result_impact": "2FA brute force inside the rate limit", "result_priority": "P1", "components": [
+      {"text": "GraphQL alias batching"},
+      {"text": "2FA/OTP bypass", "family": 13, "name": "2FA/OTP bypass"}]},
+    {"name": "Race condition + coupon/withdrawal limit", "result_impact": "Unbounded value extraction", "result_priority": "P2", "components": [
+      {"text": "Race condition on a limit (coupon/withdrawal/balance)", "family": 12, "name": "Race condition on a limit (coupon/withdrawal/balance)"}]},
+    {"name": "Indirect prompt injection + agent fetch tool -> SSRF + exfil", "result_impact": "SSRF and data exfiltration behind an LLM", "result_priority": "P1", "components": [
+      {"text": "Indirect prompt injection into a tool-calling agent", "family": 6, "name": "Indirect prompt injection into a tool-calling agent"},
+      {"text": "agent URL-fetch tool"}]},
+    {"name": "Dependency confusion + CI runner -> build compromise", "result_impact": "Build-system compromise", "result_priority": "P1", "components": [
+      {"text": "Dependency confusion (internal package name)", "family": 7, "name": "Dependency confusion (internal package name)"},
+      {"text": "CI runner that resolves it"}]},
+    {"name": "Exposed source map + hardcoded key", "result_impact": "P1 from a P3", "result_priority": "P1", "components": [
+      {"text": "Exposed source map"},
+      {"text": "hardcoded key in the recovered source", "family": 1, "name": "Secrets in JavaScript bundles"}]}
+  ],
+  "informational_standalone": [
+    "Missing security headers alone (CSP, HSTS, X-Frame-Options, X-Content-Type-Options)",
+    "Self-XSS with no delivery mechanism",
+    "Clickjacking on a page with no state-changing action",
+    "CSRF on logout, language switch, or a trivial preference",
+    "CSRF token not unique per request",
+    "Missing SPF or DMARC on a non-sending domain; spoofing that only reaches spam",
+    "Absence of rate limiting with no cost, lockout or data reached",
+    "Version and banner disclosure, software versions in response headers",
+    "Weak TLS configuration, certificate errors, no forward secrecy, mixed content",
+    "Open redirect on its own (out of scope on many programs)",
+    "User enumeration on its own (closed on most consumer platforms)",
+    "Autocomplete enabled, save-password allowed, plaintext password field, autocorrect enabled",
+    "No password policy, weak password policy, long session timeout, concurrent logins",
+    "Session not invalidated server-side only on logout; not invalidated on email or 2FA change",
+    "Reset token with a long expiry, or not invalidated after login or after a new request",
+    "OPTIONS or TRACE enabled",
+    "Internal IP disclosure, full path disclosure, descriptive stack trace",
+    "Publicly accessible robots.txt, GraphQL introspection enabled, missing SRI",
+    "Cookie scoped to the parent domain, missing HttpOnly on a non-session cookie",
+    "Missing CAA, missing DNSSEC, bitsquatting",
+    "A public CVE matched by version number only, with no verification on the target",
+    "Unpatched JavaScript libraries with no reachable sink",
+    "Raw, unvalidated scanner output (the single most common reason a report is closed)",
+    "Best-practice recommendations with no attack narrative"
+  ],
+  "reporting_checklist": [
+    "One finding per report, with the class named the way the program's taxonomy names it",
+    "Impact stated first, in the terms the business cares about: whose data, how many, what action, reversible or not",
+    "Reproduction that works from a clean session, with two accounts where the bug needs two",
+    "Minimal proof, not maximal exploitation. Read one record, not the table. Enumerate permissions read-only, never escalate further than needed to prove the class",
+    "The chain written out when it is a chain, with each link's own severity noted",
+    "No third-party or out-of-scope collateral, no DoS unless explicitly permitted, no data exfiltration beyond proof, nothing published",
+    "A concrete fix suggestion. It shortens triage and it is what separates a researcher from a scanner"
+  ]
+}

@@ -15,6 +15,7 @@ from .config import get_settings
 from .hub import hub
 from .services import executions
 from .services import model as model_svc
+from .services import taxonomy as taxonomy_svc
 from .services import tool_runner
 from .routers import api
 from . import __version__
@@ -30,6 +31,7 @@ async def lifespan(_app: FastAPI):
     db.init_db()
     migrations.migrate()
     seed.seed()
+    taxonomy_svc.ensure_seeded()
     model_svc.seed_providers()
     bootstrap_admin()
     hub.bind_loop(asyncio.get_running_loop())
