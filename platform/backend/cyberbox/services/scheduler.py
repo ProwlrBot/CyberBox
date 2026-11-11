@@ -8,6 +8,7 @@ or a CLI — so there is no always-on thread that could wedge startup on WSL2.
 Supported kinds:
   github_scan     spec: {repo, base?, scope?, fail_on?, source_id?} -> github.scan_repository
   surface_rescan  spec: {project_id?}                               -> surface.snapshot_and_drift
+  cve_intel_hunt  spec: {slug, mode?, theme?, repo?, timeout?}       -> cve_intel.run_hunt
 """
 from __future__ import annotations
 
@@ -16,7 +17,9 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from .. import db
-from . import events, github, notify, surface
+from . import cve_intel, events, github, notify, surface
+
+_KINDS = ("github_scan", "surface_rescan", "cve_intel_hunt")
 
 _LEASE_SECONDS = 300
 
@@ -34,8 +37,10 @@ def create_job(kind: str, interval_seconds: int, spec: dict | None = None,
                first_run_at: str | None = None) -> dict:
     if interval_seconds < 30:
         raise ValueError("interval_seconds must be >= 30")
-    if kind not in ("github_scan", "surface_rescan"):
+    if kind not in _KINDS:
         raise ValueError(f"unknown job kind {kind!r}")
+    if kind == "cve_intel_hunt" and not (spec or {}).get("slug"):
+        raise ValueError("cve_intel_hunt job missing spec.slug")
     now = _now_dt()
     job_id = str(uuid.uuid4())
     row = {"id": job_id, "project_id": project_id, "engagement_id": engagement_id,
@@ -103,6 +108,20 @@ def _execute(job: dict) -> dict:
                         f"Attack surface changed: {len(drift['added'])} new host(s)",
                         "New: " + ", ".join(drift["added"][:10]), severity="medium")
         return drift
+    if job["kind"] == "cve_intel_hunt":
+        slug = spec.get("slug")
+        if not slug:
+            raise ValueError("cve_intel_hunt job missing spec.slug")
+        result = cve_intel.run_hunt(
+            slug, mode=spec.get("mode", "static"), theme=bool(spec.get("theme")),
+            repo=spec.get("repo"), timeout=int(spec.get("timeout", 1800)))
+        if result.get("candidates"):
+            notify.send(
+                "cve_intel.candidates",
+                f"cve-intel hunt '{slug}': {result['candidates']} candidate(s)",
+                f"mode={result['mode']} · index={result.get('index_path')}",
+                severity="medium")
+        return result
     raise ValueError(f"unknown job kind {job['kind']!r}")
 
 

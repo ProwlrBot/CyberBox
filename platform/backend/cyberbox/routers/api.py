@@ -1378,7 +1378,7 @@ async def github_webhook(request: Request,
 
 # --- Scheduler: recurring scans + attack-surface drift ---------------------
 class ScheduledJobIn(BaseModel):
-    kind: str                       # github_scan | surface_rescan
+    kind: str                       # github_scan | surface_rescan | cve_intel_hunt
     interval_seconds: int
     spec: dict = Field(default_factory=dict)
     project_id: str | None = None
