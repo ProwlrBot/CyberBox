@@ -303,6 +303,17 @@ _CWE_CLASS_MAP: dict[str, tuple[int, str]] = {
 }
 
 
+def class_for_cwe(cwe: str) -> tuple[str | None, int | None]:
+    """Resolve a single CWE id (e.g. 'CWE-79') to its taxonomy (class_id, family_num), or
+    (None, None) if the CWE isn't mapped or the class doesn't exist. Public resolver shared by
+    the disclosures intel feed so hacktivity reports land on the same spine as engine evidence."""
+    found = _CWE_CLASS_MAP.get(str(cwe or "").strip().upper())
+    if not found:
+        return (None, None)
+    family, name = found
+    return (_class_id_if_exists(family, name), family)
+
+
 def classes_for_vulnx(hit: dict) -> list[str]:
     """Resolve a vulnx hit to taxonomy class ids via its tags + CWE, plus f4. Pure. De-duped."""
     refs: list[tuple[int, str]] = []

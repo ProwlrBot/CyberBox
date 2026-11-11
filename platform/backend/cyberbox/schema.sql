@@ -1049,6 +1049,44 @@ CREATE TABLE IF NOT EXISTS signals (
 CREATE INDEX IF NOT EXISTS idx_signals_project ON signals(project_id);
 CREATE INDEX IF NOT EXISTS idx_signals_source ON signals(project_id, source);
 
+-- Disclosed-report intel (HackerOne hacktivity et al). Global (not per-project): a market-wide
+-- feed of what's being found + paid, mapped onto the taxonomy spine by CWE. The enrichment
+-- columns are the "extra pull" — root cause → recurrence → patch → how-to-hunt, filled by an
+-- optional LLM pass so each disclosure becomes reusable methodology. Deduped by (source, report_id).
+CREATE TABLE IF NOT EXISTS disclosures (
+    id              TEXT PRIMARY KEY,
+    report_id       TEXT NOT NULL,
+    source          TEXT NOT NULL DEFAULT 'hackerone',
+    title           TEXT NOT NULL DEFAULT '',
+    url             TEXT NOT NULL DEFAULT '',
+    program_handle  TEXT,
+    program_name    TEXT,
+    severity        TEXT,                        -- none|low|medium|high|critical
+    cwe             TEXT,                        -- e.g. CWE-79
+    cve_ids         TEXT NOT NULL DEFAULT '[]',
+    bounty_amount   REAL,
+    currency        TEXT,
+    reporter        TEXT,
+    disclosed_at    TEXT,
+    summary         TEXT,                        -- hacktivity_summary (redacted blocks kept as-is)
+    substate        TEXT,
+    class_id        TEXT,                        -- resolved taxonomy class id (via CWE), NULL if unmapped
+    family_num      INTEGER,
+    -- enrichment ("the extra pull") — NULL until enriched
+    root_cause      TEXT,
+    recurrence      TEXT,                        -- how it can happen again
+    patch           TEXT,                        -- how it's fixed
+    hunt_guidance   TEXT,                        -- how to hunt / reproduce on targets
+    first_finder_edge TEXT,                      -- why the researcher got there first
+    improvement     TEXT,                        -- how we improve our own hunting
+    enriched_at     TEXT,
+    ingested_at     TEXT NOT NULL,
+    UNIQUE (source, report_id)
+);
+CREATE INDEX IF NOT EXISTS idx_disclosures_class ON disclosures(class_id);
+CREATE INDEX IF NOT EXISTS idx_disclosures_program ON disclosures(program_handle);
+CREATE INDEX IF NOT EXISTS idx_disclosures_disclosed ON disclosures(disclosed_at);
+
 -- OWASP WSTG v4.2 catalog: a second authoritative coverage axis over the same taxonomy spine.
 -- A WSTG test's per-target coverage is DERIVED from target_coverage via wstg_class_map (no own
 -- writes) so engine evidence auto-fills WSTG coverage too.

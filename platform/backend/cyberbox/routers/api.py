@@ -41,6 +41,7 @@ from ..services import js_diff as js_diff_svc
 from ..services import screenshots as screenshots_svc
 from ..services import toolspec as toolspec_svc
 from ..services import tool_runner
+from ..services import hacktivity as hacktivity_svc
 
 router = APIRouter(prefix="/api/v1", tags=["api"])
 
@@ -1075,6 +1076,73 @@ def import_tool_registry(path: str | None = None,
     # Default to the inventory file produced by the local cataloguer.
     inventory = path or str(get_settings().home / "tool_inventory.txt")
     return tool_registry.import_inventory(inventory)
+
+
+# ── Disclosed-report intel (hacktivity) ──────────────────────────────────────
+
+class HacktivitySyncIn(BaseModel):
+    owner: str = Field(default="kdairatchi")
+    repo: str = Field(default="hacktivity-bot")
+    path: str = Field(default="data/disclosures.jsonl")
+    ref: str = Field(default="HEAD")
+
+
+class HacktivityIngestIn(BaseModel):
+    jsonl: str = Field(min_length=1, description="JSONL feed, one hacktivity node per line")
+
+
+@router.post("/intel/hacktivity/sync")
+def hacktivity_sync(body: HacktivitySyncIn, _user: dict = Depends(current_user)) -> dict:
+    """Primary path — pull the bot-committed disclosures JSONL from a public repo and ingest it,
+    mapping each disclosure onto the taxonomy spine by CWE. Passive, public intel."""
+    try:
+        return hacktivity_svc.sync_from_github(body.owner, body.repo, body.path, body.ref)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"hacktivity sync failed: {exc}") from exc
+
+
+@router.post("/intel/hacktivity/ingest")
+def hacktivity_ingest(body: HacktivityIngestIn, _user: dict = Depends(current_user)) -> dict:
+    """Ingest a JSONL feed directly (paste / fallback producer)."""
+    return hacktivity_svc.ingest_jsonl(body.jsonl)
+
+
+@router.post("/intel/hacktivity/pull-live")
+def hacktivity_pull_live(limit: int = 25, _user: dict = Depends(current_user)) -> dict:
+    """Fallback — query H1 directly (sandbox/cf-bypass). Returns {fetched, inserted}; empty when
+    Cloudflare blocks the host."""
+    return hacktivity_svc.ingest_live(limit)
+
+
+@router.get("/intel/disclosures")
+def list_disclosures(class_id: str | None = None, program: str | None = None,
+                     severity: str | None = None, enriched: bool | None = None,
+                     _user: dict = Depends(current_user)) -> list[dict]:
+    return hacktivity_svc.list_disclosures(class_id=class_id, program=program,
+                                           severity=severity, enriched=enriched)
+
+
+@router.get("/intel/disclosures/{disclosure_id}")
+def get_disclosure(disclosure_id: str, _user: dict = Depends(current_user)) -> dict:
+    row = hacktivity_svc.get_disclosure(disclosure_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="disclosure not found")
+    return row
+
+
+@router.post("/intel/disclosures/{disclosure_id}/enrich")
+def enrich_disclosure(disclosure_id: str, provider_id: str | None = None,
+                      _user: dict = Depends(current_user)) -> dict:
+    """The 'extra pull' — derive reusable methodology (root cause → recurrence → patch →
+    how-to-hunt → first-finder edge → improvement) from a disclosure via an optional LLM pass.
+    Returns status=no-model when no provider is configured (enrichment is optional)."""
+    return hacktivity_svc.enrich_disclosure(disclosure_id, provider_id=provider_id)
+
+
+@router.get("/intel/market-by-class")
+def market_by_class(_user: dict = Depends(current_user)) -> list[dict]:
+    """Market-validated priority overlay — real bounty $ per taxonomy class from the wild."""
+    return hacktivity_svc.market_by_class()
 
 
 @router.get("/tools/specs")
