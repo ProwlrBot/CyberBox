@@ -161,6 +161,7 @@ JSON_COLUMNS = {
     "knowledge_citations", "result", "artifact_ids", "finding_ids",
     "technology_tags", "evidence_ids", "expected",
     "allowed_methods", "permissions", "reference_urls", "files_changed",
+    "hosts", "spec", "summary",
 }
 
 

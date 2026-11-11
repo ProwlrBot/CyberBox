@@ -847,3 +847,76 @@ CREATE TABLE IF NOT EXISTS revision_diffs (
 
 CREATE INDEX IF NOT EXISTS idx_source_revisions_source ON source_revisions(source_id);
 CREATE INDEX IF NOT EXISTS idx_revision_diffs_source ON revision_diffs(source_id);
+
+-- GitHub integration: diff-scoped code scanning (Semgrep/Strix-style). A github_scan is one
+-- scan of a repo at a revision (optionally a PR); code_findings are its results, keyed to the
+-- source+revision and exportable to SARIF 2.1.0. Outbound posting (PR comments, check-runs) is
+-- opt-in and uses a token read from the OS env — never stored here.
+CREATE TABLE IF NOT EXISTS github_scans (
+    id            TEXT PRIMARY KEY,
+    source_id     TEXT REFERENCES sources(id) ON DELETE SET NULL,
+    execution_id  TEXT REFERENCES executions(id) ON DELETE SET NULL,
+    repo          TEXT NOT NULL,                 -- owner/name or local path
+    revision      TEXT,                           -- head sha scanned
+    base_revision TEXT,                           -- diff base (for diff-scoped PR scans)
+    pr_number     INTEGER,
+    trigger       TEXT NOT NULL DEFAULT 'manual', -- manual | webhook | scheduled
+    scope         TEXT NOT NULL DEFAULT 'full',   -- full | diff
+    status        TEXT NOT NULL DEFAULT 'queued', -- queued | running | completed | failed
+    fail_on       TEXT NOT NULL DEFAULT 'high',   -- severity threshold that fails the gate
+    exit_code     INTEGER,                         -- 0 pass, 2 findings>=threshold, 1 error
+    summary       TEXT NOT NULL DEFAULT '{}',
+    created_at    TEXT NOT NULL,
+    finished_at   TEXT
+);
+
+CREATE TABLE IF NOT EXISTS code_findings (
+    id           TEXT PRIMARY KEY,
+    scan_id      TEXT NOT NULL REFERENCES github_scans(id) ON DELETE CASCADE,
+    source_id    TEXT REFERENCES sources(id) ON DELETE SET NULL,
+    revision     TEXT,
+    rule_id      TEXT NOT NULL,                   -- stable detector id -> SARIF ruleId
+    detector     TEXT NOT NULL,                   -- human name
+    severity     TEXT NOT NULL,                   -- critical | high | medium | low
+    file         TEXT NOT NULL,
+    line         INTEGER NOT NULL DEFAULT 1,
+    message      TEXT NOT NULL,
+    snippet      TEXT,
+    fingerprint  TEXT NOT NULL,                   -- dedup across scans (rule+file+line+snippet)
+    status       TEXT NOT NULL DEFAULT 'open',    -- open | resolved | dismissed
+    created_at   TEXT NOT NULL,
+    UNIQUE (scan_id, fingerprint)
+);
+CREATE INDEX IF NOT EXISTS idx_code_findings_scan ON code_findings(scan_id);
+CREATE INDEX IF NOT EXISTS idx_github_scans_repo ON github_scans(repo);
+
+-- Scheduler: recurring scans + attack-surface drift re-checks. The runner leases a due job,
+-- runs it, and reschedules by interval. Every job is bound to an engagement for policy.
+CREATE TABLE IF NOT EXISTS scheduled_jobs (
+    id              TEXT PRIMARY KEY,
+    project_id      TEXT REFERENCES projects(id) ON DELETE CASCADE,
+    engagement_id   TEXT REFERENCES engagements(id) ON DELETE CASCADE,
+    kind            TEXT NOT NULL,                 -- github_scan | surface_rescan | ...
+    spec            TEXT NOT NULL DEFAULT '{}',    -- job-specific args (repo, target, fail_on)
+    interval_seconds INTEGER NOT NULL,
+    enabled         INTEGER NOT NULL DEFAULT 1,
+    next_run_at     TEXT NOT NULL,
+    last_run_at     TEXT,
+    last_status     TEXT,
+    lease_owner     TEXT,
+    lease_expires_at TEXT,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_due ON scheduled_jobs(enabled, next_run_at);
+
+-- Attack-surface snapshots: each scan of a project's hosts is a snapshot; drift = the diff
+-- between consecutive snapshots (new/removed hosts, port/status changes).
+CREATE TABLE IF NOT EXISTS surface_snapshots (
+    id          TEXT PRIMARY KEY,
+    project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    hosts       TEXT NOT NULL DEFAULT '[]',        -- sorted list of host:port:scheme fingerprints
+    host_count  INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_surface_snapshots_project ON surface_snapshots(project_id, created_at);

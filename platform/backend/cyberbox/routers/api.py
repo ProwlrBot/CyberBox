@@ -21,6 +21,10 @@ from .. import db
 from ..auth import current_user, require_internal_service
 from ..config import get_settings
 from ..services import advisories, analytics, artifacts, bundles, capabilities, events, executions, knowledge, lifecycle, memory, playbooks, policy, project_templates, research, source_revision, tool_registry, triage, wordfence
+from ..services import github as github_svc
+from ..services import scheduler as scheduler_svc
+from ..services import surface as surface_svc
+from ..services import sarif as sarif_svc
 from ..services import gori as gori_svc
 from ..services import cve as cve_svc
 from ..services import model as model_svc
@@ -1297,6 +1301,133 @@ def record_diff(source_id: str, body: DiffIn, _user: dict = Depends(current_user
         source_id, body.from_revision, body.to_revision, files_changed=body.files_changed,
         summary=body.summary, security_relevant=body.security_relevant, advisory_id=body.advisory_id)
     return {"id": diff_id, "source_id": source_id}
+
+
+# --- GitHub integration: diff-scoped code scanning -------------------------
+class GithubScanIn(BaseModel):
+    repo: str                       # local checkout path (or owner/name with a clone_path source)
+    base: str | None = None
+    scope: str = "diff"             # diff | full
+    fail_on: str = "high"
+    pr_number: int | None = None
+    source_id: str | None = None
+    revision: str | None = None
+
+
+@router.post("/github/scan", status_code=201)
+def github_scan(body: GithubScanIn, _user: dict = Depends(current_user)) -> dict:
+    try:
+        return github_svc.scan_repository(
+            body.repo, base=body.base, scope=body.scope, fail_on=body.fail_on,
+            pr_number=body.pr_number, source_id=body.source_id, revision=body.revision)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/github/scans")
+def github_list_scans(repo: str | None = None, _user: dict = Depends(current_user)) -> list[dict]:
+    return github_svc.list_scans(repo=repo)
+
+
+@router.get("/github/scans/{scan_id}")
+def github_get_scan(scan_id: str, _user: dict = Depends(current_user)) -> dict:
+    scan = github_svc.get_scan(scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="scan not found")
+    return scan
+
+
+@router.get("/github/scans/{scan_id}/sarif")
+def github_scan_sarif(scan_id: str, _user: dict = Depends(current_user)) -> dict:
+    scan = github_svc.get_scan(scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="scan not found")
+    return sarif_svc.to_sarif(scan["findings"])
+
+
+class PostResultsIn(BaseModel):
+    token_env: str = "GITHUB_TOKEN"
+    confirm: bool = False
+
+
+@router.post("/github/scans/{scan_id}/post-results")
+def github_post_results(scan_id: str, body: PostResultsIn,
+                        _user: dict = Depends(current_user)) -> dict:
+    try:
+        return github_svc.post_results(scan_id, token_env=body.token_env, confirm=body.confirm)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/github/webhook")
+async def github_webhook(request: Request,
+                         x_hub_signature_256: str | None = Header(default=None),
+                         x_github_event: str | None = Header(default=None)) -> dict:
+    """GitHub webhook receiver. Authenticated by HMAC (not the API key) so GitHub can reach it.
+    Secret is read from $GITHUB_WEBHOOK_SECRET (env var name only — never stored)."""
+    body = await request.body()
+    secret = os.environ.get("GITHUB_WEBHOOK_SECRET")
+    if not github_svc.verify_signature(secret, body, x_hub_signature_256):
+        raise HTTPException(status_code=401, detail="invalid or missing webhook signature")
+    payload = json.loads(body or b"{}")
+    if x_github_event == "pull_request" and payload.get("action") in ("opened", "synchronize", "reopened"):
+        return {"handled": True, "scan": github_svc.handle_pull_request_event(payload)}
+    return {"handled": False, "event": x_github_event, "action": payload.get("action")}
+
+
+# --- Scheduler: recurring scans + attack-surface drift ---------------------
+class ScheduledJobIn(BaseModel):
+    kind: str                       # github_scan | surface_rescan
+    interval_seconds: int
+    spec: dict = Field(default_factory=dict)
+    project_id: str | None = None
+    engagement_id: str | None = None
+
+
+@router.post("/scheduler/jobs", status_code=201)
+def create_scheduled_job(body: ScheduledJobIn, _user: dict = Depends(current_user)) -> dict:
+    try:
+        return scheduler_svc.create_job(
+            body.kind, body.interval_seconds, spec=body.spec,
+            project_id=body.project_id, engagement_id=body.engagement_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/scheduler/jobs")
+def list_scheduled_jobs(enabled: bool | None = None,
+                        _user: dict = Depends(current_user)) -> list[dict]:
+    return scheduler_svc.list_jobs(enabled=enabled)
+
+
+@router.post("/scheduler/jobs/{job_id}/enabled")
+def set_job_enabled(job_id: str, enabled: bool, _user: dict = Depends(current_user)) -> dict:
+    job = scheduler_svc.set_enabled(job_id, enabled)
+    if not job:
+        raise HTTPException(status_code=404, detail="job not found")
+    return job
+
+
+@router.delete("/scheduler/jobs/{job_id}", status_code=204)
+def delete_scheduled_job(job_id: str, _user: dict = Depends(current_user)) -> None:
+    scheduler_svc.delete_job(job_id)
+
+
+@router.post("/scheduler/run-due")
+def run_due_jobs(_user: dict = Depends(current_user)) -> dict:
+    results = scheduler_svc.run_due()
+    return {"ran": len(results), "results": results}
+
+
+# --- Attack-surface monitoring --------------------------------------------
+@router.post("/projects/{project_id}/surface/snapshot", status_code=201)
+def surface_snapshot(project_id: str, _user: dict = Depends(current_user)) -> dict:
+    return surface_svc.snapshot(project_id)
+
+
+@router.get("/projects/{project_id}/surface/drift")
+def surface_drift(project_id: str, _user: dict = Depends(current_user)) -> dict:
+    return surface_svc.drift(project_id)
 
 
 @router.post("/projects/{project_id}/evidence-bundles", status_code=201)
