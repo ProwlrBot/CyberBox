@@ -2211,6 +2211,14 @@ def taxonomy_checklist(_user: dict = Depends(current_user)) -> dict:
             "informational_standalone": taxonomy_svc.informational_list()}
 
 
+@router.get("/taxonomy/classes/{class_id}/methodology")
+def taxonomy_methodology(class_id: str, _user: dict = Depends(current_user)) -> dict:
+    try:
+        return taxonomy_svc.methodology(class_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @router.get("/taxonomy/classes/{class_id}/reportability")
 def taxonomy_reportability(class_id: str, _user: dict = Depends(current_user)) -> dict:
     try:

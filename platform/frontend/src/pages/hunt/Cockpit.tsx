@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   LayoutGrid, Link2, Plug, X as XIcon, ShieldCheck, ShieldAlert, Search,
-  CircleDot, CheckCircle2, Circle, RefreshCw,
+  CircleDot, CheckCircle2, Circle, RefreshCw, ListChecks, Sparkles,
 } from "lucide-react";
 import {
   fetchProjects, fetchTaxonomyFamilies, fetchProjectCoverage, fetchProjectChains,
-  fetchEngines, setCoverage,
+  fetchEngines, setCoverage, fetchMethodology,
   type TaxFamily, type CoverageClass, type CoverageResponse, type Chain, type Engine,
+  type Methodology,
 } from "../../lib/api";
 
 // Payout "heat" ramp — acid-yellow family; brighter = more money once dupe/triage drift is priced in.
@@ -289,6 +290,17 @@ function ClassDrawer({ cls, feeds, onClose, onMark }: {
   onClose: () => void; onMark: (c: CoverageClass, s: "none" | "partial" | "covered") => void;
 }) {
   const reportable = cls.informational_only !== 1;
+  const [meth, setMeth] = useState<Methodology | null>(null);
+  const [methLoading, setMethLoading] = useState(true);
+  const [showAi, setShowAi] = useState(false);
+
+  useEffect(() => {
+    let dead = false;
+    setMethLoading(true); setMeth(null);
+    fetchMethodology(cls.id).then((m) => { if (!dead) { setMeth(m); setMethLoading(false); } });
+    return () => { dead = true; };
+  }, [cls.id]);
+
   return (
     <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal" style={{ width: "min(520px, 100%)" }}>
@@ -316,6 +328,43 @@ function ClassDrawer({ cls, feeds, onClose, onMark }: {
               <div style={{ fontSize: 12, color: "var(--text)", lineHeight: 1.5 }}>{cls.signal}</div>
             </div>
           )}
+
+          {/* ── Codified methodology (deterministic steps + optional AI hook) ── */}
+          <div>
+            <div style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 5 }}>
+              <ListChecks size={11} /> Methodology
+            </div>
+            {methLoading ? (
+              <div style={{ fontSize: 11, color: "var(--muted)" }}>loading playbook…</div>
+            ) : meth && meth.has_methodology ? (
+              <>
+                <ol style={{ margin: "4px 0 0 0", paddingLeft: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 6 }}>
+                  {meth.steps.map((s, i) => (
+                    <li key={i} style={{ display: "flex", gap: 8, fontSize: 12, color: "var(--text)", lineHeight: 1.45 }}>
+                      <span style={{ flexShrink: 0, width: 18, height: 18, borderRadius: 4, background: "var(--panel)", border: "1px solid var(--border)", color: "var(--accent)", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", display: "flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</span>
+                      <span>{s}</span>
+                    </li>
+                  ))}
+                </ol>
+                {meth.ai_hook && (
+                  <div style={{ marginTop: 8 }}>
+                    <button className="action-btn" style={showAi ? activeStyle("var(--info)") : {}} onClick={() => setShowAi((v) => !v)}>
+                      <Sparkles size={12} /> AI enhancement {showAi ? "" : "(optional)"}
+                    </button>
+                    {showAi && (
+                      <div style={{ marginTop: 6, padding: "8px 10px", borderRadius: 5, background: "var(--panel)", border: "1px dashed var(--info)", fontSize: 11, color: "var(--muted)", lineHeight: 1.5 }}>
+                        {meth.ai_hook}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.5 }}>
+                No codified playbook yet for this class — work it from the signal above. (Methodologies are authored money-classes-first.)
+              </div>
+            )}
+          </div>
 
           {feeds.length > 0 && (
             <div>

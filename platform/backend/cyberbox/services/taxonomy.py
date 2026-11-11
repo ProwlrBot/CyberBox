@@ -25,6 +25,7 @@ from pathlib import Path
 from .. import db
 
 _DATA = Path(__file__).resolve().parent.parent / "data" / "taxonomy.json"
+_METH = Path(__file__).resolve().parent.parent / "data" / "methodologies.json"
 
 
 def _now() -> str:
@@ -34,6 +35,11 @@ def _now() -> str:
 @lru_cache(maxsize=1)
 def _load() -> dict:
     return json.loads(_DATA.read_text())
+
+
+@lru_cache(maxsize=1)
+def _load_methodologies() -> dict:
+    return json.loads(_METH.read_text())
 
 
 def class_id(family_num: int, name: str) -> str:
@@ -81,13 +87,29 @@ def ensure_seeded() -> dict:
                        "result_priority": ch["result_priority"], "components": json.dumps(components)},
                       conflict_cols=["id"], update_cols=["name", "result_impact", "result_priority", "components"])
 
-        # Seeding is AUTHORITATIVE: prune classes/chains no longer in the spine so a rename never
-        # leaves a stale orphan behind. target_coverage rows are left intact — a LEFT JOIN from
-        # taxonomy_classes means orphaned coverage simply never surfaces, so no user data is lost.
+        # Per-class methodology: deterministic steps + optional AI hook. Only classes that exist
+        # in the spine get a methodology row (FK-safe); unknown refs are skipped, not invented.
+        valid_method_ids = []
+        for m in _load_methodologies()["methodologies"]:
+            mid = class_id(m["family"], m["name"])
+            if not db.query_one("SELECT id FROM taxonomy_classes WHERE id=?", [mid]):
+                continue  # class not in spine (renamed/removed) — skip rather than orphan
+            valid_method_ids.append(mid)
+            db.upsert("class_methodology",
+                      {"class_id": mid, "steps": json.dumps(m["steps"]),
+                       "ai_hook": m.get("ai_hook"), "updated_at": _now()},
+                      conflict_cols=["class_id"], update_cols=["steps", "ai_hook", "updated_at"])
+
+        # Seeding is AUTHORITATIVE: prune classes/chains/methodologies no longer in the spine so a
+        # rename never leaves a stale orphan behind. target_coverage rows are left intact — a LEFT
+        # JOIN from taxonomy_classes means orphaned coverage simply never surfaces, no data lost.
         valid_class_ids = [class_id(c["family"], c["name"]) for c in data["classes"]]
         valid_family_nums = [f["num"] for f in data["families"]]
-        _prune("taxonomy_classes", "id", valid_class_ids)
+        # Prune methodology rows first — they FK to taxonomy_classes, so a dangling methodology for
+        # a renamed class would otherwise block that class's own prune below.
+        _prune("class_methodology", "class_id", valid_method_ids)
         _prune("chain_recipes", "id", valid_chain_ids)
+        _prune("taxonomy_classes", "id", valid_class_ids)
         _prune("taxonomy_families", "num", valid_family_nums)
 
     return {"families": len(data["families"]), "classes": len(data["classes"]),
@@ -212,6 +234,25 @@ def reachable_chains(project_id: str) -> list[dict]:
 
 
 # ── Anti-slop reportability gate (§24/§25) ───────────────────────────────────────
+
+def methodology(class_id_: str) -> dict:
+    """The codified per-class playbook: deterministic steps plus an optional AI-enhancement hook.
+
+    `has_methodology` is False for classes not yet authored — the UI shows the signal and gate, and
+    this is where the next methodology gets written. Steps are tool-agnostic and deterministic; the
+    ai_hook is a light, optional enhancement, never required to execute the class."""
+    cls = db.query_one("SELECT id, name, family_num FROM taxonomy_classes WHERE id=?", [class_id_])
+    if not cls:
+        raise ValueError("unknown taxonomy class")
+    row = db.query_one("SELECT steps, ai_hook FROM class_methodology WHERE class_id=?", [class_id_])
+    steps = json.loads(row["steps"]) if row and row.get("steps") else []
+    return {
+        "class_id": cls["id"], "class_name": cls["name"], "family_num": cls["family_num"],
+        "has_methodology": bool(steps),
+        "steps": steps,
+        "ai_hook": row["ai_hook"] if row else None,
+    }
+
 
 def reportability(class_id_: str) -> dict:
     """Is a finding of this class worth reporting on its own? Informational-only classes never are

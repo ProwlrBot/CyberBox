@@ -991,3 +991,10 @@ CREATE TABLE IF NOT EXISTS target_coverage (
     UNIQUE(project_id, class_id)
 );
 CREATE INDEX IF NOT EXISTS idx_target_coverage_project ON target_coverage(project_id);
+
+CREATE TABLE IF NOT EXISTS class_methodology (
+    class_id   TEXT PRIMARY KEY REFERENCES taxonomy_classes(id),
+    steps      TEXT NOT NULL DEFAULT '[]',  -- JSON array of deterministic step strings
+    ai_hook    TEXT,                         -- optional light AI-enhancement note (never required)
+    updated_at TEXT NOT NULL
+);

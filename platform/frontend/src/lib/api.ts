@@ -563,3 +563,13 @@ export async function setCoverage(
   });
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || (await r.text()));
 }
+
+export type Methodology = {
+  class_id: string; class_name: string; family_num: number;
+  has_methodology: boolean; steps: string[]; ai_hook: string | null;
+};
+
+export async function fetchMethodology(classId: string): Promise<Methodology | null> {
+  const r = await fetch(`/api/v1/taxonomy/classes/${encodeURIComponent(classId)}/methodology`, { headers: headers() });
+  return r.ok ? r.json() : null;
+}

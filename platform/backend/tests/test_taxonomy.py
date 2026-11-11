@@ -117,6 +117,24 @@ class TaxonomyTest(unittest.TestCase):
         # A real seeded class is still present.
         self.assertTrue(db.query_one("SELECT id FROM taxonomy_classes LIMIT 1"))
 
+    def test_methodology_present_for_money_class(self) -> None:
+        idor = next(c for c in taxonomy.list_classes(14) if "bola" in c["name"].lower())
+        m = taxonomy.methodology(idor["id"])
+        self.assertTrue(m["has_methodology"])
+        self.assertGreaterEqual(len(m["steps"]), 3)
+        self.assertTrue(m["ai_hook"])  # optional hook authored for this class
+
+    def test_methodology_absent_class_is_empty_not_error(self) -> None:
+        # A class without an authored methodology returns has_methodology False, not an exception.
+        c = next(x for x in taxonomy.list_classes(20))  # DoS family — not in the starter set
+        m = taxonomy.methodology(c["id"])
+        self.assertFalse(m["has_methodology"])
+        self.assertEqual(m["steps"], [])
+
+    def test_methodology_rejects_unknown_class(self) -> None:
+        with self.assertRaises(ValueError):
+            taxonomy.methodology("f99-nope")
+
     def test_reportability_allows_impactful_class(self) -> None:
         idor = next(c for c in taxonomy.list_classes(14) if "bola" in c["name"].lower())
         rep = taxonomy.reportability(idor["id"])
