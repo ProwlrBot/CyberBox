@@ -13,6 +13,7 @@ from pathlib import Path
 from .. import db
 from ..config import get_settings
 from ..hub import hub
+from . import engines
 from . import policy as policy_svc
 from . import verify
 
@@ -217,6 +218,14 @@ def _ingest_finding(project_id: str, task_id: str | None, rec: dict, scan_id: st
     db.insert("vulnerabilities", vuln)
     _append_log(scan_id, f"  [{severity.upper()}] {name} @ {matched_at} verified={verified}")
     hub.broadcast("vuln.found", {"name": name, "severity": severity, "verified": verified, "host": host})
+    # Engine layer: a real finding auto-marks its taxonomy class covered, with this row as evidence.
+    # Guarded so a mapping/DB hiccup can never fail the scan; failures are logged, never swallowed.
+    try:
+        marked = engines.apply_nuclei_finding(project_id, f, vuln["id"])
+        if marked:
+            _append_log(scan_id, f"    coverage: marked {len(marked)} taxonomy class(es) from this finding")
+    except Exception as exc:  # pragma: no cover - defensive; mapping must never break ingestion
+        _append_log(scan_id, f"    coverage mapping failed (non-fatal): {exc}")
     return True
 
 

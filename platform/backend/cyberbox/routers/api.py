@@ -33,6 +33,7 @@ from ..services import model as model_svc
 from ..services import api_genome as genome_svc
 from ..services import campaign as campaign_svc
 from ..services import fingerprint as fingerprint_svc
+from ..services import engines as engines_svc
 from ..services import taxonomy as taxonomy_svc
 
 router = APIRouter(prefix="/api/v1", tags=["api"])
@@ -2239,6 +2240,12 @@ def set_project_coverage(project_id: str, class_id: str, body: CoverageIn,
 def project_chains(project_id: str, _user: dict = Depends(current_user)) -> list[dict]:
     _require_project(project_id)
     return taxonomy_svc.reachable_chains(project_id)
+
+
+@router.get("/engines")
+def list_engines(_user: dict = Depends(current_user)) -> list[dict]:
+    """Registered engines and the taxonomy classes each can flip to covered (provenance layer)."""
+    return engines_svc.list_engines()
 
 
 # ---------------------------------------------------------------------------
