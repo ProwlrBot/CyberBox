@@ -18,6 +18,7 @@ const CveIntel     = lazy(() => import("./pages/hunt/CveIntel"));
 const Jobs         = lazy(() => import("./pages/hunt/Jobs"));
 const Genome       = lazy(() => import("./pages/hunt/Genome"));
 const Surface      = lazy(() => import("./pages/hunt/Surface"));
+const Memory       = lazy(() => import("./pages/hunt/Memory"));
 const Traffic      = lazy(() => import("./pages/hunt/Traffic"));
 const Evidence     = lazy(() => import("./pages/hunt/Evidence"));
 const Workflows    = lazy(() => import("./pages/hunt/Workflows"));
@@ -77,6 +78,7 @@ export const NAV_SECTIONS: NavSection[] = [
     { label: "Reports",   path: "/hunt/reports",   Icon: BarChart2 },
     { label: "Campaigns", path: "/hunt/campaigns", Icon: Crosshair },
     { label: "Techniques", path: "/hunt/techniques", Icon: BookOpen },
+    { label: "Memory",     path: "/hunt/memory",    Icon: Brain },
   ]},
   { id: "source", label: "SOURCE", items: [
     { label: "Raptor",       path: "/source/raptor",    Icon: Code2 },
@@ -146,6 +148,7 @@ export const appRoutes: RouteObject[] = [
   { path: "hunt/campaigns",   element: <Suspense fallback={null}><Campaigns /></Suspense> },
   { path: "hunt/campaigns/:id", element: <Suspense fallback={null}><CampaignDetail /></Suspense> },
   { path: "hunt/techniques",   element: <Suspense fallback={null}><Techniques /></Suspense> },
+  { path: "hunt/memory",       element: <Suspense fallback={null}><Memory /></Suspense> },
   // Source
   { path: "source/raptor",    element: <Suspense fallback={null}><Raptor /></Suspense> },
   { path: "pentests/new",     element: <Suspense fallback={null}><NewPentest /></Suspense> },

@@ -180,6 +180,45 @@ export async function ingestOpenapi(projectId: string, spec: unknown): Promise<{
   return r.json();
 }
 
+// ── Research memory ─────────────────────────────────────────────────────────────
+
+export type MemorySuggestion = {
+  id: string; project_id: string | null; profile_id: string;
+  title: string; lesson: string; technology_tags: string[];
+  status: string; created_at: string;
+};
+
+export type MemoryHit = {
+  id: string; title: string; lesson: string; technology_tags: string[];
+  score: number; match_reason: string[]; approved_at: string;
+};
+
+export async function fetchMemorySuggestions(status = "pending"): Promise<MemorySuggestion[]> {
+  const r = await fetch(`/api/v1/memory/suggestions?status=${encodeURIComponent(status)}`, { headers: headers() });
+  return r.ok ? r.json() : [];
+}
+
+export async function decideMemorySuggestion(
+  suggestionId: string,
+  body: { decision: "approved" | "rejected"; title?: string; lesson?: string; technology_tags?: string[] },
+): Promise<void> {
+  const r = await fetch(`/api/v1/memory/suggestions/${encodeURIComponent(suggestionId)}`, {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(await r.text());
+}
+
+export async function searchMemory(q: string, profileId = "bug-bounty", projectId?: string): Promise<MemoryHit[]> {
+  const params = new URLSearchParams({ q, profile_id: profileId });
+  if (projectId) params.set("project_id", projectId);
+  const r = await fetch(`/api/v1/memory/search?${params.toString()}`, { headers: headers() });
+  if (!r.ok) return [];
+  const data = await r.json();
+  return data.results ?? [];
+}
+
 // ── Attack-surface monitoring ───────────────────────────────────────────────────
 
 export type SurfaceDrift = {
