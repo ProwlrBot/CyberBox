@@ -115,6 +115,36 @@ class EnginesTest(unittest.TestCase):
         rows = db.query("SELECT id FROM vulnerabilities WHERE project_id=?", [self.project_id])
         self.assertEqual(len(rows), 1)  # dedup_key kept the re-probe from duplicating evidence
 
+    # ── CVE-intel engine ────────────────────────────────────────────────────────
+
+    def test_cve_hit_marks_known_vuln_class_with_stored_evidence(self) -> None:
+        marked = engines.apply_cve_hit(self.project_id, {"cve_id": "CVE-2024-1234", "tech": "nginx",
+                                                         "severity": "high", "cvss_score": 8.1})
+        cid = taxonomy.class_id(4, "Known vulnerabilities in edge software")
+        self.assertEqual(marked, [cid])
+        cov = {c["id"]: c for c in taxonomy.coverage(self.project_id)}
+        self.assertEqual(cov[cid]["status"], "covered")
+        # Coverage points at a real stored vulnerabilities row carrying the CVE id.
+        ev_id = cov[cid]["evidence_ids"][0]
+        row = db.query_one("SELECT cve, template_id FROM vulnerabilities WHERE id=?", [ev_id])
+        self.assertEqual(row["cve"], "CVE-2024-1234")
+
+    def test_cve_hit_without_id_marks_nothing(self) -> None:
+        self.assertEqual(engines.apply_cve_hit(self.project_id, {"cve_id": ""}), [])
+        self.assertFalse([c for c in taxonomy.coverage(self.project_id) if c["status"] != "none"])
+        self.assertIsNone(db.query_one("SELECT id FROM vulnerabilities WHERE project_id=?", [self.project_id]))
+
+    def test_cve_resweep_reuses_one_evidence_row(self) -> None:
+        engines.apply_cve_hit(self.project_id, {"cve_id": "CVE-2024-1234", "tech": "nginx"})
+        engines.apply_cve_hit(self.project_id, {"cve_id": "CVE-2024-1234", "tech": "nginx"})
+        rows = db.query("SELECT id FROM vulnerabilities WHERE project_id=?", [self.project_id])
+        self.assertEqual(len(rows), 1)
+
+    def test_cve_intel_engine_registered(self) -> None:
+        eng = next(e for e in engines.list_engines() if e["key"] == "cve-intel")
+        self.assertEqual(eng["covers_count"], 1)
+        self.assertTrue(db.query_one("SELECT id FROM taxonomy_classes WHERE id=?", [eng["covers"][0]["class_id"]]))
+
     def test_fingerprint_gitlab_version_disclosure_marks_class(self) -> None:
         result = {"target": "https://gl.example", "version": "16.3.0", "revision": "abc123",
                   "exposed": {"public_api": True}}

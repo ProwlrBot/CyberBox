@@ -1819,14 +1819,24 @@ def cve_sweep(project_id: str, body: CveSweepCreate,
         days_back=body.days_back,
     )
     inserted = 0
+    marked_classes: set[str] = set()
     for hit in hits:
         hyp = hit.to_hypothesis_body(project_id)
         _insert_hypothesis(project_id, hyp)
         inserted += 1
+        # Engine layer: a real CVE match persists its own evidence row and marks the known-vuln
+        # class covered. Self-contained so it does not depend on the hypothesis store.
+        try:
+            marked_classes.update(engines_svc.apply_cve_hit(project_id, {
+                "cve_id": hit.cve_id, "tech": hit.tech, "severity": hit.severity,
+                "cvss_score": hit.cvss_score, "description": hit.description}))
+        except Exception:  # noqa: BLE001 - coverage is best-effort; never fail the sweep
+            pass
     return {
         "techs": body.techs,
         "cves_found": len(hits),
         "hypotheses_created": inserted,
+        "coverage_marked": sorted(marked_classes),
         "results": [
             {
                 "cve_id": h.cve_id,

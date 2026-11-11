@@ -229,6 +229,53 @@ def apply_fingerprint_finding(project_id: str, kind: str, result: dict, target: 
     return marked
 
 
+# ── CVE-intel engine (NVD sweep → coverage) ───────────────────────────────────────
+#
+# A CVE sweep matches published NVD CVEs to a detected tech stack. A real match is, by the same
+# definition the nuclei path uses, a "Known vulnerabilities in edge software" finding — so a hit
+# with a real CVE id flips that one class. One class only: an NVD keyword match proves a known-vuln
+# *candidate* on the stack, not any specific injection/auth class, so we never fan it out. The hit
+# is persisted as its own deduped vulnerabilities row (like the fingerprint engine) so coverage
+# always points at a real stored finding, independent of any other store.
+
+def apply_cve_hit(project_id: str, hit: dict) -> list[str]:
+    """Persist one real CVE-sweep hit as evidence and auto-mark the known-vuln class.
+
+    `hit` is a dict with at least `cve_id` (optionally tech/severity/cvss_score/description).
+    Deduped per (cve, project) so a re-sweep reuses one row. Returns the class ids marked."""
+    cve_id = (hit.get("cve_id") or "").strip()
+    if not cve_id:
+        return []  # no CVE id = no defensible known-vuln claim
+    cid = _class_id_if_exists(*_CVE_CLASS)
+    if not cid:
+        return []
+    tech = (hit.get("tech") or "").strip()
+    sev = str(hit.get("severity") or "medium").lower()
+    sev = sev if sev in {"critical", "high", "medium", "low", "info"} else "medium"
+    dedup_key = f"cve-intel:{cve_id}"
+    existing = db.query_one(
+        "SELECT id FROM vulnerabilities WHERE project_id=? AND dedup_key=?", [project_id, dedup_key])
+    if existing:
+        evidence_id = existing["id"]
+    else:
+        evidence_id = str(uuid.uuid4())
+        score = hit.get("cvss_score")
+        desc = (hit.get("description") or
+                f"NVD lists {cve_id} affecting {tech or 'the detected stack'}"
+                f"{f' (CVSS {score})' if score is not None else ''}.")
+        db.insert("vulnerabilities", {
+            "id": evidence_id, "project_id": project_id, "asset_id": None,
+            "template_id": f"cve-intel-{cve_id}", "name": f"{cve_id} in {tech or 'detected software'}",
+            "severity": sev, "category": "Vulnerable Component", "description": desc[:800],
+            "cve": cve_id, "host": tech, "matched_at": tech, "status": "open", "verified": 0,
+            "poc": "", "request_chain": "[]", "tags": json.dumps(["cve-intel", "cve"]),
+            "dedup_key": dedup_key, "sla_due": None, "detected_at": _now(), "fixed_at": None,
+        })
+    if mark_covered(project_id, cid, evidence_id, f"cve-intel:{cve_id}"):
+        return [cid]
+    return []
+
+
 # ── Registry (provenance for the cockpit) ─────────────────────────────────────────
 
 _ENGINES = [
@@ -256,6 +303,16 @@ _ENGINES = [
             (4, "Known vulnerabilities in edge software"),
             (1, "Fingerprinting / banner disclosure, software versions in headers"),
         ],
+    },
+    {
+        "key": "cve-intel",
+        "name": "CVE Intel",
+        "kind": "intel",
+        "optional": False,
+        "description": "NVD CVE sweep against the detected tech stack. A real CVE match marks "
+                       "'Known vulnerabilities in edge software' covered with the stored hit as "
+                       "evidence — a known-vuln candidate on the stack, not a specific exploit class.",
+        "_static_classes": [_CVE_CLASS],
     },
 ]
 
