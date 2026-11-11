@@ -180,6 +180,51 @@ export async function ingestOpenapi(projectId: string, spec: unknown): Promise<{
   return r.json();
 }
 
+// ── Passive target fingerprint (live preview) ───────────────────────────────────
+
+export type SecurityHeaders = Record<string, string | null>;
+
+export type WpPlugin = { slug: string; version: string | null; known_advisories?: number; advisory_ids?: string[] };
+export type WpUser = { id: number | null; name: string | null; slug: string | null };
+
+export type WordpressFingerprint = {
+  target: string; is_wordpress: boolean; version: string | null; generator: string | null;
+  rest_enabled: boolean; namespaces: string[]; route_count: number;
+  users: WpUser[]; plugins: WpPlugin[]; themes: { slug: string; version: string | null }[];
+  exposed: Record<string, boolean | number>; security_headers: SecurityHeaders;
+  server: string | null; errors: string[]; vulnerable_plugin_count?: number;
+};
+
+export type GlProject = { path: string | null; name: string | null; star_count: number | null; last_activity_at: string | null };
+
+export type GitlabFingerprint = {
+  target: string; is_gitlab: boolean; version: string | null; revision: string | null;
+  enterprise: boolean | null; signup_enabled: boolean | null; api_reachable: boolean;
+  public_projects: GlProject[]; public_project_count: number;
+  exposed: Record<string, boolean>; security_headers: SecurityHeaders;
+  server: string | null; errors: string[];
+};
+
+export async function fingerprintWordPress(projectId: string, targetUrl: string): Promise<WordpressFingerprint> {
+  const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/fingerprint/wordpress`, {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify({ target_url: targetUrl }),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || await r.text());
+  return r.json();
+}
+
+export async function fingerprintGitLab(projectId: string, targetUrl: string): Promise<GitlabFingerprint> {
+  const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/fingerprint/gitlab`, {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify({ target_url: targetUrl }),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || await r.text());
+  return r.json();
+}
+
 // ── Source-revision tracking (silent-patch regression hunting) ──────────────────
 
 export type SourceRevision = {

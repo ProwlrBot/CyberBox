@@ -32,6 +32,7 @@ from ..services import cve as cve_svc
 from ..services import model as model_svc
 from ..services import api_genome as genome_svc
 from ..services import campaign as campaign_svc
+from ..services import fingerprint as fingerprint_svc
 
 router = APIRouter(prefix="/api/v1", tags=["api"])
 
@@ -2180,6 +2181,68 @@ def create_provider(body: ProviderCreate, _user: dict = Depends(current_user)) -
 @router.delete("/providers/{provider_id}", status_code=204, response_model=None)
 def delete_provider(provider_id: str, _user: dict = Depends(current_user)) -> None:
     model_svc.delete_provider(provider_id)
+
+
+# ---------------------------------------------------------------------------
+# Passive target fingerprinting — WordPress / GitLab live preview
+# ---------------------------------------------------------------------------
+
+class FingerprintIn(BaseModel):
+    target_url: str
+
+
+def _gate_passive_probe(project_id: str, target_url: str) -> None:
+    """Scope-gate a passive fingerprint. Requires an authorized engagement whose scope covers
+    the target. The cloud-metadata hard-block lives in the fingerprint service itself."""
+    if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
+        raise HTTPException(status_code=404, detail="project not found")
+    engagement = policy.authorized_engagement(project_id)
+    if not engagement:
+        raise HTTPException(status_code=403,
+                            detail="no authorized engagement — scope the target before probing")
+    url = target_url if "://" in target_url else f"https://{target_url}"
+    decision = policy.evaluate(engagement["id"], url, method="GET", risk_class="low-impact")
+    if not decision.get("allowed"):
+        raise HTTPException(status_code=403, detail=f"out of scope: {decision.get('reason')}")
+
+
+def _enrich_plugins_with_advisories(plugins: list[dict]) -> list[dict]:
+    """Flag fingerprinted plugins that match known advisories at the detected version."""
+    for p in plugins:
+        slug, version = p.get("slug"), p.get("version")
+        if slug and version:
+            try:
+                hits = advisories.match_product(slug, version)
+                p["known_advisories"] = len(hits)
+                p["advisory_ids"] = [h["advisory_id"] for h in hits[:5]]
+            except Exception:  # noqa: BLE001
+                p["known_advisories"] = 0
+        else:
+            p["known_advisories"] = 0
+    return plugins
+
+
+@router.post("/projects/{project_id}/fingerprint/wordpress")
+def fingerprint_wp(project_id: str, body: FingerprintIn,
+                   _user: dict = Depends(current_user)) -> dict:
+    _gate_passive_probe(project_id, body.target_url)
+    try:
+        result = fingerprint_svc.fingerprint_wordpress(body.target_url)
+    except fingerprint_svc.ProbeBlocked as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    result["plugins"] = _enrich_plugins_with_advisories(result.get("plugins", []))
+    result["vulnerable_plugin_count"] = sum(1 for p in result["plugins"] if p.get("known_advisories"))
+    return result
+
+
+@router.post("/projects/{project_id}/fingerprint/gitlab")
+def fingerprint_gl(project_id: str, body: FingerprintIn,
+                   _user: dict = Depends(current_user)) -> dict:
+    _gate_passive_probe(project_id, body.target_url)
+    try:
+        return fingerprint_svc.fingerprint_gitlab(body.target_url)
+    except fingerprint_svc.ProbeBlocked as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 # ---------------------------------------------------------------------------
