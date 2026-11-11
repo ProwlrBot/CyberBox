@@ -1409,7 +1409,7 @@ def set_job_enabled(job_id: str, enabled: bool, _user: dict = Depends(current_us
     return job
 
 
-@router.delete("/scheduler/jobs/{job_id}", status_code=204)
+@router.delete("/scheduler/jobs/{job_id}", status_code=204, response_model=None)
 def delete_scheduled_job(job_id: str, _user: dict = Depends(current_user)) -> None:
     scheduler_svc.delete_job(job_id)
 
@@ -1460,7 +1460,7 @@ def create_notification_channel(body: NotifyChannelIn,
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.delete("/notifications/channels/{channel_id}", status_code=204)
+@router.delete("/notifications/channels/{channel_id}", status_code=204, response_model=None)
 def delete_notification_channel(channel_id: str, _user: dict = Depends(current_user)) -> None:
     notify_svc.delete_channel(channel_id)
 
@@ -1789,12 +1789,23 @@ def nuclei_sweep(project_id: str, body: NucleiSweepCreate,
     import tempfile
     if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
         raise HTTPException(status_code=404, detail="project not found")
+
+    # Scope gate — nuclei is an active scanner; default-deny before any live request.
+    # Every target must be covered by the project's authorized engagement scope.
+    gate = policy.filter_scope(project_id, body.targets, risk_class="state-changing")
+    if not gate["allowed"]:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "all targets out of scope or unauthorized",
+                    "blocked": gate["blocked"]})
+    scoped_targets = gate["allowed"]
+
     nuclei_bin = shutil.which("nuclei") or get_settings().tools.get("nuclei", "nuclei")
     if not shutil.which(nuclei_bin):
         raise HTTPException(status_code=503, detail="nuclei not found in PATH")
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tf:
-        tf.write("\n".join(body.targets))
+        tf.write("\n".join(scoped_targets))
         targets_file = tf.name
 
     cmd = [nuclei_bin, "-l", targets_file, "-json", "-silent",
@@ -1843,8 +1854,8 @@ def nuclei_sweep(project_id: str, body: NucleiSweepCreate,
         inserted += 1
         findings.append({"template_id": finding.get("template-id"), "url": url, "severity": sev})
 
-    return {"targets": body.targets, "findings": len(findings),
-            "hypotheses_created": inserted, "results": findings}
+    return {"targets": scoped_targets, "blocked": gate["blocked"],
+            "findings": len(findings), "hypotheses_created": inserted, "results": findings}
 
 
 # ---------------------------------------------------------------------------
@@ -2096,7 +2107,7 @@ def create_provider(body: ProviderCreate, _user: dict = Depends(current_user)) -
         raise HTTPException(422, str(exc)) from exc
 
 
-@router.delete("/providers/{provider_id}", status_code=204)
+@router.delete("/providers/{provider_id}", status_code=204, response_model=None)
 def delete_provider(provider_id: str, _user: dict = Depends(current_user)) -> None:
     model_svc.delete_provider(provider_id)
 

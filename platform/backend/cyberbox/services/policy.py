@@ -18,6 +18,45 @@ AUTHORIZED_STATUSES = {"active", "authorized", "local-laboratory", "ctf"}
 BLOCKED_STATUSES = {"authorization-pending", "scope-uncertain", "expired", "out-of-scope", "blocked"}
 
 
+def authorized_engagement(project_id: str) -> dict | None:
+    """Most-recent engagement for the project whose status permits live action, else None."""
+    placeholders = ",".join("?" for _ in AUTHORIZED_STATUSES)
+    row = db.query_one(
+        f"SELECT * FROM engagements WHERE project_id=? AND status IN ({placeholders}) "
+        "ORDER BY created_at DESC LIMIT 1",
+        [project_id, *sorted(AUTHORIZED_STATUSES)],
+    )
+    return db.decode_row(row) if row else None
+
+
+def filter_scope(project_id: str, targets: list[str], risk_class: str = "low-impact",
+                 method: str = "GET") -> dict:
+    """Default-deny scope gate for a batch of targets.
+
+    Resolves the project's authorized engagement and evaluates each target against it.
+    Returns {engagement_id, allowed: [...], blocked: [{target, reason}, ...]}. With no
+    authorized engagement every target is blocked — nothing live should run. Targets whose
+    policy decision requires operator approval are blocked here (this is a synchronous,
+    non-interactive path); the interactive approval flow lives elsewhere.
+    """
+    engagement = authorized_engagement(project_id)
+    if not engagement:
+        return {"engagement_id": None, "allowed": [],
+                "blocked": [{"target": t, "reason": "no authorized engagement"} for t in targets]}
+    allowed: list[str] = []
+    blocked: list[dict] = []
+    for target in targets:
+        url = target if "://" in target else f"https://{target}"
+        decision = evaluate(engagement["id"], url, method, risk_class)
+        if decision.get("allowed") and not decision.get("requires_approval"):
+            allowed.append(target)
+        else:
+            reason = decision.get("reason") or (
+                "requires operator approval" if decision.get("requires_approval") else "denied")
+            blocked.append({"target": target, "reason": reason})
+    return {"engagement_id": engagement["id"], "allowed": allowed, "blocked": blocked}
+
+
 def _latest_acknowledgment(engagement_id: str) -> dict | None:
     row = db.query_one(
         "SELECT * FROM scope_acknowledgments WHERE engagement_id=? ORDER BY created_at DESC LIMIT 1",
