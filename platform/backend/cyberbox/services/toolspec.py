@@ -113,10 +113,11 @@ register(ToolSpec(
 register(ToolSpec(
     name="ffuf", category="fuzzer", danger_tier="active", scope_required=1,
     description="Content/endpoint fuzzing", phase="fuzz"))
-# vulnx is currently manual-only (its own /vulnx-sweep route). Commit that binds an AI
-# runner for it will flip modes to ("manual", "ai"); until then the catalog stays honest.
+# vulnx: passive intel (no target), reachable in both modes. Its AI runner is bound by
+# engines.py (which owns apply_vulnx_hit coverage); gowitness's runner is bound by
+# screenshots.py. Each implementing module declares/binds its own tool — the plugin pattern.
 register(ToolSpec(
     name="vulnx", category="osint", danger_tier="passive", scope_required=0,
     description="ProjectDiscovery vulnerability.sh CVE intel (search/analyze) — tags/CWE/KEV/EPSS; "
                 "feeds the vulnx coverage engine. Queries intel API only, never the target.",
-    modes=("manual",), phase="recon"))
+    modes=("manual", "ai"), phase="recon"))

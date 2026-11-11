@@ -1999,18 +1999,15 @@ def vulnx_sweep(project_id: str, body: VulnxSweepCreate,
     _require_project(project_id)
     if not vulnx_svc.available():
         raise HTTPException(status_code=503, detail="vulnx CLI is not installed on this host")
-    hits = vulnx_svc.search(body.techs, kev_only=body.kev_only,
-                            template_only=body.template_only, limit=body.limit)
-    marked_classes: set[str] = set()
-    for hit in hits:
-        try:
-            marked_classes.update(engines_svc.apply_vulnx_hit(project_id, hit))
-        except Exception:  # noqa: BLE001 - coverage is best-effort; never fail the sweep
-            pass
+    # Shared with the vulnx ToolSpec runner so coverage is marked identically either way.
+    swept = engines_svc.sweep_and_cover(
+        project_id, body.techs, kev_only=body.kev_only,
+        template_only=body.template_only, limit=body.limit)
+    hits = swept["hits"]
     return {
         "techs": body.techs,
-        "cves_found": len(hits),
-        "coverage_marked": sorted(marked_classes),
+        "cves_found": swept["cves_found"],
+        "coverage_marked": swept["coverage_marked"],
         "results": [
             {"cve_id": h["cve_id"], "tech": h["tech"], "severity": h["severity"],
              "cvss_score": h["cvss_score"], "epss_score": h["epss_score"],

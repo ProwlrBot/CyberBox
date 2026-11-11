@@ -197,8 +197,19 @@ def _guess_phase(tool_name: str) -> str:
 
 
 def _target_url(args: dict) -> str | None:
-    """Best-effort target URL for policy evaluation from a tool's args."""
+    """Best-effort target URL for policy evaluation from a tool's args.
+
+    Handles scalar keys (target_url/url/domain/target/host) and list keys
+    (urls/hosts) — the first entry of a list is scope-checked as the representative
+    target. (The generic runner gates every target a multi-target tool touches via
+    the tool's own per-URL guard; this resolves one for the up-front scope decision.)"""
     url = args.get("target_url") or args.get("url")
+    if not url:
+        for key in ("urls", "hosts"):
+            seq = args.get(key)
+            if isinstance(seq, (list, tuple)) and seq:
+                url = seq[0]
+                break
     if url:
         return url if "://" in url else f"https://{url}"
     domain = args.get("domain") or args.get("target") or args.get("host")

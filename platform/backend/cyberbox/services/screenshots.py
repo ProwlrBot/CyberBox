@@ -22,8 +22,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
+import asyncio
+
 from .. import db
 from ..config import get_settings
+from . import toolspec
 from .fingerprint import ProbeBlocked, _assert_not_metadata
 
 _TIMEOUT = 45
@@ -173,3 +176,52 @@ def list_shots(project_id: str) -> list[dict]:
 
 def get_shot(shot_id: str) -> dict | None:
     return db.query_one("SELECT * FROM screenshots WHERE id=?", [shot_id])
+
+
+# ── gowitness as a routed tool (both modes) ─────────────────────────────────────
+
+async def _run_gowitness(campaign_id, project_id: str, args: dict,
+                         execution_id: str, phase: str, max_runtime: int) -> tuple[int, object]:
+    """ToolSpec runner for gowitness — screenshot each in-scope URL (args.urls, or a single
+    args.target_url). The up-front gate only scope-checks one representative target, so this
+    runner re-filters EVERY url through the project scope before capturing — a multi-target
+    tool never reaches an out-of-scope host. capture() adds the SSRF guard on top."""
+    from . import policy as policy_svc
+    urls = args.get("urls") or ([args["target_url"]] if args.get("target_url") else [])
+    if not urls:
+        return (1, {"error": "no urls/target_url to screenshot"})
+    engagement = policy_svc.authorized_engagement(project_id)
+    if not engagement:
+        return (1, {"error": "no authorized engagement"})
+    # Scope-only filter: keep URLs whose scope decision is 'allowed' (in scope). The approval
+    # layer (requires_approval) is NOT re-applied here — the operator/orchestrator already
+    # cleared that in the up-front gate; this pass only stops out-of-scope hosts.
+    shots: list[dict] = []
+    allowed_urls: list[str] = []
+    for url in urls:
+        u = url if "://" in url else f"https://{url}"
+        try:
+            dec = policy_svc.evaluate(engagement["id"], u, method="GET", risk_class="low-impact")
+        except Exception as exc:  # noqa: BLE001 — a failing scope check must block, not pass
+            dec = {"allowed": False, "reason": f"policy error: {exc}"}
+        if dec.get("allowed"):
+            allowed_urls.append(url)
+        else:
+            shots.append({"url": url, "status": "blocked", "error": dec.get("reason", "out of scope")})
+    for url in allowed_urls:
+        try:
+            row = await asyncio.to_thread(capture, project_id, url, "gowitness")
+            shots.append({"id": row["id"], "url": url, "status": row["status"],
+                          "error": row.get("error")})
+        except ProbeBlocked as exc:
+            shots.append({"url": url, "status": "error", "error": str(exc)})
+    rc = 0 if any(s["status"] == "ok" for s in shots) else 1
+    return (rc, {"captured": sum(1 for s in shots if s["status"] == "ok"), "shots": shots})
+
+
+toolspec.register(toolspec.ToolSpec(
+    name="gowitness", category="recon", danger_tier="active", scope_required=1,
+    description="Headless-browser screenshots via gowitness v3 — visual recon of in-scope hosts.",
+    modes=("manual", "ai"), phase="recon"))
+toolspec.bind_runner("gowitness", _run_gowitness,
+                     available=lambda: _gowitness_binary() is not None)

@@ -16,12 +16,15 @@ Design rules that keep this honest:
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
 
 from .. import db
 from . import taxonomy
+from . import toolspec
+from . import vulnx as vulnx_svc
 
 
 def _now() -> str:
@@ -443,3 +446,38 @@ def list_engines() -> list[dict]:
             "covers_count": len(covers), "covers": covers,
         })
     return out
+
+
+# ── vulnx as a routed tool (both modes) ─────────────────────────────────────────
+
+def sweep_and_cover(project_id: str, techs: list[str], *, kev_only: bool = False,
+                    template_only: bool = False, limit: int = 10) -> dict:
+    """Run a vulnx CVE-intel sweep and auto-mark the taxonomy classes each hit speaks to.
+
+    The single implementation behind both the manual /vulnx-sweep route and the vulnx AI
+    runner, so coverage is marked identically however the sweep was triggered."""
+    hits = vulnx_svc.search(techs, kev_only=kev_only, template_only=template_only, limit=limit)
+    marked: set[str] = set()
+    for hit in hits:
+        try:
+            marked.update(apply_vulnx_hit(project_id, hit))
+        except Exception:  # noqa: BLE001 — coverage is best-effort; never fail the sweep
+            pass
+    return {"cves_found": len(hits), "coverage_marked": sorted(marked), "hits": hits}
+
+
+async def _run_vulnx(campaign_id, project_id: str, args: dict,
+                     execution_id: str, phase: str, max_runtime: int) -> tuple[int, object]:
+    """ToolSpec runner for vulnx — intel-only, so it never touches the target. Accepts
+    args.techs (or a single args.tech), args.kev_only, args.template_only, args.limit."""
+    techs = args.get("techs") or ([args["tech"]] if args.get("tech") else [])
+    if not techs:
+        return (1, {"error": "no techs/products to query", "cves_found": 0, "coverage_marked": []})
+    res = await asyncio.to_thread(
+        sweep_and_cover, project_id, techs,
+        kev_only=bool(args.get("kev_only")), template_only=bool(args.get("template_only")),
+        limit=int(args.get("limit", 10)))
+    return (0, {"cves_found": res["cves_found"], "coverage_marked": res["coverage_marked"]})
+
+
+toolspec.bind_runner("vulnx", _run_vulnx, available=vulnx_svc.available)

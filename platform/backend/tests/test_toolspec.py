@@ -18,11 +18,18 @@ class ToolSpecContractTest(unittest.TestCase):
         for name in ("subfinder", "httpx", "nuclei", "ffuf"):
             self.assertIsNotNone(toolspec.get(name).runner, f"{name} runner not bound")
 
-    def test_vulnx_is_manual_only_until_runner_bound(self) -> None:
-        spec = toolspec.get("vulnx")
-        self.assertIsNone(spec.runner)          # catalog-only, no AI runner yet
-        self.assertFalse(spec.allows_mode("ai"))
-        self.assertTrue(spec.allows_mode("manual"))
+    def test_retrofitted_tools_bind_runners_on_import(self) -> None:
+        # engines.py binds the vulnx runner; screenshots.py registers+binds gowitness.
+        from cyberbox.services import engines, screenshots  # noqa: F401
+        vulnx = toolspec.get("vulnx")
+        self.assertIsNotNone(vulnx.runner)
+        self.assertTrue(vulnx.allows_mode("ai") and vulnx.allows_mode("manual"))
+        self.assertEqual(vulnx.scope_required, 0)       # intel-only, no target
+        gw = toolspec.get("gowitness")
+        self.assertIsNotNone(gw)
+        self.assertIsNotNone(gw.runner)
+        self.assertEqual(gw.danger_tier, "active")      # live GET to the target
+        self.assertEqual(gw.scope_required, 1)
 
     def test_bad_danger_tier_rejected(self) -> None:
         with self.assertRaises(ValueError):
