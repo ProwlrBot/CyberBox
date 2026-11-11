@@ -12,6 +12,7 @@ import uuid
 from datetime import datetime, timezone
 
 from .. import db
+from . import toolspec
 
 # danger_tier → policy risk_class. Conservative: an unknown/active tool needs approval
 # under balanced autonomy, exploit tools need explicit approval, only passive runs freely.
@@ -31,29 +32,14 @@ CATEGORY_DEFAULT = {
     "utility":         ("passive", 0),
 }
 
-# Verified built-ins the tool runner dispatches today.
-BUILTIN_TOOLS = [
-    {"name": "subfinder", "category": "recon", "danger_tier": "passive", "scope_required": 1,
-     "description": "Passive subdomain enumeration (API-driven)"},
-    {"name": "httpx", "category": "recon", "danger_tier": "active", "scope_required": 1,
-     "description": "Live HTTP probing and tech detection"},
-    {"name": "nuclei", "category": "scanner", "danger_tier": "active", "scope_required": 1,
-     "description": "Template-based vulnerability scanning"},
-    {"name": "ffuf", "category": "fuzzer", "danger_tier": "active", "scope_required": 1,
-     "description": "Content/endpoint fuzzing"},
-    {"name": "vulnx", "category": "osint", "danger_tier": "passive", "scope_required": 0,
-     "description": "ProjectDiscovery vulnerability.sh CVE intel (search/analyze) — tags/CWE/KEV/EPSS; "
-                    "feeds the vulnx coverage engine. Queries intel API only, never the target."},
-]
-
-
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
 def seed() -> None:
-    """Upsert the verified built-in tools. Idempotent."""
-    for tool in BUILTIN_TOOLS:
+    """Upsert the catalog from the ToolSpec registry — one declaration per tool in toolspec.py.
+    Idempotent. Any spec registered at import time (built-ins + plugins) is catalogued here."""
+    for tool in toolspec.catalog_rows():
         db.upsert(
             "tool_registry",
             {"id": str(uuid.uuid4()), "name": tool["name"], "category": tool["category"],

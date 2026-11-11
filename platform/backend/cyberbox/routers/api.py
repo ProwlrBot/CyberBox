@@ -39,6 +39,8 @@ from ..services import wstg as wstg_svc
 from ..services import vulnx as vulnx_svc
 from ..services import js_diff as js_diff_svc
 from ..services import screenshots as screenshots_svc
+from ..services import toolspec as toolspec_svc
+from ..services import tool_runner
 
 router = APIRouter(prefix="/api/v1", tags=["api"])
 
@@ -1073,6 +1075,54 @@ def import_tool_registry(path: str | None = None,
     # Default to the inventory file produced by the local cataloguer.
     inventory = path or str(get_settings().home / "tool_inventory.txt")
     return tool_registry.import_inventory(inventory)
+
+
+@router.get("/tools/specs")
+def list_tool_specs(mode: str | None = None, _user: dict = Depends(current_user)) -> list[dict]:
+    """The ToolSpec registry — the single declaration per tool that both modes route through.
+    Optional ?mode=manual|ai filters to tools that operating mode may reach."""
+    specs = toolspec_svc.specs_for_mode(mode) if mode in ("manual", "ai") else toolspec_svc.all_specs()
+    return [{"name": s.name, "category": s.category, "danger_tier": s.danger_tier,
+             "scope_required": s.scope_required, "description": s.description,
+             "modes": list(s.modes), "covers": list(s.covers),
+             "executable": s.runner is not None, "available": s.is_available()}
+            for s in specs]
+
+
+class ToolRunIn(BaseModel):
+    args: dict = Field(default_factory=dict, description="Tool arguments (target_url, domain, hosts, …)")
+
+
+@router.post("/projects/{project_id}/tools/{name}/run")
+async def run_registered_tool(project_id: str, name: str, body: ToolRunIn,
+                              _user: dict = Depends(current_user)) -> dict:
+    """Manual-mode runner — drive any registered, executable tool through the SAME
+    execution + policy-gate path the autonomous orchestrator uses. Scope/authorization is
+    enforced identically; this route just lets an operator pull the trigger instead of the AI."""
+    _require_project(project_id)
+    spec = toolspec_svc.get(name)
+    if spec is None:
+        raise HTTPException(status_code=404, detail=f"no tool registered as '{name}'")
+    if not spec.allows_mode("manual"):
+        raise HTTPException(status_code=403, detail=f"tool '{name}' is not available in manual mode")
+    if spec.runner is None:
+        raise HTTPException(status_code=400,
+                            detail=f"'{name}' is catalog-only — run it through its dedicated route")
+    if not spec.is_available():
+        raise HTTPException(status_code=503, detail=f"tool '{name}' is not installed on this host")
+    engagement = policy.authorized_engagement(project_id)
+    if not engagement:
+        raise HTTPException(status_code=403,
+                            detail="no authorized engagement — scope the target before running tools")
+    execution = executions.create(
+        project_id, f"tool:{name}", {"tool": name, "args": body.args},
+        engagement_id=engagement["id"], risk_class=tool_registry.risk_class_for(name))
+    # Operator pulled the trigger — their action is the approval for live (state-changing)
+    # tools; destructive/prohibited tiers and hard scope denials still block in the gate.
+    await tool_runner.run_job(execution["id"], operator_approved=True)
+    row = db.query_one("SELECT status, output, error FROM executions WHERE id=?", [execution["id"]])
+    return {"execution_id": execution["id"], "status": row["status"],
+            "output": json.loads(row["output"] or "{}"), "error": row["error"]}
 
 
 # ── Techniques ────────────────────────────────────────────────────────────────

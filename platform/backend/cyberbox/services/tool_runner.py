@@ -19,6 +19,7 @@ from . import campaign as campaign_svc
 from . import policy as policy_svc
 from . import scanner
 from . import tool_registry
+from . import toolspec
 
 _POLL_INTERVAL = 5          # seconds between polls
 _LEASE_MINUTES = 5          # lease duration per job
@@ -78,7 +79,20 @@ async def _poll_and_dispatch() -> None:
 
 # ── Job orchestration ──────────────────────────────────────────────────────────
 
-async def _run_tool_job(execution_id: str) -> None:
+async def run_job(execution_id: str, operator_approved: bool = False) -> None:
+    """Public entrypoint — run one queued tool execution to completion synchronously.
+
+    Used by the manual run route so an operator-triggered tool goes through the exact same
+    lease → policy-gate → dispatch → finish path as the autonomous runner. `operator_approved`
+    marks that a human explicitly triggered this run: the gate then treats an
+    "approval-required" decision as satisfied (the click IS the approval) for everything below
+    the destructive tier, while hard scope denials and destructive/prohibited risk still block.
+    The autonomy dial governs the UNATTENDED (AI) path; it does not fence off what an operator
+    deliberately runs."""
+    await _run_tool_job(execution_id, operator_approved=operator_approved)
+
+
+async def _run_tool_job(execution_id: str, operator_approved: bool = False) -> None:
     """Lease, run, stream output, mark done/failed. All errors are caught."""
     row = db.query_one("SELECT * FROM executions WHERE id=?", [execution_id])
     if not row or row["status"] not in ("queued", "running"):
@@ -110,7 +124,7 @@ async def _run_tool_job(execution_id: str) -> None:
 
     # ── Scope/authorization gate — default-deny before any live tool runs ──
     engagement_id = row["engagement_id"]
-    gate = _policy_gate(engagement_id, tool_name, args)
+    gate = _policy_gate(engagement_id, tool_name, args, operator_approved=operator_approved)
     if not gate["allowed"]:
         msg = f"blocked by policy: {gate['reason']}"
         _finish_execution(execution_id, project_id, "blocked", {"policy": gate}, msg)
@@ -191,15 +205,24 @@ def _target_url(args: dict) -> str | None:
     return f"https://{domain}" if domain else None
 
 
-def _policy_gate(engagement_id: str | None, tool_name: str, args: dict) -> dict:
+def _policy_gate(engagement_id: str | None, tool_name: str, args: dict,
+                 operator_approved: bool = False) -> dict:
     """Default-deny gate. No engagement, no target, or policy denial → not allowed.
 
-    This is the single enforcement point for the autonomous path: every tool the runner
-    dispatches passes through here, so a campaign cannot reach a live tool without an
-    authorized engagement whose scope covers the target.
+    This is the single enforcement point for BOTH paths: every tool the runner dispatches —
+    autonomous or operator-triggered — passes through here, so nothing reaches a live tool
+    without an authorized engagement whose scope covers the target.
+
+    Spec-aware: a scope_required=0 passive tool (intel API, no target) skips the target check.
+    operator_approved=True means a human explicitly triggered this run, so an approval-required
+    decision is satisfied for everything below the destructive tier; hard scope denials and
+    destructive/prohibited risk still block regardless.
     """
     if not engagement_id:
-        return {"allowed": False, "reason": "no engagement — autonomous run is unauthorized"}
+        return {"allowed": False, "reason": "no engagement — run is unauthorized"}
+    spec = toolspec.get(tool_name)
+    if spec is not None and spec.scope_required == 0 and spec.danger_tier == "passive":
+        return {"allowed": True, "reason": "passive intel tool — no target scope required"}
     url = _target_url(args)
     if not url:
         return {"allowed": False, "reason": "no resolvable target to scope-check"}
@@ -211,6 +234,10 @@ def _policy_gate(engagement_id: str | None, tool_name: str, args: dict) -> dict:
     if not decision.get("allowed"):
         return {"allowed": False, "reason": decision.get("reason", "policy denied")}
     if decision.get("requires_approval"):
+        below_destructive = (policy_svc.RISK_ORDER.get(risk, 99)
+                             < policy_svc.RISK_ORDER["destructive"])
+        if operator_approved and below_destructive:
+            return {"allowed": True, "reason": "operator-approved live action"}
         return {"allowed": False, "reason": "requires operator approval"}
     return {"allowed": True, "reason": decision.get("reason", "policy allowed")}
 
@@ -226,15 +253,14 @@ async def _dispatch_tool(
     phase: str,
     max_runtime: int,
 ) -> tuple[int, object]:
-    if tool_name == "subfinder":
-        return await _run_subfinder(campaign_id, project_id, args, execution_id, phase, max_runtime)
-    if tool_name == "httpx":
-        return await _run_httpx(campaign_id, project_id, args, execution_id, phase, max_runtime)
-    if tool_name == "nuclei":
-        return await _run_nuclei(campaign_id, project_id, args, execution_id, phase, max_runtime)
-    if tool_name == "ffuf":
-        return await _run_ffuf(campaign_id, project_id, args, execution_id, phase, max_runtime)
-    raise ValueError(f"Unknown tool: {tool_name}")
+    """Resolve the tool's ToolSpec and run its bound runner. No hardcoded tool list —
+    any spec with a runner (and 'ai' in its modes) is dispatchable here."""
+    spec = toolspec.get(tool_name)
+    if spec is None or spec.runner is None:
+        raise ValueError(f"Unknown or non-executable tool: {tool_name}")
+    if not spec.allows_mode("ai"):
+        raise ValueError(f"Tool {tool_name} is not available to the autonomous runner")
+    return await spec.runner(campaign_id, project_id, args, execution_id, phase, max_runtime)
 
 
 # ── Individual tools ───────────────────────────────────────────────────────────
@@ -495,3 +521,12 @@ def _insert_nuclei_finding(obj: dict, project_id: str, campaign_id: str | None) 
             )
     except Exception:  # noqa: BLE001 — dedup races are silently ignored
         pass
+
+
+# ── Bind executable runners to their specs ──────────────────────────────────────
+# The ToolSpec metadata is declared in toolspec.py; here we attach the async handler
+# so both the AI dispatcher (above) and the manual run route resolve the same spec.
+toolspec.bind_runner("subfinder", _run_subfinder)
+toolspec.bind_runner("httpx", _run_httpx)
+toolspec.bind_runner("nuclei", _run_nuclei)
+toolspec.bind_runner("ffuf", _run_ffuf)
