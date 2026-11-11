@@ -2295,6 +2295,17 @@ def _enrich_plugins_with_advisories(plugins: list[dict]) -> list[dict]:
     return plugins
 
 
+def _mark_fingerprint_coverage(project_id: str, kind: str, result: dict, target: str) -> list[str]:
+    """Flip taxonomy classes covered from a passive fingerprint's confirmed observations.
+
+    Guarded so a coverage hiccup never fails the probe response; the engine layer is the single
+    honesty gate (it only marks directly-observed conditions)."""
+    try:
+        return engines_svc.apply_fingerprint_finding(project_id, kind, result, target)
+    except Exception:  # noqa: BLE001 - coverage is best-effort; the probe result still returns
+        return []
+
+
 @router.post("/projects/{project_id}/fingerprint/wordpress")
 def fingerprint_wp(project_id: str, body: FingerprintIn,
                    _user: dict = Depends(current_user)) -> dict:
@@ -2305,6 +2316,7 @@ def fingerprint_wp(project_id: str, body: FingerprintIn,
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     result["plugins"] = _enrich_plugins_with_advisories(result.get("plugins", []))
     result["vulnerable_plugin_count"] = sum(1 for p in result["plugins"] if p.get("known_advisories"))
+    result["coverage_marked"] = _mark_fingerprint_coverage(project_id, "wordpress", result, body.target_url)
     return result
 
 
@@ -2313,9 +2325,11 @@ def fingerprint_gl(project_id: str, body: FingerprintIn,
                    _user: dict = Depends(current_user)) -> dict:
     _gate_passive_probe(project_id, body.target_url)
     try:
-        return fingerprint_svc.fingerprint_gitlab(body.target_url)
+        result = fingerprint_svc.fingerprint_gitlab(body.target_url)
     except fingerprint_svc.ProbeBlocked as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    result["coverage_marked"] = _mark_fingerprint_coverage(project_id, "gitlab", result, body.target_url)
+    return result
 
 
 # ---------------------------------------------------------------------------

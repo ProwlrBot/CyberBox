@@ -17,9 +17,15 @@ Design rules that keep this honest:
 from __future__ import annotations
 
 import json
+import uuid
+from datetime import datetime, timezone
 
 from .. import db
 from . import taxonomy
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 # Nuclei tag (lowercase) -> (family_num, canonical class name in the taxonomy spine).
 # Deliberately conservative: only tags with a defensible 1:1 class meaning are mapped. Broad tags
@@ -129,6 +135,100 @@ def apply_nuclei_finding(project_id: str, finding: dict, evidence_id: str) -> li
     return marked
 
 
+# ── Fingerprint engine (passive probe → coverage) ─────────────────────────────────
+#
+# A fingerprint is passive recon, not a scan — so it may only mark a class when the probe
+# *directly observed* the condition, where the observation itself IS the finding. We never flip
+# a class from an absence, a version guess, or a "normal but noisy" signal (REST enabled, public
+# projects). Each rule below carries the concrete evidence into the stored row so coverage always
+# points back to something real a human can re-check. Deliberately short: three defensible rules
+# beat ten that cry wolf. `fp:*` dedup keys mean re-probing the same target reuses one evidence row.
+
+def _fp_wordpress_observations(result: dict) -> list[dict]:
+    """Confirmed, self-evident findings from a WordPress fingerprint. Pure."""
+    obs: list[dict] = []
+    users = result.get("users") or []
+    if (result.get("exposed") or {}).get("rest_users") and users:
+        slugs = ", ".join(str(u.get("slug") or u.get("name") or u.get("id")) for u in users[:10])
+        obs.append({
+            "code": "wp-user-enum", "family": 13, "class_name": "Username / email enumeration",
+            "name": "WordPress username enumeration via REST API",
+            "severity": "low", "category": "Information Disclosure",
+            "description": f"/wp-json/wp/v2/users returned {len(users)} account(s) unauthenticated: {slugs}.",
+        })
+    vuln_plugins = [p for p in (result.get("plugins") or []) if p.get("known_advisories")]
+    if vuln_plugins:
+        names = ", ".join(f"{p.get('slug')}@{p.get('version') or '?'}" for p in vuln_plugins[:8])
+        obs.append({
+            "code": "wp-vuln-plugin", "family": 4, "class_name": "Known vulnerabilities in edge software",
+            "name": "WordPress plugin at a version with a published advisory",
+            "severity": "medium", "category": "Vulnerable Component",
+            "description": f"{len(vuln_plugins)} detected plugin(s) match a known advisory at the fingerprinted version: {names}.",
+        })
+    return obs
+
+
+def _fp_gitlab_observations(result: dict) -> list[dict]:
+    """Confirmed, self-evident findings from a GitLab fingerprint. Pure."""
+    obs: list[dict] = []
+    if result.get("version") and (result.get("exposed") or {}).get("public_api"):
+        rev = f" (rev {result['revision']})" if result.get("revision") else ""
+        obs.append({
+            "code": "gl-version-disclosure", "family": 1,
+            "class_name": "Fingerprinting / banner disclosure, software versions in headers",
+            "name": "GitLab version disclosed via unauthenticated /api/v4/version",
+            "severity": "info", "category": "Information Disclosure",
+            "description": f"Unauthenticated /api/v4/version exposed GitLab {result['version']}{rev} — pins the instance to published CVEs.",
+        })
+    return obs
+
+
+_FP_RESOLVERS = {"wordpress": _fp_wordpress_observations, "gitlab": _fp_gitlab_observations}
+
+
+def classes_for_fingerprint(kind: str, result: dict) -> list[dict]:
+    """Resolve a fingerprint result to confirmed observations + their taxonomy class ids. Pure.
+
+    Returns a list of observation dicts (each with a real `class_id`) for the UI/engine; an
+    unmapped or empty result returns []. Observations whose class is not in the spine are dropped."""
+    out: list[dict] = []
+    for obs in _FP_RESOLVERS.get(kind, lambda _r: [])(result):
+        cid = _class_id_if_exists(obs["family"], obs["class_name"])
+        if cid:
+            out.append({**obs, "class_id": cid})
+    return out
+
+
+def apply_fingerprint_finding(project_id: str, kind: str, result: dict, target: str) -> list[str]:
+    """Persist a passive-probe observation as evidence and auto-mark its taxonomy class covered.
+
+    Each observation becomes one `vulnerabilities` row (deduped per target so a re-probe reuses it),
+    then flips its class to `covered` with that row as evidence — the same honesty contract as the
+    nuclei path. Returns the class ids actually marked. Caller should guard; never fails the probe."""
+    marked: list[str] = []
+    host = (target or result.get("target") or "").strip()
+    for obs in classes_for_fingerprint(kind, result):
+        dedup_key = f"fp:{obs['code']}:{host}"
+        existing = db.query_one(
+            "SELECT id FROM vulnerabilities WHERE project_id=? AND dedup_key=?", [project_id, dedup_key])
+        if existing:
+            evidence_id = existing["id"]
+        else:
+            evidence_id = str(uuid.uuid4())
+            db.insert("vulnerabilities", {
+                "id": evidence_id, "project_id": project_id, "asset_id": None,
+                "template_id": f"fingerprint-{obs['code']}", "name": obs["name"],
+                "severity": obs["severity"], "category": obs["category"],
+                "description": obs["description"], "cve": None, "host": host,
+                "matched_at": host, "status": "open", "verified": 1, "poc": "",
+                "request_chain": "[]", "tags": json.dumps(["fingerprint", kind, obs["code"]]),
+                "dedup_key": dedup_key, "sla_due": None, "detected_at": _now(), "fixed_at": None,
+            })
+        if mark_covered(project_id, obs["class_id"], evidence_id, f"fingerprint:{kind}:{obs['code']}"):
+            marked.append(obs["class_id"])
+    return marked
+
+
 # ── Registry (provenance for the cockpit) ─────────────────────────────────────────
 
 _ENGINES = [
@@ -142,6 +242,21 @@ _ENGINES = [
         "_tag_map": _NUCLEI_TAG_MAP,
         "_cve_class": _CVE_CLASS,
     },
+    {
+        "key": "fingerprint",
+        "name": "Fingerprint",
+        "kind": "passive-probe",
+        "optional": False,
+        "description": "Passive, unauthenticated WordPress/GitLab probe. A directly-observed "
+                       "condition (user enumeration, a plugin at a known-vulnerable version, an "
+                       "unauthenticated version banner) marks its class covered with the "
+                       "observation stored as evidence. Never flips a class from a guess.",
+        "_static_classes": [
+            (13, "Username / email enumeration"),
+            (4, "Known vulnerabilities in edge software"),
+            (1, "Fingerprinting / banner disclosure, software versions in headers"),
+        ],
+    },
 ]
 
 
@@ -153,6 +268,7 @@ def list_engines() -> list[dict]:
     out = []
     for eng in _ENGINES:
         refs = set(eng.get("_tag_map", {}).values())
+        refs.update(eng.get("_static_classes", []))
         if eng.get("_cve_class"):
             refs.add(eng["_cve_class"])
         covers = []
