@@ -8,7 +8,7 @@ from pathlib import Path
 
 from cyberbox import db
 from cyberbox.config import Settings
-from cyberbox.services import taxonomy
+from cyberbox.services import taxonomy, wstg
 
 
 class TaxonomyTest(unittest.TestCase):
@@ -134,6 +134,45 @@ class TaxonomyTest(unittest.TestCase):
     def test_methodology_rejects_unknown_class(self) -> None:
         with self.assertRaises(ValueError):
             taxonomy.methodology("f99-nope")
+
+    def test_wstg_catalog_is_96_tests_11_chapters(self) -> None:
+        cat = wstg.catalog()
+        self.assertEqual(cat["total"], 96)
+        self.assertEqual(len(cat["chapters"]), 11)
+        # First chapter in canonical WSTG order is Information Gathering, not alphabetical ATHN.
+        self.assertEqual(cat["chapters"][0]["code"], "INFO")
+        # A mapped test actually resolves to real seeded classes.
+        athz04 = next(t for t in cat["tests"] if t["id"] == "WSTG-v42-ATHZ-04")
+        self.assertTrue(athz04["maps"])
+        for m in athz04["maps"]:
+            self.assertTrue(db.query_one("SELECT id FROM taxonomy_classes WHERE id=?", [m["class_id"]]))
+
+    def test_wstg_coverage_derives_from_taxonomy_coverage(self) -> None:
+        # Covering an SSRF class flips the SSRF WSTG test (INPV-19) to covered via the mapping.
+        ssrf = next(c for c in taxonomy.list_classes(9) if c["name"] == "Full-read SSRF")
+        taxonomy.set_coverage(self.project_id, ssrf["id"], "covered", note="read file:///etc/passwd")
+        cov = wstg.coverage(self.project_id)
+        inpv19 = next(t for t in cov["tests"] if t["id"] == "WSTG-v42-INPV-19")
+        self.assertEqual(inpv19["status"], "covered")
+        self.assertGreaterEqual(cov["covered"], 1)
+        # Chapter rollup reflects it.
+        inpv = next(ch for ch in cov["chapters"] if ch["code"] == "INPV")
+        self.assertGreaterEqual(inpv["covered"], 1)
+
+    def test_wstg_catalog_only_test_never_counts_covered(self) -> None:
+        # INFO-01 (search engine discovery) is catalog-only (maps=[]) — no coverage can flip it.
+        cov = wstg.coverage(self.project_id)
+        info01 = next(t for t in cov["tests"] if t["id"] == "WSTG-v42-INFO-01")
+        self.assertFalse(info01["mapped"])
+        self.assertEqual(info01["status"], "none")
+        self.assertGreater(cov["catalog_only"], 0)
+
+    def test_wstg_partial_class_yields_partial_test(self) -> None:
+        idor = next(c for c in taxonomy.list_classes(14) if c["name"].startswith("IDOR / BOLA"))
+        taxonomy.set_coverage(self.project_id, idor["id"], "partial")
+        cov = wstg.coverage(self.project_id)
+        athz04 = next(t for t in cov["tests"] if t["id"] == "WSTG-v42-ATHZ-04")
+        self.assertEqual(athz04["status"], "partial")
 
     def test_reportability_allows_impactful_class(self) -> None:
         idor = next(c for c in taxonomy.list_classes(14) if "bola" in c["name"].lower())

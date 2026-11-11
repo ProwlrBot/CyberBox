@@ -35,6 +35,7 @@ from ..services import campaign as campaign_svc
 from ..services import fingerprint as fingerprint_svc
 from ..services import engines as engines_svc
 from ..services import taxonomy as taxonomy_svc
+from ..services import wstg as wstg_svc
 
 router = APIRouter(prefix="/api/v1", tags=["api"])
 
@@ -2254,6 +2255,19 @@ def project_chains(project_id: str, _user: dict = Depends(current_user)) -> list
 def list_engines(_user: dict = Depends(current_user)) -> list[dict]:
     """Registered engines and the taxonomy classes each can flip to covered (provenance layer)."""
     return engines_svc.list_engines()
+
+
+@router.get("/wstg/catalog")
+def wstg_catalog(_user: dict = Depends(current_user)) -> dict:
+    """OWASP WSTG v4.2 catalog (96 tests, 11 chapters) with each test's mapped taxonomy classes."""
+    return wstg_svc.catalog()
+
+
+@router.get("/projects/{project_id}/wstg/coverage")
+def project_wstg_coverage(project_id: str, _user: dict = Depends(current_user)) -> dict:
+    """WSTG v4.2 coverage for the target, derived from taxonomy coverage via the test->class map."""
+    _require_project(project_id)
+    return wstg_svc.coverage(project_id)
 
 
 # ---------------------------------------------------------------------------

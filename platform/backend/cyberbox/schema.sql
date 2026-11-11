@@ -998,3 +998,23 @@ CREATE TABLE IF NOT EXISTS class_methodology (
     ai_hook    TEXT,                         -- optional light AI-enhancement note (never required)
     updated_at TEXT NOT NULL
 );
+
+-- OWASP WSTG v4.2 catalog: a second authoritative coverage axis over the same taxonomy spine.
+-- A WSTG test's per-target coverage is DERIVED from target_coverage via wstg_class_map (no own
+-- writes) so engine evidence auto-fills WSTG coverage too.
+CREATE TABLE IF NOT EXISTS wstg_tests (
+    id          TEXT PRIMARY KEY,            -- e.g. WSTG-v42-ATHZ-04
+    chapter     TEXT NOT NULL,               -- INFO | CONF | IDNT | ATHN | ATHZ | SESS | INPV | ERRH | CRYP | BUSL | CLNT
+    num         INTEGER NOT NULL,
+    title       TEXT NOT NULL,
+    how_to_test TEXT NOT NULL DEFAULT '',
+    evidence    TEXT NOT NULL DEFAULT '',
+    reject_if   TEXT NOT NULL DEFAULT '',
+    updated_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS wstg_class_map (
+    wstg_id  TEXT NOT NULL REFERENCES wstg_tests(id) ON DELETE CASCADE,
+    class_id TEXT NOT NULL REFERENCES taxonomy_classes(id),
+    PRIMARY KEY (wstg_id, class_id)
+);
+CREATE INDEX IF NOT EXISTS idx_wstg_map_class ON wstg_class_map(class_id);

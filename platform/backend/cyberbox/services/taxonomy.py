@@ -26,6 +26,7 @@ from .. import db
 
 _DATA = Path(__file__).resolve().parent.parent / "data" / "taxonomy.json"
 _METH = Path(__file__).resolve().parent.parent / "data" / "methodologies.json"
+_WSTG = Path(__file__).resolve().parent.parent / "data" / "wstg.json"
 
 
 def _now() -> str:
@@ -40,6 +41,11 @@ def _load() -> dict:
 @lru_cache(maxsize=1)
 def _load_methodologies() -> dict:
     return json.loads(_METH.read_text())
+
+
+@lru_cache(maxsize=1)
+def _load_wstg() -> dict:
+    return json.loads(_WSTG.read_text())
 
 
 def class_id(family_num: int, name: str) -> str:
@@ -100,6 +106,30 @@ def ensure_seeded() -> dict:
                        "ai_hook": m.get("ai_hook"), "updated_at": _now()},
                       conflict_cols=["class_id"], update_cols=["steps", "ai_hook", "updated_at"])
 
+        # OWASP WSTG v4.2 catalog + its mapping onto the spine. Each test's maps[] names classes;
+        # only maps to classes that exist are kept (FK-safe), so a renamed class drops its mapping
+        # rather than orphaning it. Coverage itself is derived at read time — nothing is written here
+        # beyond the catalog and the static mapping.
+        wstg = _load_wstg()
+        name_to_family = {c["name"]: c["family"] for c in data["classes"]}
+        valid_wstg_ids = []
+        for t in wstg["tests"]:
+            valid_wstg_ids.append(t["id"])
+            db.upsert("wstg_tests",
+                      {"id": t["id"], "chapter": t["chapter"], "num": t["num"], "title": t["title"],
+                       "how_to_test": t.get("how_to_test", ""), "evidence": t.get("evidence", ""),
+                       "reject_if": t.get("reject_if", ""), "updated_at": _now()},
+                      conflict_cols=["id"],
+                      update_cols=["chapter", "num", "title", "how_to_test", "evidence", "reject_if", "updated_at"])
+            # Rebuild this test's mapping authoritatively: drop its rows, re-insert the valid ones.
+            db.execute("DELETE FROM wstg_class_map WHERE wstg_id=?", [t["id"]])
+            for name in t.get("maps", []):
+                fam = name_to_family.get(name)
+                cid = class_id(fam, name) if fam else None
+                if cid and db.query_one("SELECT id FROM taxonomy_classes WHERE id=?", [cid]):
+                    db.upsert("wstg_class_map", {"wstg_id": t["id"], "class_id": cid},
+                              conflict_cols=["wstg_id", "class_id"], update_cols=["class_id"])
+
         # Seeding is AUTHORITATIVE: prune classes/chains/methodologies no longer in the spine so a
         # rename never leaves a stale orphan behind. target_coverage rows are left intact — a LEFT
         # JOIN from taxonomy_classes means orphaned coverage simply never surfaces, no data lost.
@@ -108,6 +138,7 @@ def ensure_seeded() -> dict:
         # Prune methodology rows first — they FK to taxonomy_classes, so a dangling methodology for
         # a renamed class would otherwise block that class's own prune below.
         _prune("class_methodology", "class_id", valid_method_ids)
+        _prune("wstg_tests", "id", valid_wstg_ids)  # CASCADE drops stale wstg_class_map rows
         _prune("chain_recipes", "id", valid_chain_ids)
         _prune("taxonomy_classes", "id", valid_class_ids)
         _prune("taxonomy_families", "num", valid_family_nums)
