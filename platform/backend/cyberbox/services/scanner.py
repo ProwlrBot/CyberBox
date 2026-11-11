@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import subprocess
 import uuid
@@ -51,8 +52,9 @@ RAPTOR_PROTOCOLS = frozenset([
     "java", "php", "gha", "github", "js", "crystal",
 ])
 
-# Default location; overridable via settings.tools["raptor"]
-_RAPTOR_DEFAULT = "/home/anon/raptor/raptor"
+# Resolved from PATH by default; override with settings.tools["raptor"] (CYBERBOX_TOOL_RAPTOR)
+# or the RAPTOR_BIN env var for a non-PATH install.
+_RAPTOR_DEFAULT = os.environ.get("RAPTOR_BIN", "raptor")
 
 
 def _now() -> str:
@@ -218,7 +220,7 @@ def run_nuclei(project_id: str, scan_id: str, task_id: str | None, targets: list
 
 def run_raptor_scan(
     project_id: str,
-    engagement_id: str,
+    engagement_id: str | None,
     protocol: str,
     target_path: str,
     created_by: str,
@@ -226,10 +228,13 @@ def run_raptor_scan(
 ) -> dict:
     """Run Raptor source scanner and return structured results.
 
+    Raptor is a local static source/package scan — it never makes an outbound
+    request to a target — so it is not scope- or engagement-gated. ``engagement_id``
+    is recorded for provenance when provided; a stale id is dropped rather than failing.
+
     Returns {"execution_id": str, "findings_count": int, "output_lines": list[str]}.
     Raises RuntimeError if raptor binary is absent.
     Raises ValueError for unknown protocol.
-    Raises PermissionError if the engagement is not in an authorized state.
     """
     if protocol not in RAPTOR_PROTOCOLS:
         raise ValueError(
@@ -237,20 +242,14 @@ def run_raptor_scan(
             f"valid: {', '.join(sorted(RAPTOR_PROTOCOLS))}"
         )
 
-    engagement = db.query_one("SELECT status FROM engagements WHERE id=?", [engagement_id])
-    if not engagement:
-        raise ValueError(f"engagement not found: {engagement_id}")
-    if engagement["status"] not in ("active", "authorized", "local-laboratory", "ctf"):
-        raise PermissionError(
-            f"raptor scan blocked: engagement status is {engagement['status']!r}; "
-            "must be active, authorized, local-laboratory, or ctf"
-        )
+    if engagement_id and not db.query_one("SELECT id FROM engagements WHERE id=?", [engagement_id]):
+        engagement_id = None  # local scan — don't fail over a stale engagement reference
 
     raptor_bin = get_settings().tools.get("raptor", _RAPTOR_DEFAULT)
-    if not shutil.which(raptor_bin):
+    if not (shutil.which(raptor_bin) or os.path.isfile(raptor_bin)):
         raise RuntimeError(
-            f"raptor binary not found: install raptor from /home/anon/raptor/ "
-            f"(looked for {raptor_bin!r})"
+            f"raptor binary not found (looked for {raptor_bin!r}); set the RAPTOR_BIN "
+            "env var or settings.tools['raptor'] to its path"
         )
 
     target_path = str(Path(target_path).resolve())

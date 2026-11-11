@@ -16,10 +16,17 @@ WORKFLOWS: dict[str, tuple[tuple[str, ...], ...]] = {
 
 
 def cve_intel_root() -> Path:
-    root = Path(os.environ.get("CYBERBOX_CVE_INTEL_ROOT", "/workspace/cve-intel")).expanduser()
+    # Same resolution chain as services/cve_intel.py, so both adapters agree on the
+    # workspace location: explicit override -> $CVE_INTEL_HOME -> ~/cve-intel.
+    candidate = (os.environ.get("CYBERBOX_CVE_INTEL_ROOT")
+                 or os.environ.get("CVE_INTEL_HOME")
+                 or str(Path.home() / "cve-intel"))
+    root = Path(candidate).expanduser()
     lab = root / "labs" / "tools" / "bin" / "lab"
     if not root.is_dir() or not lab.is_file():
-        raise RuntimeError("CYBERBOX_CVE_INTEL_ROOT must point to a mounted cve-intel workspace")
+        raise RuntimeError(
+            f"cve-intel workspace not found at {root} (no labs/tools/bin/lab); "
+            "set $CYBERBOX_CVE_INTEL_ROOT or $CVE_INTEL_HOME")
     return root
 
 

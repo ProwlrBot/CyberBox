@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import tempfile
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -22,6 +23,9 @@ _POLL_INTERVAL = 5          # seconds between polls
 _LEASE_MINUTES = 5          # lease duration per job
 _MAX_CONCURRENT = 3         # parallel tool jobs
 _DEFAULT_MAX_RUNTIME = 1800 # seconds
+# Default ffuf wordlist; per-job `args["wordlist"]` overrides, env sets the fallback.
+_DEFAULT_FFUF_WORDLIST = os.environ.get(
+    "CYBERBOX_FFUF_WORDLIST", "/usr/share/wordlists/dirb/common.txt")
 
 PROGRESS_AFTER: dict[str, int] = {
     "subfinder": 20,
@@ -364,7 +368,7 @@ async def _run_ffuf(
     max_runtime: int,
 ) -> tuple[int, int]:
     target_url = args.get("target_url", args.get("url", ""))
-    wordlist = args.get("wordlist", "/usr/share/wordlists/dirb/common.txt")
+    wordlist = args.get("wordlist") or _DEFAULT_FFUF_WORDLIST
 
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
         outfile = f.name

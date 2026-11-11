@@ -17,12 +17,17 @@ import hmac
 import json
 import os
 import re
+import urllib.error
+import urllib.request
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
 from .. import db
 from . import notify, pr_review, source_revision
+
+# A GitHub repo full name (owner/repo) — guards the outbound URL against local-path scans.
+_REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 _SEVERITY_RANK = {"low": 1, "medium": 2, "high": 3, "critical": 4}
 # Files we never scan as source (binary, vendored, VCS internals).
@@ -245,9 +250,12 @@ def format_pr_comment(scan: dict) -> str:
 
 
 def post_results(scan_id: str, token_env: str = "GITHUB_TOKEN", confirm: bool = False) -> dict:
-    """Post scan results back to the PR. Opt-in: requires confirm=True AND the token present
-    in the named OS env var. Default (confirm=False) is a dry run that returns the payload
-    without any outbound request, honoring the default-read-only posture."""
+    """Post scan results as a comment on the scanned PR.
+
+    Opt-in and approval-gated: it reaches out only with confirm=True AND the token present
+    in the named OS env var (tokens are never read from the DB). confirm=False is a dry run
+    that returns the prepared payload without any outbound request, honoring default-read-only.
+    """
     scan = get_scan(scan_id)
     if not scan:
         raise ValueError("scan not found")
@@ -261,8 +269,27 @@ def post_results(scan_id: str, token_env: str = "GITHUB_TOKEN", confirm: bool = 
                 "reason": f"no token in ${token_env}", "body": body}
     if not scan.get("pr_number"):
         return {"posted": False, "reason": "scan has no pr_number", "body": body}
-    # Real POST deferred to a thin HTTP layer the operator enables; kept out of the default
-    # path so a scan can never silently reach out. Returns the prepared request for that layer.
-    return {"posted": False, "prepared": True,
-            "endpoint": f"https://api.github.com/repos/{scan['repo']}/issues/{scan['pr_number']}/comments",
-            "body": body, "token_env": token_env}
+    repo = scan.get("repo") or ""
+    if not _REPO_SLUG_RE.match(repo):
+        return {"posted": False, "reason": f"scan repo {repo!r} is not an owner/repo slug "
+                "(local-path scan has no PR to comment on)", "body": body}
+    endpoint = f"https://api.github.com/repos/{repo}/issues/{scan['pr_number']}/comments"
+    req = urllib.request.Request(
+        endpoint, data=json.dumps({"body": body}).encode(), method="POST",
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
+                 "Content-Type": "application/json", "X-GitHub-Api-Version": "2022-11-28",
+                 "User-Agent": "CyberBox"})  # generic UA — never leak operator identity
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310 — api.github.com, confirm-gated
+            status, raw = resp.status, resp.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as exc:
+        return {"posted": False, "reason": f"github returned {exc.code}",
+                "detail": exc.read().decode("utf-8", "replace")[:300], "endpoint": endpoint}
+    except urllib.error.URLError as exc:
+        return {"posted": False, "reason": f"post failed: {exc.reason}", "endpoint": endpoint}
+    comment_url = ""
+    try:
+        comment_url = json.loads(raw).get("html_url", "")
+    except json.JSONDecodeError:
+        pass
+    return {"posted": True, "endpoint": endpoint, "status": status, "comment_url": comment_url}

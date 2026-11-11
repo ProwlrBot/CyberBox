@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from .. import db
 from ..hub import hub
 from . import model as model_svc
+from . import policy
 
 HUNT_PHASES: dict[str, list[str]] = {
     "full_auto":     ["recon", "fuzz", "validate", "report"],
@@ -42,9 +43,14 @@ def create_campaign(
     provider_id: str | None,
     max_runtime: int,
 ) -> dict:
+    # Bind the campaign to the project's authorized engagement so its queued live tools
+    # (subfinder/httpx/nuclei/ffuf) pass the scope gate. Without one, engagement_id stays
+    # NULL and the runner correctly default-denies every live tool — the LLM phases still run.
+    engagement = policy.authorized_engagement(project_id)
     row = {
         "id":         str(uuid.uuid4()),
         "project_id": project_id,
+        "engagement_id": engagement["id"] if engagement else None,
         "name":       name[:200],
         "target_url": target_url[:1024],
         "hunt_type":  hunt_type,
@@ -493,10 +499,14 @@ async def _phase_validate(campaign_id: str, campaign: dict, ctx: dict) -> dict:
                 "host": campaign["target_url"][:512],
                 "matched_at": campaign["target_url"][:512],
                 "status": "open",
-                "verified": 1 if v.get("verdict") == "confirmed" else 0,
-                "poc": json.dumps({"test_cases": test_cases, "confidence": v.get("confidence", 0)}),
+                # An LLM verdict is a triage signal, not runtime proof. Never auto-mark
+                # verified — only a real PoC check (services/verify.py) may set this.
+                "verified": 0,
+                "poc": json.dumps({"test_cases": test_cases, "confidence": v.get("confidence", 0),
+                                   "llm_verdict": v.get("verdict")}),
                 "request_chain": "[]",
-                "tags": json.dumps(["campaign", campaign["hunt_type"]]),
+                "tags": json.dumps(["campaign", campaign["hunt_type"],
+                                    f"llm-verdict:{v.get('verdict', 'unknown')}"]),
                 "dedup_key": f"campaign|{campaign_id}|{v.get('title', '')[:100]}",
                 "sla_due": None,
                 "detected_at": _now(),

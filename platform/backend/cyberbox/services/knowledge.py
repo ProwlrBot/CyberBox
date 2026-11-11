@@ -1,19 +1,50 @@
 """Signed knowledge-pack registration contracts."""
 from __future__ import annotations
 
+import base64
 import json
+import os
 import re
 import hashlib
 import uuid
 from datetime import datetime, timezone
 
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
 from .. import db
 
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+# Base64 Ed25519 public key of the party you trust to sign packs. When set, signatures
+# are enforced and a pack is marked "verified"; when unset, packs are stored "unverified"
+# (integrity is still checked) — never silently trusted.
+_TRUSTED_PUBKEY_ENV = "CYBERBOX_KNOWLEDGE_PUBKEY"
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _content_digest(documents: list) -> str:
+    """Canonical sha256 over the pack's documents — the value `manifest.sha256` must match."""
+    return hashlib.sha256(json.dumps(documents, sort_keys=True).encode()).hexdigest()
+
+
+def _verify_signature(digest_hex: str, signature_b64: str) -> bool:
+    """Verify an Ed25519 signature over the content digest against the trusted pubkey.
+
+    Returns True on a valid signature. Raises ValueError if a trusted key is configured
+    but the signature does not verify. Returns False when no trusted key is configured.
+    """
+    pub_b64 = os.environ.get(_TRUSTED_PUBKEY_ENV)
+    if not pub_b64:
+        return False
+    try:
+        public_key = Ed25519PublicKey.from_public_bytes(base64.b64decode(pub_b64, validate=True))
+        public_key.verify(base64.b64decode(signature_b64, validate=True), digest_hex.encode())
+        return True
+    except (InvalidSignature, ValueError, TypeError) as exc:
+        raise ValueError("knowledge-pack signature failed verification") from exc
 
 
 def register(manifest: dict) -> dict:
@@ -21,14 +52,26 @@ def register(manifest: dict) -> dict:
     missing = [key for key in required if not manifest.get(key)]
     if missing:
         raise ValueError(f"missing knowledge-pack fields: {', '.join(missing)}")
-    if not SHA256_RE.fullmatch(str(manifest["sha256"]).lower()):
+    declared = str(manifest["sha256"]).lower()
+    if not SHA256_RE.fullmatch(declared):
         raise ValueError("knowledge-pack sha256 must be 64 lowercase hex characters")
     if not str(manifest["source_url"]).startswith("https://"):
         raise ValueError("knowledge-pack source_url must use https")
+
+    # Integrity: the declared sha256 must match the actual content. Always enforced.
+    actual = _content_digest(manifest.get("documents", []))
+    if actual != declared:
+        raise ValueError(
+            f"knowledge-pack sha256 mismatch: manifest declares {declared} but documents "
+            f"hash to {actual}")
+
+    # Authenticity: enforce the Ed25519 signature only when a trusted key is configured.
+    status = "verified" if _verify_signature(actual, str(manifest["signature"])) else "unverified"
+
     row = {
         "id": manifest["id"], "name": manifest["name"], "version": manifest["version"],
-        "status": "registered", "source_url": manifest["source_url"],
-        "license": manifest["license"], "sha256": manifest["sha256"].lower(),
+        "status": status, "source_url": manifest["source_url"],
+        "license": manifest["license"], "sha256": declared,
         "signature": manifest["signature"], "manifest": json.dumps(manifest, sort_keys=True),
         "installed_at": _now(),
     }

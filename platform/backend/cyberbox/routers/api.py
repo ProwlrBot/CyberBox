@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from .. import db
 from ..auth import current_user, require_internal_service
 from ..config import get_settings
-from ..services import advisories, analytics, artifacts, bundles, capabilities, events, executions, knowledge, lifecycle, memory, playbooks, policy, project_templates, research, source_revision, tool_registry, triage, wordfence
+from ..services import advisories, analytics, artifacts, bundles, capabilities, events, executions, knowledge, lifecycle, memory, playbooks, policy, project_templates, research, scanner, source_revision, tool_registry, triage, wordfence
 from ..services import github as github_svc
 from ..services import scheduler as scheduler_svc
 from ..services import surface as surface_svc
@@ -38,6 +38,27 @@ router = APIRouter(prefix="/api/v1", tags=["api"])
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _bounty_tool(script_name: str) -> str | None:
+    """Resolve a helper script from the claude-bug-bounty toolkit.
+
+    Honors $CYBERBOX_BOUNTY_TOOLS_DIR, then ~/claude-bug-bounty/tools, then a repo-relative
+    sibling checkout — so the backend is not tied to one operator's home layout.
+    """
+    roots = [
+        os.environ.get("CYBERBOX_BOUNTY_TOOLS_DIR"),
+        os.path.expanduser("~/claude-bug-bounty/tools"),
+        os.path.join(os.path.dirname(__file__), "..", "..", "..", "..",
+                     "claude-bug-bounty", "tools"),
+    ]
+    for root in roots:
+        if not root:
+            continue
+        candidate = os.path.join(root, script_name)
+        if os.path.isfile(candidate):
+            return candidate
+    return None
 
 
 def _slugify(name: str) -> str:
@@ -634,21 +655,19 @@ def start_raptor_scan(project_id: str, body: RaptorScanCreate,
                       user: dict = Depends(current_user)) -> dict:
     if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
         raise HTTPException(status_code=404, detail="project not found")
+    # Raptor is a local static source/package scan — it never reaches a target over
+    # the network, so (like wordfence) it is not engagement/scope-gated. Any most-recent
+    # engagement is recorded for provenance, but none is required.
     engagement = db.query_one(
-        "SELECT id FROM engagements WHERE project_id=? AND status IN "
-        "('active','authorized','local-laboratory','ctf') ORDER BY created_at DESC LIMIT 1",
+        "SELECT id FROM engagements WHERE project_id=? ORDER BY created_at DESC LIMIT 1",
         [project_id],
     )
-    if not engagement:
-        raise HTTPException(status_code=409, detail="active engagement required for raptor scan")
     try:
         result = scanner.run_raptor_scan(
-            project_id, engagement["id"], body.protocol, body.target_path,
-            user["id"], body.output_format,
+            project_id, engagement["id"] if engagement else None, body.protocol,
+            body.target_path, user["id"], body.output_format,
         )
         return result
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -1933,13 +1952,7 @@ def preflight_check(project_id: str, body: PreflightCheckCreate,
     import shutil
     if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
         raise HTTPException(status_code=404, detail="project not found")
-    # hunt_preflight.py lives in claude-bug-bounty/tools/ — locate it
-    preflight_candidates = [
-        os.path.expanduser("~/claude-bug-bounty/tools/hunt_preflight.py"),
-        os.path.join(os.path.dirname(__file__), "..", "..", "..", "..",
-                     "claude-bug-bounty", "tools", "hunt_preflight.py"),
-    ]
-    preflight_script = next((p for p in preflight_candidates if os.path.isfile(p)), None)
+    preflight_script = _bounty_tool("hunt_preflight.py")
     if not preflight_script:
         raise HTTPException(status_code=503, detail="hunt_preflight.py not found")
 
@@ -1984,10 +1997,7 @@ def dedup_check(project_id: str, body: DedupCheckCreate,
     import subprocess
     if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
         raise HTTPException(status_code=404, detail="project not found")
-    reports_db_candidates = [
-        os.path.expanduser("~/claude-bug-bounty/tools/reports_db.py"),
-    ]
-    reports_db_script = next((p for p in reports_db_candidates if os.path.isfile(p)), None)
+    reports_db_script = _bounty_tool("reports_db.py")
     if not reports_db_script:
         raise HTTPException(status_code=503, detail="reports_db.py not found")
     try:
@@ -2027,10 +2037,7 @@ def howtohunt_sync(project_id: str, body: HowtohuntSyncCreate,
     import subprocess
     if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
         raise HTTPException(status_code=404, detail="project not found")
-    gen_candidates = [
-        os.path.expanduser("~/claude-bug-bounty/tools/howtohunt_gen.py"),
-    ]
-    gen_script = next((p for p in gen_candidates if os.path.isfile(p)), None)
+    gen_script = _bounty_tool("howtohunt_gen.py")
     if not gen_script:
         raise HTTPException(status_code=503, detail="howtohunt_gen.py not found")
 
