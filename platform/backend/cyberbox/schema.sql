@@ -735,3 +735,38 @@ CREATE TABLE IF NOT EXISTS tool_registry (
 );
 CREATE INDEX IF NOT EXISTS idx_tool_registry_category ON tool_registry(category);
 CREATE INDEX IF NOT EXISTS idx_tool_registry_enabled ON tool_registry(enabled);
+
+-- ── Advisories & affected versions (Patchstack/CVE/NVD correlation) ────────────
+CREATE TABLE IF NOT EXISTS advisories (
+    id            TEXT PRIMARY KEY,
+    source        TEXT NOT NULL,            -- patchstack|nvd|cve|wpvulndb|manual
+    external_id   TEXT,                     -- CVE-2024-XXXX, PS-XXXX, etc.
+    title         TEXT NOT NULL,
+    description   TEXT,
+    severity      TEXT,                     -- critical|high|medium|low|info|unknown
+    cvss          REAL,
+    cwe           TEXT,
+    product_type  TEXT,                     -- wordpress-plugin|theme|core|library|...
+    product_slug  TEXT,                     -- woocommerce, elementor, ...
+    published_at  TEXT,
+    reference_urls TEXT NOT NULL DEFAULT '[]',
+    raw           TEXT NOT NULL DEFAULT '{}',  -- provenance: original upstream record
+    content_hash  TEXT,                     -- dedup across re-imports
+    created_at    TEXT NOT NULL,
+    UNIQUE (source, external_id)
+);
+
+CREATE TABLE IF NOT EXISTS affected_versions (
+    id                 TEXT PRIMARY KEY,
+    advisory_id        TEXT NOT NULL REFERENCES advisories(id) ON DELETE CASCADE,
+    product_slug       TEXT NOT NULL,
+    version_introduced TEXT,                -- affected from (inclusive), null = from 0
+    version_fixed      TEXT,                -- patched in (exclusive), null = unpatched
+    version_constraint TEXT,                -- raw upstream constraint string
+    created_at         TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_advisories_product ON advisories(product_slug);
+CREATE INDEX IF NOT EXISTS idx_advisories_source ON advisories(source);
+CREATE INDEX IF NOT EXISTS idx_affected_versions_advisory ON affected_versions(advisory_id);
+CREATE INDEX IF NOT EXISTS idx_affected_versions_product ON affected_versions(product_slug);

@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from .. import db
 from ..auth import current_user, require_internal_service
 from ..config import get_settings
-from ..services import analytics, artifacts, bundles, capabilities, events, executions, knowledge, memory, playbooks, policy, project_templates, research, tool_registry, triage, wordfence
+from ..services import advisories, analytics, artifacts, bundles, capabilities, events, executions, knowledge, memory, playbooks, policy, project_templates, research, tool_registry, triage, wordfence
 from ..services import gori as gori_svc
 from ..services import cve as cve_svc
 from ..services import model as model_svc
@@ -908,6 +908,61 @@ def complete_playbook_step(run_id: str, step_id: str, body: StepComplete,
         return playbooks.advance(run_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+# ── Advisories ────────────────────────────────────────────────────────────────
+
+class AffectedVersionIn(BaseModel):
+    product_slug: str
+    version_introduced: str | None = None
+    version_fixed: str | None = None
+    version_constraint: str | None = None
+
+
+class AdvisoryIn(BaseModel):
+    source: str
+    title: str
+    external_id: str | None = None
+    description: str | None = None
+    severity: str | None = None
+    cvss: float | None = None
+    cwe: str | None = None
+    product_type: str | None = None
+    product_slug: str | None = None
+    published_at: str | None = None
+    references: list[str] = Field(default_factory=list)
+    raw: dict = Field(default_factory=dict)
+    affected: list[AffectedVersionIn] = Field(default_factory=list)
+
+
+@router.get("/advisories")
+def list_advisories(product_slug: str | None = None, source: str | None = None,
+                    limit: int = 100, _user: dict = Depends(current_user)) -> list[dict]:
+    return advisories.list_advisories(product_slug=product_slug, source=source, limit=limit)
+
+
+@router.get("/advisories/match")
+def match_advisories(product_slug: str, version: str,
+                     _user: dict = Depends(current_user)) -> list[dict]:
+    return advisories.match_product(product_slug, version)
+
+
+@router.get("/advisories/{advisory_id}")
+def get_advisory(advisory_id: str, _user: dict = Depends(current_user)) -> dict:
+    advisory = advisories.get_advisory(advisory_id)
+    if not advisory:
+        raise HTTPException(status_code=404, detail="advisory not found")
+    return advisory
+
+
+@router.post("/advisories", status_code=201)
+def create_advisory(body: AdvisoryIn, _user: dict = Depends(current_user)) -> dict:
+    advisory_id = advisories.upsert_advisory(body.model_dump(exclude={"affected"}))
+    for av in body.affected:
+        advisories.add_affected_version(
+            advisory_id, av.product_slug, av.version_introduced,
+            av.version_fixed, av.version_constraint)
+    return {"id": advisory_id}
 
 
 # ── Tool registry ─────────────────────────────────────────────────────────────
