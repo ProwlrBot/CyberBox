@@ -12,9 +12,39 @@ from pathlib import Path
 from .. import db
 from ..config import get_settings
 from ..hub import hub
+from . import policy as policy_svc
 from . import verify
 
 logger = logging.getLogger(__name__)
+
+_AUTHORIZED_STATUSES = ("active", "authorized", "local-laboratory", "ctf")
+
+
+def _scope_filter(project_id: str, hosts: list[str], risk_class: str, scan_id: str) -> list[str]:
+    """Keep only hosts whose URL passes policy for the project's active engagement.
+
+    Default-deny: no authorized engagement → empty list, nothing runs. Out-of-scope or
+    approval-required hosts are dropped and logged. This is the scope gate the full-scan
+    pipeline previously lacked — subfinder/httpx/nuclei ran against every discovered host.
+    """
+    placeholders = ",".join("?" for _ in _AUTHORIZED_STATUSES)
+    engagement = db.query_one(
+        f"SELECT id FROM engagements WHERE project_id=? AND status IN ({placeholders}) "
+        "ORDER BY created_at DESC LIMIT 1",
+        [project_id, *_AUTHORIZED_STATUSES],
+    )
+    if not engagement:
+        _append_log(scan_id, "[scope] no authorized engagement for project — blocked")
+        return []
+    allowed: list[str] = []
+    for host in hosts:
+        url = host if "://" in host else f"https://{host}"
+        decision = policy_svc.evaluate(engagement["id"], url, "GET", risk_class)
+        if decision.get("allowed") and not decision.get("requires_approval"):
+            allowed.append(host)
+        else:
+            _append_log(scan_id, f"[scope] blocked {host}: {decision.get('reason')}")
+    return allowed
 
 RAPTOR_PROTOCOLS = frozenset([
     "mcp", "pkg", "skill", "pypi", "go", "gitlab", "ruby",
@@ -293,10 +323,21 @@ def run_full_scan(scan_id: str) -> None:
     hub.broadcast("scan.status", {"scan_id": scan_id, "status": "running"})
     project_id, target = scan["project_id"], scan["target"]
     try:
+        # Default-deny gate: the seed target must be in authorized scope before discovery.
+        if not _scope_filter(project_id, [target], "passive", scan_id):
+            _append_log(scan_id, "[scope] seed target not authorized — scan aborted")
+            db.execute("UPDATE scans SET status='blocked', finished_at=? WHERE id=?",
+                       [_now(), scan_id])
+            hub.broadcast("scan.status", {"scan_id": scan_id, "status": "blocked"})
+            return
         hosts = discover_hosts(target, scan_id)
+        # Drop discovered subdomains that fall outside scope before probing them.
+        hosts = _scope_filter(project_id, hosts, "low-impact", scan_id)
         assets = probe_hosts(project_id, hosts, scan_id)
         live = [f"{a['scheme']}://{a['host']}:{a['port']}" for a in assets] or \
                [f"https://{h}" for h in hosts]
+        # Nuclei is higher-risk; re-gate the concrete target URLs.
+        live = _scope_filter(project_id, live, "state-changing", scan_id)
         found = run_nuclei(project_id, scan_id, scan["task_id"], live)
         stats = {"hosts": len(hosts), "assets": len(assets), "findings": found}
         db.execute("UPDATE scans SET status='done', finished_at=?, stats=? WHERE id=?",
