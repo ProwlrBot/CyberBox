@@ -40,6 +40,7 @@ const GitLabProfile   = lazy(() => import("./pages/source/GitLabProfile"));
 const VercelProfile   = lazy(() => import("./pages/source/VercelProfile"));
 const WordPressProfile = lazy(() => import("./pages/source/WordPressProfile"));
 const VariantHunt  = lazy(() => import("./pages/source/VariantHunt"));
+const Sources      = lazy(() => import("./pages/source/Sources"));
 const LabManager   = lazy(() => import("./pages/labs/LabManager"));
 const WordPress    = lazy(() => import("./pages/labs/WordPress"));
 const GitLabLab    = lazy(() => import("./pages/labs/GitLab"));
@@ -87,6 +88,7 @@ export const NAV_SECTIONS: NavSection[] = [
     { label: "Source Graph", path: "/source/graph",     Icon: Network },
     { label: "Patch Intel",  path: "/source/patch",     Icon: GitMerge },
     { label: "Variant Hunt", path: "/source/variants",  Icon: Layers },
+    { label: "Sources",      path: "/source/sources",   Icon: GitFork },
     { label: "GitLab",       path: "/source/gitlab",    Icon: GitFork },
     { label: "Vercel Hunt",  path: "/source/vercel",    Icon: Globe },
     { label: "WordPress",    path: "/source/wordpress", Icon: Package },
@@ -157,6 +159,7 @@ export const appRoutes: RouteObject[] = [
   { path: "source/graph",     element: <Suspense fallback={null}><SourceGraph /></Suspense> },
   { path: "source/patch",     element: <Suspense fallback={null}><PatchIntel /></Suspense> },
   { path: "source/variants",  element: <Suspense fallback={null}><VariantHunt /></Suspense> },
+  { path: "source/sources",   element: <Suspense fallback={null}><Sources /></Suspense> },
   { path: "source/gitlab",    element: <Suspense fallback={null}><GitLabProfile /></Suspense> },
   { path: "source/vercel",    element: <Suspense fallback={null}><VercelProfile /></Suspense> },
   { path: "source/wordpress", element: <Suspense fallback={null}><WordPressProfile /></Suspense> },

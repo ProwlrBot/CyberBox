@@ -180,6 +180,97 @@ export async function ingestOpenapi(projectId: string, spec: unknown): Promise<{
   return r.json();
 }
 
+// ── Source-revision tracking (silent-patch regression hunting) ──────────────────
+
+export type SourceRevision = {
+  id: string; source_id: string; revision: string; parent_revision: string | null;
+  ref: string | null; authored_at: string | null; created_at: string;
+};
+
+export type RevisionDiff = {
+  id: string; source_id: string; from_revision: string; to_revision: string;
+  files_changed: string[]; summary: string | null; security_relevant: number;
+  advisory_id: string | null; created_at: string;
+};
+
+export type Source = {
+  id: string; project_id: string | null; engagement_id: string | null;
+  kind: string; identifier: string; label: string | null;
+  observed_revision: string | null; updated_at: string;
+  revisions?: SourceRevision[]; diffs?: RevisionDiff[];
+};
+
+export type RegressionCandidate = RevisionDiff & {
+  identifier: string; kind: string; observed_revision: string;
+  project_id: string | null; reason: string;
+};
+
+export async function fetchSources(projectId?: string): Promise<Source[]> {
+  const q = projectId ? `?project_id=${encodeURIComponent(projectId)}` : "";
+  const r = await fetch(`/api/v1/sources${q}`, { headers: headers() });
+  return r.ok ? r.json() : [];
+}
+
+export async function fetchSource(sourceId: string): Promise<Source | null> {
+  const r = await fetch(`/api/v1/sources/${encodeURIComponent(sourceId)}`, { headers: headers() });
+  return r.ok ? r.json() : null;
+}
+
+export async function registerSource(body: {
+  kind: string; identifier: string; project_id?: string | null;
+  label?: string | null; observed_revision?: string | null;
+}): Promise<Source> {
+  const r = await fetch("/api/v1/sources", {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+export async function setObservedRevision(sourceId: string, revision: string): Promise<Source> {
+  const r = await fetch(`/api/v1/sources/${encodeURIComponent(sourceId)}/observed-revision`, {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify({ revision }),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+export async function addRevision(sourceId: string, body: {
+  revision: string; parent_revision?: string | null; ref?: string | null; authored_at?: string | null;
+}): Promise<void> {
+  const r = await fetch(`/api/v1/sources/${encodeURIComponent(sourceId)}/revisions`, {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(await r.text());
+}
+
+export async function recordDiff(sourceId: string, body: {
+  from_revision: string; to_revision: string; files_changed?: string[];
+  summary?: string | null; security_relevant?: boolean; advisory_id?: string | null;
+}): Promise<void> {
+  const r = await fetch(`/api/v1/sources/${encodeURIComponent(sourceId)}/diffs`, {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(await r.text());
+}
+
+export async function fetchRegressionCandidates(opts?: { projectId?: string; sourceId?: string }): Promise<RegressionCandidate[]> {
+  const q = new URLSearchParams();
+  if (opts?.projectId) q.set("project_id", opts.projectId);
+  if (opts?.sourceId) q.set("source_id", opts.sourceId);
+  const qs = q.toString();
+  const r = await fetch(`/api/v1/sources/regression-candidates${qs ? `?${qs}` : ""}`, { headers: headers() });
+  return r.ok ? r.json() : [];
+}
+
 // ── Research memory ─────────────────────────────────────────────────────────────
 
 export type MemorySuggestion = {
