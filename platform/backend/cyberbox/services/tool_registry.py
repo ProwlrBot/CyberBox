@@ -41,6 +41,9 @@ BUILTIN_TOOLS = [
      "description": "Template-based vulnerability scanning"},
     {"name": "ffuf", "category": "fuzzer", "danger_tier": "active", "scope_required": 1,
      "description": "Content/endpoint fuzzing"},
+    {"name": "vulnx", "category": "osint", "danger_tier": "passive", "scope_required": 0,
+     "description": "ProjectDiscovery vulnerability.sh CVE intel (search/analyze) — tags/CWE/KEV/EPSS; "
+                    "feeds the vulnx coverage engine. Queries intel API only, never the target."},
 ]
 
 

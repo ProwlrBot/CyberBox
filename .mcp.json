@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "vulnx": {
+      "command": "/home/anon/go/bin/vulnx",
+      "args": ["mcp", "--mode", "stdio", "--silent", "--disable-update-check"],
+      "description": "ProjectDiscovery vulnerability.sh intel — vulnx_search / vulnx_get_by_id / vulnx_analyze / vulnx_fields_list. CVE intel enriched with tags, CWE, KEV, EPSS, and nuclei-template availability for the hunt agents to query directly. Auth via ~/.pdcp/credentials.yaml."
+    }
+  }
+}
