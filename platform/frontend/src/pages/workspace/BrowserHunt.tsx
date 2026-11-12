@@ -124,11 +124,33 @@ export default function BrowserHunt() {
 
       <div className="hunt-layout">
         <div className="hunt-stage">
-          <div className="hunt-lanes">
-            <BrowserLane role="attacker" state={data.roles.attacker} busy={busy} onControl={control} />
-            <div className="hunt-link"><span>ISOLATED</span><ChevronRight size={15} /></div>
-            <BrowserLane role="victim" state={data.roles.victim} busy={busy} onControl={control} />
-          </div>
+          {data.connected ? (
+            <div className="hunt-lanes">
+              <BrowserLane role="attacker" state={data.roles.attacker} busy={busy} onControl={control} />
+              <div className="hunt-link"><span>ISOLATED</span><ChevronRight size={15} /></div>
+              <BrowserLane role="victim" state={data.roles.victim} busy={busy} onControl={control} />
+            </div>
+          ) : (
+            <section className="hunt-offline-panel">
+              <div className="hunt-offline-icon"><Terminal size={22} /></div>
+              <div className="hunt-offline-copy">
+                <span>BROWSER BROKER / OFFLINE</span>
+                <h2>The external browser broker is not connected.</h2>
+                <p>Browser Hunt needs the operator-managed broker before either isolated session can run. CyberBox does not launch this daemon.</p>
+              </div>
+              <ol className="hunt-offline-steps">
+                <li>
+                  <span>01</span>
+                  <div>Set <code>CYBERBOX_BROWSER_OPERATOR_TOKEN_FILE</code> to the path of the operator token file.</div>
+                </li>
+                <li>
+                  <span>02</span>
+                  <div>Start the broker so it listens at <code>CYBERBOX_BROWSER_BROKER_URL</code> <small>(default <code>http://127.0.0.1:17890</code>)</small>.</div>
+                </li>
+              </ol>
+              <button className="hunt-recheck" onClick={refresh}><RefreshCw size={14} />Recheck connection</button>
+            </section>
+          )}
 
           <section className="hunt-activity">
             <header><div><Activity size={15} /><strong>Live activity</strong></div><span>{events.length} recent events</span></header>
