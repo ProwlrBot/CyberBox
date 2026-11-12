@@ -549,3 +549,4 @@ toolspec.bind_runner("ffuf", _run_ffuf)
 # gowitness spec + runner). No cycle: neither imports tool_runner.
 from . import engines as _engines  # noqa: E402,F401
 from . import screenshots as _screenshots  # noqa: E402,F401
+from . import caido_tools as _caido_tools  # noqa: E402,F401
