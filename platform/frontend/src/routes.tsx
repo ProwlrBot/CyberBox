@@ -2,8 +2,8 @@ import { lazy, Suspense } from "react";
 import type { RouteObject } from "react-router-dom";
 import {
   Target, Search, Activity, Flag, Archive, Workflow, BarChart2,
-  Code2, GitBranch, Network, GitMerge, Layers, GitFork,
-  FlaskConical, Globe, Container, Zap, Package, LayoutGrid, Server,
+  GitBranch, Network,
+  FlaskConical, Container, Zap, LayoutGrid, Server,
   Plug, Wrench, Bot, Cpu, Brain,
   Monitor, Terminal, BookOpen, FolderOpen, FileCode2, ScrollText, Compass,
   Radio, Heart, ShieldAlert, KeyRound, Settings, ShieldCheck, ListTodo,
@@ -36,17 +36,8 @@ const SettingsPage = lazy(() => import("./pages/settings/Settings"));
 const BrowserHunt  = lazy(() => import("./pages/workspace/BrowserHunt"));
 const HQ           = lazy(() => import("./pages/workspace/HQ"));
 const ReconPage    = lazy(() => import("./pages/hunt/Recon"));
-const Raptor       = lazy(() => import("./pages/source/Raptor"));
-const Repositories = lazy(() => import("./pages/source/Repositories"));
-const CodeScanning = lazy(() => import("./pages/source/CodeScanning"));
+const Source       = lazy(() => import("./pages/source/Source"));
 const NewPentest   = lazy(() => import("./pages/pentests/NewPentest"));
-const SourceGraph  = lazy(() => import("./pages/source/SourceGraph"));
-const PatchIntel      = lazy(() => import("./pages/source/PatchIntel"));
-const GitLabProfile   = lazy(() => import("./pages/source/GitLabProfile"));
-const VercelProfile   = lazy(() => import("./pages/source/VercelProfile"));
-const WordPressProfile = lazy(() => import("./pages/source/WordPressProfile"));
-const VariantHunt  = lazy(() => import("./pages/source/VariantHunt"));
-const Sources      = lazy(() => import("./pages/source/Sources"));
 const LabManager   = lazy(() => import("./pages/labs/LabManager"));
 const WordPress    = lazy(() => import("./pages/labs/WordPress"));
 const GitLabLab    = lazy(() => import("./pages/labs/GitLab"));
@@ -94,16 +85,7 @@ export const NAV_SECTIONS: NavSection[] = [
     { label: "Memory",     path: "/hunt/memory",    Icon: Brain },
   ]},
   { id: "source", label: "SOURCE", items: [
-    { label: "Raptor",       path: "/source/raptor",    Icon: Code2 },
-    { label: "Repositories", path: "/source/repos",     Icon: GitBranch },
-    { label: "Code Scanning", path: "/source/code-scan", Icon: GitMerge },
-    { label: "Source Graph", path: "/source/graph",     Icon: Network },
-    { label: "Patch Intel",  path: "/source/patch",     Icon: GitMerge },
-    { label: "Variant Hunt", path: "/source/variants",  Icon: Layers },
-    { label: "Sources",      path: "/source/sources",   Icon: GitFork },
-    { label: "GitLab",       path: "/source/gitlab",    Icon: GitFork },
-    { label: "Vercel Hunt",  path: "/source/vercel",    Icon: Globe },
-    { label: "WordPress",    path: "/source/wordpress", Icon: Package },
+    { label: "Source", path: "/source", Icon: GitBranch },
   ]},
   { id: "labs", label: "LABS", items: [
     { label: "Lab Manager", path: "/labs/manager",    Icon: FlaskConical },
@@ -170,17 +152,9 @@ export const appRoutes: RouteObject[] = [
   { path: "hunt/techniques",   element: <Suspense fallback={null}><Techniques /></Suspense> },
   { path: "hunt/memory",       element: <Suspense fallback={null}><Memory /></Suspense> },
   // Source
-  { path: "source/raptor",    element: <Suspense fallback={null}><Raptor /></Suspense> },
+  { path: "source",           element: <Suspense fallback={null}><Source /></Suspense> },
+  { path: "source/:tab",      element: <Suspense fallback={null}><Source /></Suspense> },
   { path: "pentests/new",     element: <Suspense fallback={null}><NewPentest /></Suspense> },
-  { path: "source/code-scan", element: <Suspense fallback={null}><CodeScanning /></Suspense> },
-  { path: "source/repos",     element: <Suspense fallback={null}><Repositories/></Suspense> },
-  { path: "source/graph",     element: <Suspense fallback={null}><SourceGraph /></Suspense> },
-  { path: "source/patch",     element: <Suspense fallback={null}><PatchIntel /></Suspense> },
-  { path: "source/variants",  element: <Suspense fallback={null}><VariantHunt /></Suspense> },
-  { path: "source/sources",   element: <Suspense fallback={null}><Sources /></Suspense> },
-  { path: "source/gitlab",    element: <Suspense fallback={null}><GitLabProfile /></Suspense> },
-  { path: "source/vercel",    element: <Suspense fallback={null}><VercelProfile /></Suspense> },
-  { path: "source/wordpress", element: <Suspense fallback={null}><WordPressProfile /></Suspense> },
   { path: "source/*",         element: S("Source") },
   // Labs
   { path: "labs/manager",     element: <Suspense fallback={null}><LabManager /></Suspense> },
