@@ -104,6 +104,21 @@ export async function fetchTargets(projectId: string): Promise<Array<{
   return r.ok ? r.json() : [];
 }
 
+export type TargetType = "domain" | "cidr" | "ip" | "url" | "repository" | "package" | "cloud-resource";
+export type TargetStatus = "candidate" | "in-scope" | "excluded" | "out-of-scope" | "archived";
+
+export async function createTarget(projectId: string, body: {
+  name: string; target_type: TargetType; pattern: string; status?: TargetStatus; source?: string;
+}): Promise<{ id: string; name: string; target_type: string; pattern: string; normalized: string; status: string; source: string; updated_at: string }> {
+  const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/targets`, {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "candidate", source: "manual", ...body }),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
+  return r.json();
+}
+
 export async function fetchFindings(projectId: string): Promise<Array<{
   id: string; name: string; severity: string; category: string; cve: string | null;
   host: string; status: string; verified: boolean; detected_at: string;
