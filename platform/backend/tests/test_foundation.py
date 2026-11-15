@@ -335,12 +335,24 @@ class FoundationTest(unittest.TestCase):
         self.assertEqual(denied.exception.status_code, 400)
 
     def test_knowledge_pack_requires_provenance(self) -> None:
+        # The declared sha256 must match the actual content digest (integrity is always enforced),
+        # so compute it from the canonical digest function rather than a placeholder that can drift.
+        # Each document must carry title + https source_url + content (the indexing contract).
+        documents = [{"title": "Authorization Testing", "source_url": "https://owasp.org/wstg/authz",
+                      "content": "Verify object-level access control on every resource.",
+                      "section": "authorization"}]
         manifest = {"id": "owasp-wstg", "name": "OWASP WSTG", "version": "1.0.0",
                     "source_url": "https://owasp.org/", "license": "CC BY-SA 4.0",
-                    "sha256": "a" * 64, "signature": "sigstore-bundle", "profiles": ["bug-bounty"]}
-        self.assertEqual(knowledge.register(manifest)["status"], "registered")
+                    "sha256": knowledge._content_digest(documents), "signature": "sigstore-bundle",
+                    "documents": documents, "profiles": ["bug-bounty"]}
+        # No trusted pubkey configured → integrity checked, stored "unverified" (never silently trusted).
+        self.assertEqual(knowledge.register(manifest)["status"], "unverified")
+        # Provenance is required: an empty signature is rejected.
         with self.assertRaises(ValueError):
             knowledge.register({**manifest, "id": "bad", "signature": ""})
+        # A declared hash that does not match the content is rejected (tamper detection).
+        with self.assertRaises(ValueError):
+            knowledge.register({**manifest, "id": "tampered", "sha256": "a" * 64})
 
     def test_guided_playbook_pauses_for_scan_approval(self) -> None:
         engagement_id = self._engagement("guided")
