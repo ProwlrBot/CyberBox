@@ -9,12 +9,14 @@ from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import db, seed
+from . import db, migrations, seed
 from .auth import authenticate_key, bootstrap_admin, current_user
 from .config import get_settings
 from .hub import hub
 from .services import executions
 from .services import model as model_svc
+from .services import taxonomy as taxonomy_svc
+from .services import tool_runner
 from .routers import api
 from . import __version__
 
@@ -24,12 +26,17 @@ TITLE = "CyberBox"
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     get_settings().ensure_dirs()
+    # Bring DB to the configured journal mode before concurrent threads open connections
+    db.ensure_journal_mode()
     db.init_db()
+    migrations.migrate()
     seed.seed()
+    taxonomy_svc.ensure_seeded()
     model_svc.seed_providers()
     bootstrap_admin()
     hub.bind_loop(asyncio.get_running_loop())
     executions.recover()
+    asyncio.create_task(tool_runner.start_runner())
     yield
 
 

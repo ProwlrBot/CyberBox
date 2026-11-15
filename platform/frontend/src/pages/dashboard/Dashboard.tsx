@@ -1,9 +1,10 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, X, RefreshCw } from "lucide-react";
+import SecurityOverview from "../../components/SecurityOverview";
 import {
   fetchProjects, fetchScore, fetchEvents, fetchCampaigns,
-  createCampaign, fetchProviders,
+  createCampaign, fetchProviders, fetchGenomeSummary,
 } from "../../lib/api";
 
 type Project    = { id: string; name: string; slug: string };
@@ -47,16 +48,18 @@ export default function Dashboard() {
   const [events, setEvents]         = useState<EventRow[]>([]);
   const [campaigns, setCampaigns]   = useState<Campaign[]>([]);
   const [providers, setProviders]   = useState<Provider[]>([]);
+  const [endpoints, setEndpoints]   = useState(0);
   const [loading, setLoading]       = useState(true);
   const [showNew, setShowNew]       = useState(false);
   const navigate = useNavigate();
   const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   const load = async (pid: string) => {
-    const [sc, evts, camps] = await Promise.all([
-      fetchScore(pid), fetchEvents(pid, 40), fetchCampaigns(pid),
+    const [sc, evts, camps, genome] = await Promise.all([
+      fetchScore(pid), fetchEvents(pid, 40), fetchCampaigns(pid), fetchGenomeSummary(pid),
     ]);
     setScore(sc); setEvents(evts); setCampaigns(camps);
+    if (genome) setEndpoints(genome.by_source.reduce((sum, s) => sum + s.n, 0));
   };
 
   useEffect(() => {
@@ -81,10 +84,16 @@ export default function Dashboard() {
   const totalFindings = score?.total_active ?? 0;
   const critical      = score?.breakdown?.critical ?? 0;
   const running       = campaigns.filter(c => c.status === "running").length;
-  const endpoints     = 0;
 
   return (
     <div className="mc-page">
+      <SecurityOverview
+        score={score?.score ?? 100}
+        openFindings={totalFindings}
+        critical={critical}
+        campaigns={campaigns.length}
+        endpoints={endpoints}
+      />
       <div className="mc-kpi-row">
         <KPI label="Active Campaigns" value={campaigns.length} sub={`${running} running`} subClass={running > 0 ? "good" : undefined} />
         <KPI label="Open Findings" value={totalFindings} sub={critical > 0 ? `${critical} critical` : "clear"} subClass={critical > 0 ? "bad" : "good"} />
@@ -139,7 +148,7 @@ export default function Dashboard() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "12px 14px" }}>
               <button className="action-btn" onClick={() => navigate("/hunt/targets")}>Review Targets</button>
               <button className="action-btn" onClick={() => navigate("/hunt/findings")}>Triage Findings</button>
-              <button className="action-btn" onClick={() => navigate("/workspace/agents")}>Agent Fleet</button>
+              <button className="action-btn" onClick={() => navigate("/workspace/hq")}>Agent Fleet</button>
               <button className="action-btn" onClick={() => navigate("/hunt/campaigns")}>All Campaigns</button>
             </div>
           </div>

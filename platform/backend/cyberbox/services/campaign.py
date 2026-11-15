@@ -5,8 +5,8 @@ A campaign runs phases in sequence:
 
 Each phase is orchestrated by a supervisor LLM that plans the attack surface,
 generates test cases, and validates candidate findings. Actual tool execution
-(nuclei, ffuf, nmap, subfinder) is queued as execution records for the sandbox
-runner — this module does not shell out directly.
+(subfinder, httpx, gowitness, nuclei, ffuf, vulnx) is queued as ToolSpec-backed
+execution records for the runner — this module does not shell out directly.
 """
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from .. import db
 from ..hub import hub
 from . import model as model_svc
+from . import policy
 
 HUNT_PHASES: dict[str, list[str]] = {
     "full_auto":     ["recon", "fuzz", "validate", "report"],
@@ -42,9 +43,14 @@ def create_campaign(
     provider_id: str | None,
     max_runtime: int,
 ) -> dict:
+    # Bind the campaign to the project's authorized engagement so its queued live tools
+    # (subfinder/httpx/nuclei/ffuf) pass the scope gate. Without one, engagement_id stays
+    # NULL and the runner correctly default-denies every live tool — the LLM phases still run.
+    engagement = policy.authorized_engagement(project_id)
     row = {
         "id":         str(uuid.uuid4()),
         "project_id": project_id,
+        "engagement_id": engagement["id"] if engagement else None,
         "name":       name[:200],
         "target_url": target_url[:1024],
         "hunt_type":  hunt_type,
@@ -131,12 +137,19 @@ def _append_event(
 # ── Tool job queuing (sandbox runner picks these up) ──────────────────────────
 
 def queue_tool_job(campaign_id: str, project_id: str, tool_name: str, args: dict) -> str:
-    """Queue an execution record for sandbox tool dispatch. Returns execution_id."""
+    """Queue an execution record for sandbox tool dispatch. Returns execution_id.
+
+    The campaign's engagement_id rides on the execution so the tool runner can evaluate
+    scope/authorization policy before the tool runs. A campaign with no engagement produces
+    executions the runner default-denies.
+    """
     exec_id = str(uuid.uuid4())
+    campaign = db.query_one("SELECT engagement_id FROM campaigns WHERE id=?", [campaign_id])
+    engagement_id = campaign["engagement_id"] if campaign else None
     row = {
         "id":           exec_id,
         "project_id":   project_id,
-        "engagement_id": None,
+        "engagement_id": engagement_id,
         "kind":         f"tool:{tool_name}",
         "status":       "queued",
         "risk_class":   "active",
@@ -383,12 +396,18 @@ async def _phase_recon(campaign_id: str, campaign: dict, ctx: dict) -> dict:
     _update_campaign(campaign_id, phase="recon", progress=10)
     _append_event(campaign_id, "phase.change", "Starting recon phase", phase="recon")
 
-    # Queue actual tool jobs
+    # Queue actual tool jobs. subfinder+httpx map the surface; gowitness captures a visual of
+    # the target. All ride the campaign engagement, so the runner scope-gates each: the active
+    # tools (httpx/gowitness) only run when autonomy=autonomous, under balanced they're held for
+    # approval — the autonomy dial still governs the unattended path.
     queue_tool_job(campaign_id, campaign["project_id"], "subfinder",
                    {"target": campaign["target_url"]})
     queue_tool_job(campaign_id, campaign["project_id"], "httpx",
                    {"target": campaign["target_url"]})
-    _append_event(campaign_id, "tool.queued", "Queued subfinder + httpx for live recon", phase="recon")
+    queue_tool_job(campaign_id, campaign["project_id"], "gowitness",
+                   {"urls": [campaign["target_url"]]})
+    _append_event(campaign_id, "tool.queued",
+                  "Queued subfinder + httpx + gowitness for live recon", phase="recon")
 
     # LLM attack surface planning
     provider = _resolve_provider(campaign.get("provider_id"))
@@ -399,6 +418,15 @@ async def _phase_recon(campaign_id: str, campaign: dict, ctx: dict) -> dict:
 
     hypotheses = parsed.get("hypotheses", [])
     attack_surface = parsed.get("attack_surface", [])
+
+    # Pull CVE intel for the stack the LLM fingerprinted. vulnx is passive intel (no target),
+    # so it runs regardless of autonomy level and auto-marks taxonomy coverage from each hit.
+    tech_stack = [t for t in parsed.get("tech_stack", []) if isinstance(t, str) and t.strip()]
+    if tech_stack:
+        queue_tool_job(campaign_id, campaign["project_id"], "vulnx",
+                       {"techs": tech_stack[:5], "limit": 5})
+        _append_event(campaign_id, "tool.queued",
+                      f"Queued vulnx CVE intel for {', '.join(tech_stack[:5])}", phase="recon")
 
     created = len(hypotheses)
     # Store hypotheses as a campaign event (no engagement_id available to insert into hypotheses table)
@@ -486,10 +514,14 @@ async def _phase_validate(campaign_id: str, campaign: dict, ctx: dict) -> dict:
                 "host": campaign["target_url"][:512],
                 "matched_at": campaign["target_url"][:512],
                 "status": "open",
-                "verified": 1 if v.get("verdict") == "confirmed" else 0,
-                "poc": json.dumps({"test_cases": test_cases, "confidence": v.get("confidence", 0)}),
+                # An LLM verdict is a triage signal, not runtime proof. Never auto-mark
+                # verified — only a real PoC check (services/verify.py) may set this.
+                "verified": 0,
+                "poc": json.dumps({"test_cases": test_cases, "confidence": v.get("confidence", 0),
+                                   "llm_verdict": v.get("verdict")}),
                 "request_chain": "[]",
-                "tags": json.dumps(["campaign", campaign["hunt_type"]]),
+                "tags": json.dumps(["campaign", campaign["hunt_type"],
+                                    f"llm-verdict:{v.get('verdict', 'unknown')}"]),
                 "dedup_key": f"campaign|{campaign_id}|{v.get('title', '')[:100]}",
                 "sla_due": None,
                 "detected_at": _now(),

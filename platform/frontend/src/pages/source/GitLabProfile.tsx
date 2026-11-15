@@ -1,377 +1,251 @@
-import { useEffect, useState } from "react";
-import { GitBranch, Filter, Settings2, ChevronDown, ChevronUp } from "lucide-react";
-import { getApiKey } from "../../lib/api";
+import { useEffect, useRef, useState } from "react";
+import {
+  GitBranch, Radar, ShieldCheck, ShieldAlert, Unlock, Lock, FolderGit2,
+  UserPlus, Boxes, Star, Play, Loader2, Server,
+} from "lucide-react";
+import { fetchProjects, fingerprintGitLab, getApiKey, type GitlabFingerprint } from "../../lib/api";
 
-type Execution = {
-  id: string;
-  project_id: string;
-  kind: string;
-  status: string;
-  risk_class: string | null;
-  created_at: string;
-  finished_at: string | null;
-  error: string | null;
-  metadata?: Record<string, unknown>;
-};
+const LS_TARGET = "cbx.gl.target";
+const LS_SRC = "cbx.gl.srcpath";
 
-interface GitLabSettings {
-  gitlabUrl: string;
-  token: string;
-  repoPath: string;
-  protocol: string;
-  focus: string;
+function relTime(iso: string | null): string {
+  if (!iso) return "—";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "—";
+  const d = Math.floor((Date.now() - then) / 86400000);
+  if (d === 0) return "today";
+  if (d < 30) return `${d}d ago`;
+  if (d < 365) return `${Math.floor(d / 30)}mo ago`;
+  return `${Math.floor(d / 365)}y ago`;
 }
-
-const DEFAULTS: GitLabSettings = {
-  gitlabUrl: "https://gitlab.com",
-  token: "",
-  repoPath: "/home/anon/targets/gitlab/source/gitlab",
-  protocol: "gitlab",
-  focus: "",
-};
-
-const PROTOCOLS = ["gitlab", "gha", "go", "js", "php", "ruby"];
-
-const STATUS_COLOR: Record<string, string> = {
-  running: "var(--info)",
-  completed: "var(--good)",
-  done: "var(--good)",
-  failed: "var(--bad)",
-};
-
-const CHECKLIST_ITEMS = [
-  "CI/CD pipeline injection (commit to .gitlab-ci.yml)",
-  "Runner escape / privilege escalation",
-  "Repository secrets in CI variables",
-  "GraphQL API enumeration (/api/graphql)",
-  "Merge request SSRF / webhook abuse",
-  "Container registry unauthenticated access",
-  "Deploy token / personal access token exposure",
-  "Import/export feature path traversal",
-  "Protected branch bypass",
-  "Subgroup/fork relationship IDOR",
-  "SAST/DAST scan result exfiltration",
-  "Job artifact path traversal",
-];
-
-const LS_SETTINGS = "cbx.gitlab";
-const LS_CHECKLIST = "cbx.gitlab.checklist";
-
-function loadSettings<T>(key: string, defaults: T): T {
-  try { return { ...defaults, ...JSON.parse(localStorage.getItem(key) ?? "{}") }; }
-  catch { return defaults; }
-}
-function saveSettings<T>(key: string, s: T) { localStorage.setItem(key, JSON.stringify(s)); }
-
-function formatTime(ts: string | null): string {
-  if (!ts) return "—";
-  return new Date(ts).toLocaleString();
-}
-
-const inputStyle: React.CSSProperties = {
-  background: "var(--panel-2)",
-  border: "1px solid var(--border)",
-  borderRadius: 4,
-  padding: "6px 10px",
-  color: "var(--text)",
-  fontSize: 12,
-  fontFamily: "'JetBrains Mono', monospace",
-  outline: "none",
-  width: "100%",
-  boxSizing: "border-box",
-};
-
-const labelStyle: React.CSSProperties = {
-  fontSize: 10,
-  color: "var(--muted)",
-  textTransform: "uppercase",
-  letterSpacing: "0.06em",
-  marginBottom: 4,
-  display: "block",
-};
 
 export default function GitLabProfile() {
-  const [executions, setExecutions] = useState<Execution[]>([]);
-  const [loading, setLoading] = useState(true);
   const [projectId, setProjectId] = useState("");
-  const [settings, setSettings] = useState<GitLabSettings>(() => loadSettings(LS_SETTINGS, DEFAULTS));
-  const [draftSettings, setDraftSettings] = useState<GitLabSettings>(() => loadSettings(LS_SETTINGS, DEFAULTS));
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [checklist, setChecklist] = useState<Record<string, boolean>>(() => loadSettings(LS_CHECKLIST, {}));
-  const [launching, setLaunching] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
-  const [filter, setFilter] = useState("");
+  const [target, setTarget] = useState(() => localStorage.getItem(LS_TARGET) ?? "https://gitlab.com");
+  const [srcPath, setSrcPath] = useState(() => localStorage.getItem(LS_SRC) ?? "");
+  const [fp, setFp] = useState<GitlabFingerprint | null>(null);
+  const [probing, setProbing] = useState(false);
+  const [err, setErr] = useState("");
+  const [toast, setToast] = useState("");
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  function flash(m: string) {
+    setToast(m); clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(""), 4000);
+  }
 
   useEffect(() => {
-    let cancelled = false;
-    const key = getApiKey();
-    const headers: Record<string, string> = key ? { "X-Api-Key": key } : {};
-
-    async function init() {
-      try {
-        const pResp = await fetch("/api/v1/projects", { headers });
-        const projects = pResp.ok ? await pResp.json() : [];
-        const pid = projects[0]?.id ?? "";
-        if (!cancelled) setProjectId(pid);
-
-        const eResp = await fetch("/api/v1/executions?limit=100", { headers });
-        const data = eResp.ok ? await eResp.json() : [];
-        if (!cancelled) {
-          setExecutions((data as Execution[]).filter((e) => e.kind?.includes("raptor")));
-          setLoading(false);
-        }
-      } catch {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    init();
-    return () => { cancelled = true; };
+    fetchProjects().then((ps) => { if (ps.length) setProjectId(ps[0].id); }).catch(() => {});
   }, []);
 
-  function showToast(msg: string) {
-    setToast(msg);
-    setTimeout(() => setToast(null), 4500);
-  }
-
-  async function handleLaunch() {
-    if (!settings.repoPath.trim()) { showToast("Set a repo path in settings first"); return; }
-    setLaunching(true);
-    const key = getApiKey();
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...(key ? { "X-Api-Key": key } : {}),
-    };
+  async function probe() {
+    if (!target.trim() || !projectId) return;
+    localStorage.setItem(LS_TARGET, target.trim());
+    setProbing(true); setErr("");
     try {
-      let pid = projectId;
-      if (!pid) {
-        const pResp = await fetch("/api/v1/projects", { headers: key ? { "X-Api-Key": key } : {} });
-        const projects = pResp.ok ? await pResp.json() : [];
-        pid = projects[0]?.id ?? "";
-        if (pid) setProjectId(pid);
-      }
-      if (!pid) { showToast("No project loaded — configure one in Settings"); setLaunching(false); return; }
+      setFp(await fingerprintGitLab(projectId, target.trim()));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Probe failed");
+      setFp(null);
+    } finally { setProbing(false); }
+  }
 
-      const body: Record<string, string> = {
-        protocol: settings.protocol,
-        target_path: settings.repoPath.trim(),
-        output_format: "jsonl",
-      };
-      if (settings.focus.trim()) body.focus = settings.focus.trim();
-
-      const r = await fetch(`/api/v1/projects/${pid}/raptor-scan`, {
+  async function phpAudit() {
+    const key = getApiKey();
+    try {
+      const r = await fetch(`/api/v1/projects/${projectId}/raptor-scan`, {
         method: "POST",
-        headers,
-        body: JSON.stringify(body),
+        headers: { "Content-Type": "application/json", ...(key ? { "X-Api-Key": key } : {}) },
+        body: JSON.stringify({ protocol: "gitlab", target_path: srcPath.trim(), output_format: "jsonl" }),
       });
-      const result = r.ok ? await r.json() : null;
-      if (result?.execution_id) {
-        showToast(`Launched — execution ${result.execution_id.slice(0, 12)}…`);
-        const eResp = await fetch("/api/v1/executions?limit=100", { headers: key ? { "X-Api-Key": key } : {} });
-        const data = eResp.ok ? await eResp.json() : [];
-        setExecutions((data as Execution[]).filter((e) => e.kind?.includes("raptor")));
-      } else {
-        showToast("Launch failed — check API key / project");
-      }
-    } catch {
-      showToast("Launch failed — network error");
-    }
-    setLaunching(false);
+      if (!r.ok) { flash(`Source audit failed — ${r.status}`); return; }
+      const j = await r.json().catch(() => ({}));
+      flash(`Source audit launched${j.execution_id ? ` — ${String(j.execution_id).slice(0, 12)}…` : ""}`);
+    } catch { flash("Source audit failed — network error"); }
   }
-
-  function saveAndClose() {
-    setSettings({ ...draftSettings });
-    saveSettings(LS_SETTINGS, draftSettings);
-    setSettingsOpen(false);
-    showToast("Settings saved");
-  }
-
-  function toggleCheck(item: string) {
-    const next = { ...checklist, [item]: !checklist[item] };
-    setChecklist(next);
-    saveSettings(LS_CHECKLIST, next);
-  }
-
-  const filtered = filter
-    ? executions.filter((e) =>
-        e.id.toLowerCase().includes(filter.toLowerCase()) ||
-        (e.status ?? "").toLowerCase().includes(filter.toLowerCase()) ||
-        (e.kind ?? "").toLowerCase().includes(filter.toLowerCase())
-      )
-    : executions;
-
-  const checked = Object.values(checklist).filter(Boolean).length;
 
   return (
     <div className="page-targets">
-      {toast && (
-        <div style={{
-          position: "fixed", bottom: 24, right: 24,
-          background: "var(--panel-2)", border: "1px solid var(--border)",
-          borderLeft: "3px solid var(--accent)", padding: "10px 16px",
-          borderRadius: 6, fontSize: 13, color: "var(--text)", zIndex: 1000,
-          fontFamily: "'JetBrains Mono', monospace",
-        }}>
-          {toast}
-        </div>
-      )}
-
-      {/* Toolbar */}
       <div className="page-toolbar">
         <div className="page-title">
           <GitBranch size={16} />
-          <span>GitLab</span>
-          <small>{executions.length} raptor scans</small>
-        </div>
-        <div className="toolbar-actions">
-          <button
-            className="action-btn"
-            onClick={() => { setDraftSettings({ ...settings }); setSettingsOpen((o) => !o); }}
-            style={{ display: "flex", alignItems: "center", gap: 5 }}
-          >
-            <Settings2 size={13} />
-            Settings
-            {settingsOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-          </button>
-          <button
-            className="action-btn primary"
-            onClick={handleLaunch}
-            disabled={launching}
-          >
-            {launching ? "Launching…" : "Launch Raptor scan"}
-          </button>
-          <div className="filter-input-wrap">
-            <Filter size={13} />
-            <input
-              placeholder="Filter executions…"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-            />
-          </div>
+          <span>GitLab Intel</span>
+          {fp && <small>{fp.target}</small>}
         </div>
       </div>
 
-      {/* Collapsible Settings */}
-      {settingsOpen && (
-        <div style={{
-          padding: "16px 20px", borderBottom: "1px solid var(--border)",
-          background: "var(--panel)", display: "flex", flexDirection: "column", gap: 14,
-        }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
-            <div>
-              <label style={labelStyle}>GitLab URL</label>
-              <input style={inputStyle} value={draftSettings.gitlabUrl}
-                onChange={(e) => setDraftSettings({ ...draftSettings, gitlabUrl: e.target.value })}
-                placeholder="https://gitlab.com" />
-            </div>
-            <div>
-              <label style={labelStyle}>Personal Access Token</label>
-              <input style={inputStyle} type="password" value={draftSettings.token}
-                onChange={(e) => setDraftSettings({ ...draftSettings, token: e.target.value })}
-                placeholder="glpat-…" />
-            </div>
-            <div>
-              <label style={labelStyle}>Repo Path (local clone)</label>
-              <input style={inputStyle} value={draftSettings.repoPath}
-                onChange={(e) => setDraftSettings({ ...draftSettings, repoPath: e.target.value })}
-                placeholder="/home/anon/targets/gitlab/source/gitlab" />
-            </div>
-            <div>
-              <label style={labelStyle}>Protocol</label>
-              <select
-                style={{ ...inputStyle, cursor: "pointer" }}
-                value={draftSettings.protocol}
-                onChange={(e) => setDraftSettings({ ...draftSettings, protocol: e.target.value })}
-              >
-                {PROTOCOLS.map((p) => <option key={p} value={p}>{p}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={labelStyle}>Focus (optional)</label>
-              <input style={inputStyle} value={draftSettings.focus}
-                onChange={(e) => setDraftSettings({ ...draftSettings, focus: e.target.value })}
-                placeholder="e.g. auth secrets injection" />
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="action-btn primary" onClick={saveAndClose}>Save</button>
-            <button className="action-btn" onClick={() => setSettingsOpen(false)}>Cancel</button>
-          </div>
+      <div style={{ display: "flex", gap: 8, padding: "10px 16px", borderBottom: "1px solid var(--border)", background: "var(--panel)", flexShrink: 0, alignItems: "center" }}>
+        <div className="filter-input-wrap" style={{ flex: 1, maxWidth: 480 }}>
+          <GitBranch size={13} />
+          <input placeholder="https://gitlab.target.com" value={target}
+            onChange={(e) => setTarget(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") probe(); }} />
         </div>
+        <button className="action-btn primary" onClick={probe} disabled={probing || !target.trim() || !projectId}>
+          {probing ? <Loader2 size={13} className="spin" /> : <Radar size={13} />} {probing ? "Probing…" : "Probe target"}
+        </button>
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto" }}>
+        {err && (
+          <div style={{ margin: 16, padding: "10px 14px", border: "1px solid var(--bad)", borderRadius: 6, color: "var(--bad)", fontSize: 12, background: "rgba(255,80,80,0.06)" }}>
+            {err}{err.includes("scope") && " — register this target as a project with an authorized engagement and in-scope rule first."}
+          </div>
+        )}
+
+        {!fp && !err ? (
+          <div className="empty-state-block" style={{ marginTop: 48 }}>
+            <Radar size={40} style={{ color: "var(--muted)", opacity: 0.4, margin: "0 auto 14px", display: "block" }} />
+            <p style={{ textAlign: "center" }}>Enter a GitLab target and <strong>Probe</strong> for a live, passive fingerprint —
+              version, open sign-up, public API &amp; projects, GraphQL exposure, and security-header posture.
+              No auth, GET-only, scope-gated.</p>
+          </div>
+        ) : fp ? (
+          <GlReport fp={fp} relTime={relTime} srcPath={srcPath}
+            setSrcPath={(s) => { setSrcPath(s); localStorage.setItem(LS_SRC, s); }} onPhpAudit={phpAudit} />
+        ) : null}
+      </div>
+
+      {toast && (
+        <div style={{ position: "fixed", bottom: 20, right: 20, zIndex: 200, background: "var(--panel)", border: "1px solid var(--accent)", color: "var(--accent)", padding: "9px 16px", borderRadius: 5, fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>{toast}</div>
       )}
+    </div>
+  );
+}
 
-      {/* Attack Checklist */}
-      <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)" }}>
-        <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>
-          Attack Checklist — {checked}/{CHECKLIST_ITEMS.length} checked
+function GlReport({ fp, relTime, srcPath, setSrcPath, onPhpAudit }: {
+  fp: GitlabFingerprint; relTime: (s: string | null) => string;
+  srcPath: string; setSrcPath: (s: string) => void; onPhpAudit: () => void;
+}) {
+  return (
+    <div style={{ padding: 16 }}>
+      {/* Verdict hero */}
+      <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 18px", border: `1px solid ${fp.is_gitlab ? "var(--accent)" : "var(--border)"}`, borderRadius: 8, marginBottom: 16, background: "var(--panel)" }}>
+        <div style={{ width: 46, height: 46, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", background: fp.is_gitlab ? "rgba(228,242,34,0.12)" : "var(--bg)", flexShrink: 0 }}>
+          <GitBranch size={24} style={{ color: fp.is_gitlab ? "var(--accent)" : "var(--muted)" }} />
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 6 }}>
-          {CHECKLIST_ITEMS.map((item) => (
-            <label key={item} style={{
-              display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer",
-              fontSize: 12, color: checklist[item] ? "var(--muted)" : "var(--text)",
-              textDecoration: checklist[item] ? "line-through" : "none",
-              padding: "4px 6px", borderRadius: 4,
-              background: checklist[item] ? "transparent" : "var(--panel)",
-              border: "1px solid var(--border)",
-            }}>
-              <input
-                type="checkbox"
-                checked={!!checklist[item]}
-                onChange={() => toggleCheck(item)}
-                style={{ marginTop: 1, accentColor: "var(--accent)", flexShrink: 0 }}
-              />
-              {item}
-            </label>
-          ))}
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text)" }}>
+            {fp.is_gitlab ? "GitLab detected" : "GitLab not confirmed"}
+            {fp.version && <span style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)", marginLeft: 10 }}>v{fp.version}</span>}
+            {fp.enterprise != null && <span className="type-badge" style={{ marginLeft: 10 }}>{fp.enterprise ? "EE" : "CE"}</span>}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace", marginTop: 3 }}>
+            {fp.server && <><Server size={10} style={{ verticalAlign: "-1px" }} /> {fp.server} · </>}
+            {fp.revision ? `rev ${fp.revision.slice(0, 10)}` : "revision hidden"}
+            {fp.api_reachable && <> · API reachable</>}
+          </div>
         </div>
+        {fp.signup_enabled && (
+          <span className="sev-badge" style={{ color: "var(--warn)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <UserPlus size={12} /> open sign-up
+          </span>
+        )}
       </div>
 
-      {/* Results Table */}
-      {loading ? (
-        <div className="page-loading">Loading…</div>
-      ) : filtered.length === 0 ? (
-        <div className="empty-state-block">
-          <p>No Raptor scans yet — configure settings and launch a scan above.</p>
-        </div>
-      ) : (
-        <div className="data-table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Execution ID</th>
-                <th>Protocol</th>
-                <th>Status</th>
-                <th>Findings</th>
-                <th>Started</th>
-                <th>Error</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((e) => (
-                <tr key={e.id} className="data-row">
-                  <td><code className="mono-cell">{e.id.slice(0, 16)}…</code></td>
-                  <td><code className="type-badge">{e.kind ?? "raptor"}</code></td>
-                  <td>
-                    <span className="sev-badge" style={{ color: STATUS_COLOR[e.status] ?? "var(--muted)" }}>
-                      {e.status}
+      {/* Stat tiles */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px,1fr))", gap: 1, background: "var(--border)", border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden", marginBottom: 18 }}>
+        <Tile label="Public projects" value={fp.public_project_count} color={fp.public_project_count ? "var(--info)" : "var(--muted)"} />
+        <Tile label="Open sign-up" value={fp.signup_enabled ? "YES" : "no"} color={fp.signup_enabled ? "var(--warn)" : "var(--muted)"} />
+        <Tile label="Public API" value={fp.api_reachable ? "YES" : "no"} color={fp.api_reachable ? "var(--info)" : "var(--muted)"} />
+        <Tile label="GraphQL" value={fp.exposed.graphql ? "exposed" : "no"} color={fp.exposed.graphql ? "var(--warn)" : "var(--muted)"} />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px,1fr))", gap: 14 }}>
+        {/* Exposed surface */}
+        <Panel title="Exposed surface" icon={<Unlock size={13} />}>
+          <ChipRow items={[
+            { label: "open sign-up", hot: !!fp.exposed.open_signup },
+            { label: "public API (v4)", hot: !!fp.exposed.public_api },
+            { label: "public projects", hot: !!fp.exposed.public_projects },
+            { label: "/explore", hot: !!fp.exposed.explore },
+            { label: "/api/graphql", hot: !!fp.exposed.graphql },
+          ]} />
+        </Panel>
+
+        {/* Security headers */}
+        <Panel title="Security headers" icon={<ShieldCheck size={13} />}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {Object.entries(fp.security_headers).map(([h, v]) => (
+              <div key={h} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}>
+                {v ? <ShieldCheck size={12} style={{ color: "var(--good)" }} /> : <ShieldAlert size={12} style={{ color: "var(--bad)" }} />}
+                <span style={{ color: v ? "var(--text)" : "var(--muted)" }}>{h}</span>
+                {!v && <span style={{ color: "var(--bad)", marginLeft: "auto" }}>missing</span>}
+              </div>
+            ))}
+          </div>
+        </Panel>
+
+        {/* Public projects */}
+        {fp.public_projects.length > 0 && (
+          <Panel title={`Public projects (${fp.public_project_count})`} icon={<FolderGit2 size={13} />} span>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {fp.public_projects.map((p) => (
+                <div key={p.path} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: "1px solid var(--border)", fontSize: 12 }}>
+                  <FolderGit2 size={13} style={{ color: "var(--muted)" }} />
+                  <code style={{ color: "var(--text)", flex: 1 }}>{p.path}</code>
+                  {p.star_count != null && (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 3, color: "var(--muted)", fontSize: 11 }}>
+                      <Star size={11} /> {p.star_count}
                     </span>
-                  </td>
-                  <td className="muted-cell">
-                    {(e.metadata as Record<string, unknown>)?.findings_count != null
-                      ? String((e.metadata as Record<string, unknown>).findings_count)
-                      : "—"}
-                  </td>
-                  <td className="time-cell">{formatTime(e.created_at)}</td>
-                  <td className="mono-cell" style={{ color: e.error ? "var(--bad)" : "var(--muted)" }}>
-                    {e.error ?? "—"}
-                  </td>
-                </tr>
+                  )}
+                  <span style={{ color: "var(--muted)", fontSize: 10, minWidth: 60, textAlign: "right" }}>{relTime(p.last_activity_at)}</span>
+                </div>
               ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+            </div>
+          </Panel>
+        )}
+
+        {/* Source audit */}
+        <Panel title="Source audit (Raptor)" icon={<Boxes size={13} />} span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input placeholder="/path/to/cloned/repo" value={srcPath}
+              onChange={(e) => setSrcPath(e.target.value)}
+              style={{ flex: 1, background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", padding: "6px 9px", borderRadius: 4, fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none" }} />
+            <button className="action-btn primary" onClick={onPhpAudit} disabled={!srcPath.trim()}>
+              <Play size={13} /> Audit source
+            </button>
+          </div>
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function Tile({ label, value, color = "var(--text)" }: { label: string; value: number | string; color?: string }) {
+  return (
+    <div style={{ background: "var(--panel)", padding: "9px 14px" }}>
+      <div style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--muted)" }}>{label}</div>
+      <div style={{ fontSize: value === "YES" || value === "no" || value === "exposed" ? 15 : 22, fontWeight: 700, color, fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase" }}>{value}</div>
+    </div>
+  );
+}
+
+function Panel({ title, icon, children, span }: { title: string; icon: React.ReactNode; children: React.ReactNode; span?: boolean }) {
+  return (
+    <div style={{ border: "1px solid var(--border)", borderRadius: 8, background: "var(--panel)", gridColumn: span ? "1 / -1" : undefined }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--border)", color: "var(--muted)" }}>
+        {icon}<span style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text)" }}>{title}</span>
+      </div>
+      <div style={{ padding: 14 }}>{children}</div>
+    </div>
+  );
+}
+
+function ChipRow({ items }: { items: { label: string; hot: boolean }[] }) {
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+      {items.map((it) => (
+        <span key={it.label} style={{
+          display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 4, fontSize: 11,
+          fontFamily: "'JetBrains Mono', monospace",
+          border: `1px solid ${it.hot ? "var(--warn)" : "var(--border)"}`,
+          color: it.hot ? "var(--warn)" : "var(--muted)",
+          background: it.hot ? "rgba(240,190,40,0.08)" : "transparent",
+        }}>
+          {it.hot ? <Unlock size={11} /> : <Lock size={11} />} {it.label}
+        </span>
+      ))}
     </div>
   );
 }

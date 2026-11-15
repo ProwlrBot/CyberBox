@@ -1,0 +1,3798 @@
+{
+  "version": "1.1.0",
+  "source": "RedAmon Bug Bounty Coverage taxonomy (full 22-family import, 2026-11-11), adapted as the CyberBox methodology spine",
+  "priority_scale": {
+    "P1": "critical",
+    "P2": "high",
+    "P3": "medium",
+    "P4": "low",
+    "P5": "informational / not applicable"
+  },
+  "payout_scale": {
+    "note": "payout_rank 1..5 maps $..$$$$$ — what the class actually pays once dupe saturation and triage drift are priced in. Runs OPPOSITE to priority: a P5 primitive can be $$$$$ inside a chain.",
+    "1": "$",
+    "2": "$$",
+    "3": "$$$",
+    "4": "$$$$",
+    "5": "$$$$$"
+  },
+  "families": [
+    {
+      "num": 1,
+      "name": "Information Disclosure and Secrets",
+      "owasp": "A02/A04:2025",
+      "money_rank": null,
+      "note": "The finding is the credential, not the disclosure."
+    },
+    {
+      "num": 2,
+      "name": "HTTP Desync, Caching and Proxy",
+      "owasp": "A05:2025",
+      "money_rank": null,
+      "note": "Front-end/back-end parsing disagreement; cache keyed wrong."
+    },
+    {
+      "num": 3,
+      "name": "API and GraphQL Specific",
+      "owasp": "API:2023",
+      "money_rank": null,
+      "note": "Object- and function-level authz on machine surface."
+    },
+    {
+      "num": 4,
+      "name": "Infrastructure, DNS and Cloud",
+      "owasp": "A05:2025",
+      "money_rank": null,
+      "note": "Dangling records, metadata, misconfigured buckets."
+    },
+    {
+      "num": 5,
+      "name": "OAuth, SSO and Federation",
+      "owasp": "A07:2025",
+      "money_rank": 2,
+      "note": "redirect_uri, state, token confusion — account takeover surface."
+    },
+    {
+      "num": 6,
+      "name": "AI and LLM Attack Surface",
+      "owasp": "LLM:2025",
+      "money_rank": null,
+      "note": "Indirect prompt injection into tool-calling agents (CWE-1427) fastest-growing scoped surface."
+    },
+    {
+      "num": 7,
+      "name": "Supply Chain and CI/CD",
+      "owasp": "A03:2025",
+      "money_rank": null,
+      "note": "Dependency confusion, runner poisoning, build-system compromise."
+    },
+    {
+      "num": 8,
+      "name": "Cryptography and Token Handling",
+      "owasp": "A02:2025",
+      "money_rank": null,
+      "note": "JWT confusion, weak secrets, predictable tokens."
+    },
+    {
+      "num": 9,
+      "name": "Server-Side Request Forgery",
+      "owasp": "A01:2025 (folded in)",
+      "money_rank": 4,
+      "note": "Value is reaching cloud metadata / internal services, not the DNS ping."
+    },
+    {
+      "num": 10,
+      "name": "Server-Side Injection",
+      "owasp": "A03:2025",
+      "money_rank": 3,
+      "note": "SQLi / RCE / SSTI at the top."
+    },
+    {
+      "num": 11,
+      "name": "XML, Deserialization and Parser Attacks",
+      "owasp": "A03/A08:2025",
+      "money_rank": null,
+      "note": "XXE, insecure deserialization, parser differentials."
+    },
+    {
+      "num": 12,
+      "name": "Business Logic, Race Conditions and Workflow",
+      "owasp": "A04:2025",
+      "money_rank": 5,
+      "note": "State machines, TOCTOU, idempotency, value extraction."
+    },
+    {
+      "num": 13,
+      "name": "Authentication and Session Management",
+      "owasp": "A07:2025",
+      "money_rank": 2,
+      "note": "Password reset, session fixation, 2FA bypass."
+    },
+    {
+      "num": 14,
+      "name": "Broken Access Control and Authorization",
+      "owasp": "A01:2025",
+      "money_rank": 1,
+      "note": "IDOR / BOLA / BFLA — highest paid family by concentration."
+    },
+    {
+      "num": 15,
+      "name": "File Upload and Path Handling",
+      "owasp": "A03/A04:2025",
+      "money_rank": null,
+      "note": "Unrestricted upload, path traversal, LFI."
+    },
+    {
+      "num": 16,
+      "name": "Cross-Site Scripting and Client-Side Injection",
+      "owasp": "A03:2025",
+      "money_rank": null,
+      "note": "Highest report VOLUME, not highest payout; dupe-heavy standalone."
+    },
+    {
+      "num": 17,
+      "name": "Cross-Origin and Browser Trust",
+      "owasp": "A05:2025",
+      "money_rank": null,
+      "note": "CORS, postMessage, cookie scope, CSP bypass."
+    },
+    {
+      "num": 18,
+      "name": "Client-Side Request and Path Manipulation",
+      "owasp": "A05:2025",
+      "money_rank": null,
+      "note": "CSPT, client-side path traversal into trusted fetches."
+    },
+    {
+      "num": 19,
+      "name": "Content Spoofing, Redirects and Impersonation",
+      "owasp": "A01:2025",
+      "money_rank": null,
+      "note": "Open redirect, dangling markup — chain fuel, weak alone."
+    },
+    {
+      "num": 20,
+      "name": "Denial of Service and Resource Abuse",
+      "owasp": "A04:2025",
+      "money_rank": null,
+      "note": "Mostly out of scope; narrow exceptions, isolated instances only."
+    },
+    {
+      "num": 21,
+      "name": "Adjacent scope worth knowing",
+      "owasp": null,
+      "money_rank": null,
+      "note": "Mobile, thick-client, binary surface bordering web scope."
+    },
+    {
+      "num": 22,
+      "name": "Frontier classes, 2025 to 2026",
+      "owasp": null,
+      "money_rank": null,
+      "note": "Newest techniques: agentic AI, HTTP/1.1 desync endgame, CSPT2CSRF."
+    },
+    {
+      "num": 23,
+      "name": "Chains that turn a medium into a critical",
+      "owasp": null,
+      "money_rank": null,
+      "note": "The escalation catalog. Most large payouts are 2-3 ordinary findings stacked."
+    },
+    {
+      "num": 24,
+      "name": "Commonly closed as informational",
+      "owasp": null,
+      "money_rank": null,
+      "note": "Never report standalone — only inside a chain or when the program explicitly asks."
+    },
+    {
+      "num": 25,
+      "name": "Reporting checklist",
+      "owasp": null,
+      "money_rank": null,
+      "note": "What moves a finding to the top of the triage queue."
+    }
+  ],
+  "classes": [
+    {
+      "family": 1,
+      "name": "Disclosure of secrets for a publicly accessible asset",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-798",
+      "signal": "Live provider key/token reachable without auth.",
+      "chain_component": true
+    },
+    {
+      "family": 1,
+      "name": "Disclosure of secrets for an internal asset",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-798",
+      "signal": "Credential for an internal-only system."
+    },
+    {
+      "family": 1,
+      "name": "Disclosure of known public information / intentionally public samples",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-200",
+      "signal": "Sample/demo data.",
+      "informational_only": true
+    },
+    {
+      "family": 1,
+      "name": "Secrets in JavaScript bundles",
+      "priority": "P1-P3",
+      "payout_rank": 3,
+      "cwe": "CWE-798",
+      "signal": "Keys inlined at build; grep secret/token/key/password/apiKey.",
+      "chain_component": true
+    },
+    {
+      "family": 1,
+      "name": "Exposed source maps",
+      "priority": "P3-P5",
+      "payout_rank": 2,
+      "cwe": "CWE-540",
+      "signal": "Append .map or read sourceMappingURL to recover full source.",
+      "chain_component": true
+    },
+    {
+      "family": 1,
+      "name": "Exposed version control and environment files",
+      "priority": "P1",
+      "payout_rank": 3,
+      "cwe": "CWE-527",
+      "signal": "/.git/config, /.env, /.svn, /.DS_Store, config.php.bak."
+    },
+    {
+      "family": 1,
+      "name": "Backup and temporary files",
+      "priority": "P2",
+      "payout_rank": 2,
+      "cwe": "CWE-530",
+      "signal": "index.php~, .swp, .old, webroot zip, DB dump in /uploads."
+    },
+    {
+      "family": 1,
+      "name": "Directory listing",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-548",
+      "signal": "Higher when it lists something sensitive."
+    },
+    {
+      "family": 1,
+      "name": "Visible detailed error / debug page",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": "CWE-209",
+      "signal": "Force a type error; unexpected content type, malformed JSON body."
+    },
+    {
+      "family": 1,
+      "name": "Exposed debug and management endpoints",
+      "priority": "P1-P3",
+      "payout_rank": 4,
+      "cwe": "CWE-209",
+      "signal": "Spring actuator env/heapdump, Django debug, phpinfo, Rails console, /metrics."
+    },
+    {
+      "family": 1,
+      "name": "Exposed portal",
+      "priority": "P1-P3",
+      "payout_rank": 2,
+      "cwe": "CWE-284",
+      "signal": "Admin portal reachable; P5 when protected."
+    },
+    {
+      "family": 1,
+      "name": "Exposed API schemas and introspection",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-200",
+      "signal": "swagger/openapi/WSDL/GraphQL introspection; hands over the surface."
+    },
+    {
+      "family": 1,
+      "name": "Excessive data exposure in API responses",
+      "priority": "P2-P3",
+      "payout_rank": 4,
+      "cwe": "CWE-213",
+      "signal": "Full object returned, UI hides fields; read raw JSON on profile/listing."
+    },
+    {
+      "family": 1,
+      "name": "Improper inventory management",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-1059",
+      "signal": "Forgotten hosts, old versions, staging copies of prod data."
+    },
+    {
+      "family": 1,
+      "name": "Secrets in public repositories, CI logs, container images, mobile apps",
+      "priority": "P1",
+      "payout_rank": 5,
+      "cwe": "CWE-798",
+      "signal": "Org repos, forks, gists, history, build logs, Docker layers, APK/IPA."
+    },
+    {
+      "family": 1,
+      "name": "Sensitive token in URL",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": "CWE-598",
+      "signal": "Token in the address, logs, referer."
+    },
+    {
+      "family": 1,
+      "name": "Non-sensitive token in URL",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-598",
+      "signal": "Low value in URL.",
+      "informational_only": true
+    },
+    {
+      "family": 1,
+      "name": "Token leakage via Referer",
+      "priority": "P4-P5",
+      "payout_rank": 1,
+      "cwe": "CWE-200",
+      "signal": "Token leaves via Referer to a third party or over HTTP."
+    },
+    {
+      "family": 1,
+      "name": "Sensitive token in localStorage / sessionStorage",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": "CWE-922",
+      "signal": "Auth token in web storage reachable by XSS."
+    },
+    {
+      "family": 1,
+      "name": "PII leakage or exposure",
+      "priority": "P1-P3",
+      "payout_rank": 4,
+      "cwe": "CWE-359",
+      "signal": "Personal data by volume and sensitivity."
+    },
+    {
+      "family": 1,
+      "name": "Pay-per-use abuse from a leaked key",
+      "priority": "P4",
+      "payout_rank": 2,
+      "cwe": "CWE-770",
+      "signal": "Leaked third-party key that costs the target money."
+    },
+    {
+      "family": 1,
+      "name": "Internal IP disclosure",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-200",
+      "signal": "Internal addressing leaked.",
+      "informational_only": true
+    },
+    {
+      "family": 1,
+      "name": "Fingerprinting / banner disclosure, software versions in headers",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-200",
+      "signal": "Version/banner in responses.",
+      "informational_only": true
+    },
+    {
+      "family": 1,
+      "name": "GraphQL introspection enabled",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-200",
+      "signal": "Schema exposed.",
+      "informational_only": true
+    },
+    {
+      "family": 1,
+      "name": "Publicly accessible robots.txt with sensitive paths",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-200",
+      "signal": "Sensitive paths disclosed.",
+      "informational_only": true
+    },
+    {
+      "family": 1,
+      "name": "Mixed content (HTTPS sourcing HTTP)",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-319",
+      "signal": "Insecure subresource.",
+      "informational_only": true
+    },
+    {
+      "family": 1,
+      "name": "Missing Cache-Control on a sensitive page",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": "CWE-525",
+      "signal": "Shared-browser and proxy retention of authenticated paths."
+    },
+    {
+      "family": 1,
+      "name": "JSON hijacking / XSSI",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-345",
+      "signal": "Per-user JSON loadable cross-origin.",
+      "informational_only": true
+    },
+    {
+      "family": 1,
+      "name": "EXIF geolocation not stripped",
+      "priority": "P3-P4",
+      "payout_rank": 2,
+      "cwe": "CWE-212",
+      "signal": "Location/author metadata survives upload."
+    },
+    {
+      "family": 1,
+      "name": "Security logging and alerting failures",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-778",
+      "signal": "Report when you can show an attack leaves no trace.",
+      "informational_only": true
+    },
+    {
+      "family": 2,
+      "name": "HTTP request smuggling, classic",
+      "priority": "P1-P2",
+      "payout_rank": 4,
+      "cwe": "CWE-444",
+      "signal": "CL.TE, TE.CL, TE.TE with obfuscated Transfer-Encoding; confirm by timing first.",
+      "chain_component": true
+    },
+    {
+      "family": 2,
+      "name": "0.CL and CL.0 desync",
+      "priority": "P1",
+      "payout_rank": 5,
+      "cwe": "CWE-444",
+      "signal": "Back end treats a request as having no body while the front end does (or reverse). CVE-2025-32094."
+    },
+    {
+      "family": 2,
+      "name": "HTTP/2 downgrade smuggling",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-444",
+      "signal": "H2.CL, H2.TE, CRLF in an H2 header/pseudo-header when the edge rewrites to HTTP/1.1."
+    },
+    {
+      "family": 2,
+      "name": "Client-side desync",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-444",
+      "signal": "Victim's own browser poisons its connection; POST whose body the server ignores."
+    },
+    {
+      "family": 2,
+      "name": "Expect-based and obfuscation-based desync",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-444",
+      "signal": "Expect: 100-continue handling differences, header-name obfuscation one hop accepts."
+    },
+    {
+      "family": 2,
+      "name": "Web cache poisoning",
+      "priority": "P1-P2",
+      "payout_rank": 4,
+      "cwe": "CWE-349",
+      "signal": "Unkeyed input changes the cached response; X-Forwarded-Host/Scheme/Port, X-Original-URL, X-Host.",
+      "chain_component": true
+    },
+    {
+      "family": 2,
+      "name": "Internal / framework cache poisoning",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-349",
+      "signal": "Poison a framework's own internal cache, not a CDN. Next.js stale-data/route-cache chains.",
+      "chain_component": true
+    },
+    {
+      "family": 2,
+      "name": "Fat GET and parameter cloaking",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-444",
+      "signal": "GET with a body, semicolon separator, duplicated/unkeyed param that still reaches the app."
+    },
+    {
+      "family": 2,
+      "name": "Cache key normalization abuse",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-349",
+      "signal": "Key built from a normalized path while the origin sees the raw one, or vice versa."
+    },
+    {
+      "family": 2,
+      "name": "Web cache deception",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-525",
+      "signal": "Authenticated page under a static-looking suffix; /account/settings/x.css.",
+      "chain_component": true
+    },
+    {
+      "family": 2,
+      "name": "Cache poisoning denial of service (CPDoS)",
+      "priority": "P2-P3",
+      "payout_rank": 2,
+      "cwe": "CWE-400",
+      "signal": "Oversized/malformed header the origin rejects and the cache stores, served to everyone."
+    },
+    {
+      "family": 2,
+      "name": "Virtual host confusion and origin exposure",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-441",
+      "signal": "Origin answers for internal hostnames directly, bypassing edge/WAF/auth. Find IP via CT/DNS history."
+    },
+    {
+      "family": 2,
+      "name": "WAF bypass via direct server access",
+      "priority": "P4",
+      "payout_rank": 2,
+      "cwe": "CWE-693",
+      "signal": "Protection enforced only at the edge; origin publicly reachable."
+    },
+    {
+      "family": 2,
+      "name": "CDN misconfiguration",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-1188",
+      "signal": "Auth/rate-limit only at the edge; cache serving another tenant's content; unauth purge."
+    },
+    {
+      "family": 3,
+      "name": "Unauthenticated internal API endpoints",
+      "priority": "P1",
+      "payout_rank": 5,
+      "cwe": "CWE-306",
+      "signal": "Service-to-service routes at the public edge; /internal, /v1/admin, /api/system.",
+      "chain_component": true
+    },
+    {
+      "family": 3,
+      "name": "Old API versions left unpatched",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-1104",
+      "signal": "v1 still runs, never got v2's authz fix. Decrement the version in path/Accept/subdomain."
+    },
+    {
+      "family": 3,
+      "name": "Shadow endpoints from other clients",
+      "priority": "P2",
+      "payout_rank": 4,
+      "cwe": "CWE-1059",
+      "signal": "Mobile/desktop routes the web app does not call, with weaker checks; decompile and replay.",
+      "chain_component": true
+    },
+    {
+      "family": 3,
+      "name": "Unsafe consumption of APIs",
+      "priority": "P2",
+      "payout_rank": 2,
+      "cwe": "CWE-20",
+      "signal": "Target trusts a third-party API response and forwards it into a sink."
+    },
+    {
+      "family": 3,
+      "name": "Unrestricted resource consumption",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-400",
+      "signal": "No pagination ceiling/cost control; limit=1000000, negative/zero drops the clause."
+    },
+    {
+      "family": 3,
+      "name": "GraphQL introspection in production",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-200",
+      "signal": "Schema exposed; if disabled try field suggestions.",
+      "informational_only": true
+    },
+    {
+      "family": 3,
+      "name": "GraphQL alias and batching abuse",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-770",
+      "signal": "Hundreds of aliased ops in one request defeat per-request rate limits on OTP/coupon/invite.",
+      "chain_component": true
+    },
+    {
+      "family": 3,
+      "name": "GraphQL depth and complexity exhaustion",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-674",
+      "signal": "A relation pointing back to its parent nested deep."
+    },
+    {
+      "family": 3,
+      "name": "GraphQL field-level authorization gaps",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-863",
+      "signal": "Query authorized, individual fields are not.",
+      "chain_component": true
+    },
+    {
+      "family": 3,
+      "name": "GraphQL mutations exposing admin operations",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-862",
+      "signal": "Admin mutation reachable by a low role.",
+      "chain_component": true
+    },
+    {
+      "family": 3,
+      "name": "GraphQL injection into a downstream filter or ORM",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-89",
+      "signal": "Filter/arg passed verbatim into the ORM."
+    },
+    {
+      "family": 3,
+      "name": "Webhook signature not verified or replayable",
+      "priority": "P2",
+      "payout_rank": 4,
+      "cwe": "CWE-347",
+      "signal": "Forge payment.succeeded; no timestamp means it replays forever."
+    },
+    {
+      "family": 3,
+      "name": "Long-lived unscoped API keys",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-798",
+      "signal": "Never expire, cannot rotate, full account scope accepted in a query param."
+    },
+    {
+      "family": 3,
+      "name": "gRPC-web / JSON transcoding gaps",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-20",
+      "signal": "Transcoding layer exposes methods/fields the intended surface does not."
+    },
+    {
+      "family": 4,
+      "name": "Subdomain takeover",
+      "priority": "P1-P3",
+      "payout_rank": 2,
+      "cwe": null,
+      "signal": "Dangling CNAME to a deprovisioned service; look for the provider 404, then register.",
+      "chain_component": true
+    },
+    {
+      "family": 4,
+      "name": "NS delegation takeover",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": null,
+      "signal": "Delegated zone pointing at claimable nameservers gives the whole subtree."
+    },
+    {
+      "family": 4,
+      "name": "Dangling A record to a reclaimable cloud IP",
+      "priority": "P2",
+      "payout_rank": 2,
+      "cwe": null,
+      "signal": "Record points at an IP you can re-provision."
+    },
+    {
+      "family": 4,
+      "name": "DNS zone transfer allowed (AXFR)",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": "CWE-200",
+      "signal": "Full zone dumpable.",
+      "informational_only": true
+    },
+    {
+      "family": 4,
+      "name": "Missing CAA record / missing DNSSEC",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-345",
+      "signal": "Weak DNS hardening.",
+      "informational_only": true
+    },
+    {
+      "family": 4,
+      "name": "Bitsquatting",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": null,
+      "signal": "Adjacent domain registration.",
+      "informational_only": true
+    },
+    {
+      "family": 4,
+      "name": "Broken link hijacking",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": null,
+      "signal": "Page links to an expired domain/dead handle/unclaimed package you register."
+    },
+    {
+      "family": 4,
+      "name": "Publicly accessible cloud storage",
+      "priority": "P1-P2",
+      "payout_rank": 3,
+      "cwe": "CWE-732",
+      "signal": "Test list/get/put and ACL; write = site takeover. Check company-named and -dev/-backup buckets.",
+      "chain_component": true
+    },
+    {
+      "family": 4,
+      "name": "Unencrypted sensitive data at rest",
+      "priority": "P2",
+      "payout_rank": 2,
+      "cwe": "CWE-312",
+      "signal": "Data stored without encryption."
+    },
+    {
+      "family": 4,
+      "name": "Publicly accessible IAM credentials",
+      "priority": "P1",
+      "payout_rank": 5,
+      "cwe": "CWE-522",
+      "signal": "Live cloud credentials reachable."
+    },
+    {
+      "family": 4,
+      "name": "Overly permissive IAM roles",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-732",
+      "signal": "Enumerate the identity's permissions read-only, then stop."
+    },
+    {
+      "family": 4,
+      "name": "Insecure Firebase / BaaS rules",
+      "priority": "P1",
+      "payout_rank": 3,
+      "cwe": "CWE-732",
+      "signal": "Default rules leave the DB readable/writable to the public project id; append /.json."
+    },
+    {
+      "family": 4,
+      "name": "Exposed datastores and search clusters",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-284",
+      "signal": "Elasticsearch, Redis, MongoDB, Kibana, Memcached, broker, metrics store without auth."
+    },
+    {
+      "family": 4,
+      "name": "Exposed container and orchestration APIs",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-284",
+      "signal": "Docker socket 2375/2376, kubelet 10250, k8s API 6443, etcd 2379, Consul 8500."
+    },
+    {
+      "family": 4,
+      "name": "Open management ports to the internet",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-284",
+      "signal": "Admin ports reachable."
+    },
+    {
+      "family": 4,
+      "name": "Lack of network segmentation",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-284",
+      "signal": "Flat network reach."
+    },
+    {
+      "family": 4,
+      "name": "Using default credentials",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-798",
+      "signal": "Shipped default login still works."
+    },
+    {
+      "family": 4,
+      "name": "Exposed admin panels",
+      "priority": "P1",
+      "payout_rank": 3,
+      "cwe": "CWE-284",
+      "signal": "Jenkins console, Grafana, phpMyAdmin, Adminer, Airflow, RabbitMQ, vendor appliances."
+    },
+    {
+      "family": 4,
+      "name": "Known vulnerabilities in edge software",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-1395",
+      "signal": "Confluence, Jira, GitLab, Citrix, Ivanti, Fortinet, Exchange, MOVEit; fingerprint the exact build."
+    },
+    {
+      "family": 4,
+      "name": "Outdated software version / unpatched JS libraries",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-1104",
+      "signal": "Version number with no proof of reachability is a scanner result.",
+      "informational_only": true
+    },
+    {
+      "family": 4,
+      "name": "Misconfigured file share",
+      "priority": "P2-P5",
+      "payout_rank": 2,
+      "cwe": "CWE-1188",
+      "signal": "Anonymous FTP/SMB and what it exposes."
+    },
+    {
+      "family": 4,
+      "name": "DBMS misconfiguration, excessively privileged user",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": "CWE-1188",
+      "signal": "Over-privileged DB account."
+    },
+    {
+      "family": 4,
+      "name": "Mail server misconfiguration",
+      "priority": "P3-P5",
+      "payout_rank": 1,
+      "cwe": "CWE-1188",
+      "signal": "Missing/misconfigured DMARC reaching the inbox; verify delivery, do not report the record alone."
+    },
+    {
+      "family": 4,
+      "name": "Insecure SSL/TLS",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-326",
+      "signal": "Cert errors, weak ciphers, no forward secrecy where actually exploitable.",
+      "informational_only": true
+    },
+    {
+      "family": 4,
+      "name": "Lack of security headers",
+      "priority": "P4-P5",
+      "payout_rank": 1,
+      "cwe": "CWE-693",
+      "signal": "CSP/HSTS/X-Frame-Options/X-Content-Type-Options reported alone.",
+      "informational_only": true
+    },
+    {
+      "family": 4,
+      "name": "Insecure Content-Security-Policy",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-693",
+      "signal": "Weak CSP alone.",
+      "informational_only": true
+    },
+    {
+      "family": 4,
+      "name": "Missing Subresource Integrity",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-353",
+      "signal": "SRI absent; escalates when the host is abandoned.",
+      "informational_only": true
+    },
+    {
+      "family": 4,
+      "name": "Potentially unsafe HTTP method enabled (OPTIONS, TRACE)",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-650",
+      "signal": "Methods enabled.",
+      "informational_only": true
+    },
+    {
+      "family": 4,
+      "name": "Telnet enabled",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-319",
+      "signal": "Cleartext admin.",
+      "informational_only": true
+    },
+    {
+      "family": 4,
+      "name": "Active Directory adjacent",
+      "priority": "P1-P2",
+      "payout_rank": 3,
+      "cwe": "CWE-284",
+      "signal": "Kerberoasting, ASREPRoasting, unconstrained delegation, SCCM/NTLM relay, LDAP anon bind, DACL abuse."
+    },
+    {
+      "family": 5,
+      "name": "Weak redirect_uri validation",
+      "priority": "P2",
+      "payout_rank": 4,
+      "cwe": "CWE-601",
+      "signal": "Prefix/suffix/wildcard match; added path segment, different port/scheme, # or ? truncation.",
+      "chain_component": true
+    },
+    {
+      "family": 5,
+      "name": "Missing or broken state parameter",
+      "priority": "P2-P4",
+      "payout_rank": 3,
+      "cwe": "CWE-352",
+      "signal": "No CSRF binding on the callback; drop state and see if it still completes.",
+      "chain_component": true
+    },
+    {
+      "family": 5,
+      "name": "OAuth account takeover",
+      "priority": "P2",
+      "payout_rank": 4,
+      "cwe": "CWE-287",
+      "signal": "Chained redirect/state/token confusion lands another user's account."
+    },
+    {
+      "family": 5,
+      "name": "OAuth account squatting",
+      "priority": "P4",
+      "payout_rank": 2,
+      "cwe": "CWE-287",
+      "signal": "Claim an account tied to an identity the victim will later use."
+    },
+    {
+      "family": 5,
+      "name": "Authorization code leaked via Referer or a chained open redirect",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-601",
+      "signal": "Code escapes to attacker origin.",
+      "chain_component": true
+    },
+    {
+      "family": 5,
+      "name": "Code replay, missing PKCE, PKCE downgrade",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-352",
+      "signal": "Exchange a code twice, or strip code_challenge/code_verifier from both legs."
+    },
+    {
+      "family": 5,
+      "name": "Implicit flow token in the URL fragment",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-598",
+      "signal": "Token lands in history/extensions and any script on the landing page."
+    },
+    {
+      "family": 5,
+      "name": "Scope escalation / consent bypass",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-863",
+      "signal": "Scope consented is not the scope issued; add scopes to the token request only."
+    },
+    {
+      "family": 5,
+      "name": "OAuth client secret hardcoded in the client",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-798",
+      "signal": "Rises sharply if the secret enables confidential-client flows.",
+      "informational_only": true
+    },
+    {
+      "family": 5,
+      "name": "SAML signature not verified",
+      "priority": "P1",
+      "payout_rank": 5,
+      "cwe": "CWE-347",
+      "signal": "Edit NameID and resubmit, or re-sign with your own certificate."
+    },
+    {
+      "family": 5,
+      "name": "XML signature wrapping (XSW)",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-347",
+      "signal": "Keep the signed assertion, nest it, add a forged assertion as a sibling the parser reads."
+    },
+    {
+      "family": 5,
+      "name": "SAML comment truncation",
+      "priority": "P1",
+      "payout_rank": 3,
+      "cwe": "CWE-347",
+      "signal": "admin<!---->@target.com resolves to admin@target.com for one component."
+    },
+    {
+      "family": 5,
+      "name": "id_token audience or issuer not validated",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-347",
+      "signal": "A token minted by the same provider for a different app is accepted."
+    },
+    {
+      "family": 5,
+      "name": "Third-party access token substitution",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-345",
+      "signal": "App trusts a social access token without checking which client it was issued to."
+    },
+    {
+      "family": 5,
+      "name": "IdP-initiated flow abuse / unsolicited response accepted",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-345",
+      "signal": "Unsolicited SSO response accepted."
+    },
+    {
+      "family": 6,
+      "name": "Prompt injection, direct",
+      "priority": "P3-P4",
+      "payout_rank": 2,
+      "cwe": "CWE-1427",
+      "signal": "User instruction overrides the system prompt; impact is acting as another user, not just swearing."
+    },
+    {
+      "family": 6,
+      "name": "Prompt injection, indirect",
+      "priority": "P1-P2",
+      "payout_rank": 4,
+      "cwe": "CWE-1427",
+      "signal": "Instructions hidden in content the model reads on someone else's behalf (page, PDF, ticket, invite).",
+      "chain_component": true
+    },
+    {
+      "family": 6,
+      "name": "System prompt leakage",
+      "priority": "P2",
+      "payout_rank": 2,
+      "cwe": "CWE-200",
+      "signal": "Recovers instructions, tool list, internal identifiers; recon for tool abuse."
+    },
+    {
+      "family": 6,
+      "name": "Improper output handling",
+      "priority": "P3-P4",
+      "payout_rank": 3,
+      "cwe": "CWE-116",
+      "signal": "Model output rendered as HTML/Markdown, executed as SQL or shell; markdown image exfil is standard."
+    },
+    {
+      "family": 6,
+      "name": "Improper input handling",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-20",
+      "signal": "ANSI escapes, RTL overrides, unicode confusables reaching a terminal/reviewer UI.",
+      "informational_only": true
+    },
+    {
+      "family": 6,
+      "name": "Tool and function-call abuse",
+      "priority": "P1-P2",
+      "payout_rank": 4,
+      "cwe": "CWE-1427",
+      "signal": "Model can fetch URLs, read files, query DBs, run code; authz sits on the user, not the request.",
+      "chain_component": true
+    },
+    {
+      "family": 6,
+      "name": "Remote code execution via an agent",
+      "priority": "P1-P2",
+      "payout_rank": 5,
+      "cwe": "CWE-94",
+      "signal": "A code-interpreter/shell tool escaping its sandbox, or reachable without confirmation."
+    },
+    {
+      "family": 6,
+      "name": "Excessive agency",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-269",
+      "signal": "Agent can send/delete/purchase/deploy without a human step; any injection becomes real-world action."
+    },
+    {
+      "family": 6,
+      "name": "Cross-tenant PII leakage",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-639",
+      "signal": "Shared cache keys, mixed session state, an over-broad memory feature, cached responses."
+    },
+    {
+      "family": 6,
+      "name": "Key leak",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-522",
+      "signal": "App calls the provider from the browser with a real key, visible in the network tab."
+    },
+    {
+      "family": 6,
+      "name": "Vector and embedding weaknesses",
+      "priority": "P2-P3",
+      "payout_rank": 3,
+      "cwe": null,
+      "signal": "RAG index poisoning, cross-tenant retrieval, embedding inversion; check citations."
+    },
+    {
+      "family": 6,
+      "name": "Data and model poisoning",
+      "priority": "P1",
+      "payout_rank": 3,
+      "cwe": "CWE-345",
+      "signal": "Backdoor/bias through a training, fine-tuning or feedback channel you can reach."
+    },
+    {
+      "family": 6,
+      "name": "Model extraction",
+      "priority": "P1",
+      "payout_rank": 2,
+      "cwe": "CWE-200",
+      "signal": "API query-based reconstruction."
+    },
+    {
+      "family": 6,
+      "name": "Adversarial example injection / misclassification",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": "CWE-1039",
+      "signal": "Relevant where the model gates a security/moderation decision."
+    },
+    {
+      "family": 6,
+      "name": "Unbounded consumption",
+      "priority": "P2",
+      "payout_rank": 2,
+      "cwe": "CWE-400",
+      "signal": "No token/request budget on an expensive model: denial of wallet."
+    },
+    {
+      "family": 6,
+      "name": "Insufficient rate limiting, query flooding / API token abuse",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": "CWE-770",
+      "signal": "No throttle on model calls."
+    },
+    {
+      "family": 6,
+      "name": "Misinformation / wrong factual data",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": null,
+      "signal": "Payable only where a wrong answer carries real consequence.",
+      "informational_only": true
+    },
+    {
+      "family": 6,
+      "name": "AI supply chain",
+      "priority": "P1-P2",
+      "payout_rank": 4,
+      "cwe": "CWE-1357",
+      "signal": "Poisoned model artifact, malicious pickle in a checkpoint, untrusted plugin/MCP server, typosquatted model."
+    },
+    {
+      "family": 6,
+      "name": "Bias findings",
+      "priority": "P4-P5",
+      "payout_rank": 1,
+      "cwe": null,
+      "signal": "Only in scope on programs that explicitly ask.",
+      "informational_only": true
+    },
+    {
+      "family": 7,
+      "name": "Dependency confusion",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-1357",
+      "signal": "Internal package name unclaimed on the public registry; find names in a lockfile/Dockerfile/error.",
+      "chain_component": true
+    },
+    {
+      "family": 7,
+      "name": "Unclaimed or expired package, scope, or maintainer domain",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-1357",
+      "signal": "Removed packages, renamed orgs, maintainer email domains available to buy."
+    },
+    {
+      "family": 7,
+      "name": "Typosquatting and malicious packages",
+      "priority": "P2",
+      "payout_rank": 2,
+      "cwe": "CWE-1357",
+      "signal": "Near-name packages with install-time scripts or a postinstall exfil hook."
+    },
+    {
+      "family": 7,
+      "name": "Software package takeover",
+      "priority": "P1",
+      "payout_rank": 5,
+      "cwe": "CWE-1357",
+      "signal": "Any path to publishing a version consumers trust."
+    },
+    {
+      "family": 7,
+      "name": "Missing SRI on third-party scripts",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-353",
+      "signal": "Escalates when the host is abandoned or the domain expires.",
+      "informational_only": true
+    },
+    {
+      "family": 7,
+      "name": "Compromised or unpinned CDN script",
+      "priority": "P1-P2",
+      "payout_rank": 3,
+      "cwe": "CWE-829",
+      "signal": "Script pulled unpinned from a host you can influence."
+    },
+    {
+      "family": 7,
+      "name": "CI workflow injection",
+      "priority": "P1",
+      "payout_rank": 5,
+      "cwe": "CWE-829",
+      "signal": "A PR title, branch name or issue body interpolated into a run: block that holds secrets."
+    },
+    {
+      "family": 7,
+      "name": "Untrusted pull request with secret access (pwn_request)",
+      "priority": "P1",
+      "payout_rank": 5,
+      "cwe": "CWE-829",
+      "signal": "Workflow checks out fork code and runs it with repo secrets before maintainer approval."
+    },
+    {
+      "family": 7,
+      "name": "Self-hosted runner takeover",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-829",
+      "signal": "A public repo whose runner any contributor can reach, often inside a corporate network."
+    },
+    {
+      "family": 7,
+      "name": "Artifact and release pipeline write access",
+      "priority": "P1",
+      "payout_rank": 5,
+      "cwe": "CWE-829",
+      "signal": "Write access to published artifacts; report immediately and publish nothing."
+    },
+    {
+      "family": 7,
+      "name": "Vulnerable dependency with a proven reachable path",
+      "priority": "P2-P3",
+      "payout_rank": 3,
+      "cwe": "CWE-1395",
+      "signal": "The reachability proof is the report; a version number alone is closed."
+    },
+    {
+      "family": 7,
+      "name": "Software or data integrity failures",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-345",
+      "signal": "Unsigned updates, an auto-update channel without verification, a plugin installer trusting an unauth source."
+    },
+    {
+      "family": 8,
+      "name": "Predictable identifiers and tokens",
+      "priority": "P1-P3",
+      "payout_rank": 4,
+      "cwe": "CWE-330",
+      "signal": "Session/reset/invite/API/object tokens from a timestamp, counter, weak PRNG; collect a few hundred.",
+      "chain_component": true
+    },
+    {
+      "family": 8,
+      "name": "Predictable or reused PRNG seed, small seed space",
+      "priority": "P4-P5",
+      "payout_rank": 1,
+      "cwe": "CWE-330",
+      "signal": "Seed guessable or reused."
+    },
+    {
+      "family": 8,
+      "name": "Limited RNG entropy source",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": "CWE-331",
+      "signal": "Low-entropy generator."
+    },
+    {
+      "family": 8,
+      "name": "Insufficient key space",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-326",
+      "signal": "Brute-forceable key."
+    },
+    {
+      "family": 8,
+      "name": "Weak hash: lack of salt, predictable salt, insufficient key stretching",
+      "priority": "P3-P5",
+      "payout_rank": 1,
+      "cwe": "CWE-916",
+      "signal": "Unsalted/fast password hashing shown by a leak/export/API."
+    },
+    {
+      "family": 8,
+      "name": "Padding oracle attack",
+      "priority": "P1",
+      "payout_rank": 3,
+      "cwe": "CWE-203",
+      "signal": "Distinguishable valid/invalid padding responses let you decrypt and often forge."
+    },
+    {
+      "family": 8,
+      "name": "Timing attack",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": "CWE-208",
+      "signal": "Non-constant-time comparison of a token, MAC or password."
+    },
+    {
+      "family": 8,
+      "name": "IV reuse / predictable IV",
+      "priority": "P4-P5",
+      "payout_rank": 1,
+      "cwe": "CWE-330",
+      "signal": "Reused/guessable IV."
+    },
+    {
+      "family": 8,
+      "name": "ECB mode pattern leakage and CBC bit flipping",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-327",
+      "signal": "Identical 16-byte blocks in a base64 token; flip a block with guessable plaintext structure."
+    },
+    {
+      "family": 8,
+      "name": "Length extension",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-328",
+      "signal": "Any MAC of the form hash(secret + message) on an SHA-1/SHA-2 digest."
+    },
+    {
+      "family": 8,
+      "name": "Key reuse across environments",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-324",
+      "signal": "A staging key that verifies production tokens."
+    },
+    {
+      "family": 8,
+      "name": "Lack of perfect forward secrecy",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": "CWE-326",
+      "signal": "No PFS.",
+      "informational_only": true
+    },
+    {
+      "family": 8,
+      "name": "Insufficient verification of data authenticity",
+      "priority": "P1-P4",
+      "payout_rank": 3,
+      "cwe": "CWE-345",
+      "signal": "Signature verified and the result ignored, or exception caught and execution continued; tamper and see."
+    },
+    {
+      "family": 8,
+      "name": "Use of a broken cryptographic primitive or a vulnerable crypto library",
+      "priority": "P3-P4",
+      "payout_rank": 1,
+      "cwe": "CWE-327",
+      "signal": "Deprecated primitive or vulnerable lib in use."
+    },
+    {
+      "family": 8,
+      "name": "Missing cryptographic step / improper spec implementation",
+      "priority": "P2-P3",
+      "payout_rank": 2,
+      "cwe": "CWE-325",
+      "signal": "A required step skipped."
+    },
+    {
+      "family": 8,
+      "name": "Hardcoded password or key",
+      "priority": "P1-P2",
+      "payout_rank": 4,
+      "cwe": "CWE-798",
+      "signal": "Secret baked into shipped code."
+    },
+    {
+      "family": 8,
+      "name": "Use of an expired key or certificate",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": "CWE-324",
+      "signal": "Expired material still trusted."
+    },
+    {
+      "family": 8,
+      "name": "Incomplete cleanup of keying material",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-226",
+      "signal": "Key residue left behind.",
+      "informational_only": true
+    },
+    {
+      "family": 9,
+      "name": "SSRF, internal secrets exposure",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-918",
+      "signal": "Request reaches an internal secret.",
+      "chain_component": true
+    },
+    {
+      "family": 9,
+      "name": "SSRF, internal data exposure",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-918",
+      "signal": "Reaches internal data.",
+      "chain_component": true
+    },
+    {
+      "family": 9,
+      "name": "SSRF, internal port / service scan",
+      "priority": "P3-P4",
+      "payout_rank": 2,
+      "cwe": "CWE-918",
+      "signal": "Differential timing against open/closed internal ports.",
+      "chain_component": true
+    },
+    {
+      "family": 9,
+      "name": "SSRF, external DNS query only or low impact",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-918",
+      "signal": "DNS callback only.",
+      "informational_only": true,
+      "chain_component": true
+    },
+    {
+      "family": 9,
+      "name": "Full-read SSRF",
+      "priority": "P1-P2",
+      "payout_rank": 5,
+      "cwe": "CWE-918",
+      "signal": "Internal response body comes back; the app is now a proxy. Point at 127.0.0.1 on internal ports.",
+      "chain_component": true
+    },
+    {
+      "family": 9,
+      "name": "Blind SSRF",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-918",
+      "signal": "No body, but the request measurably happens; differential timing against open/closed ports.",
+      "chain_component": true
+    },
+    {
+      "family": 9,
+      "name": "Blind SSRF made visible via HTTP redirect loops",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-918",
+      "signal": "Force the fetcher into a redirect loop whose depth/error encodes the internal response.",
+      "chain_component": true
+    },
+    {
+      "family": 9,
+      "name": "Cloud metadata access",
+      "priority": "P1",
+      "payout_rank": 5,
+      "cwe": "CWE-918",
+      "signal": "169.254.169.254 (IMDSv1) returns role credentials; Azure/Alibaba/Oracle equivalents, 169.254.170.2 ECS.",
+      "chain_component": true
+    },
+    {
+      "family": 9,
+      "name": "SSRF filter bypass",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-918",
+      "signal": "302 to internal, DNS rebinding, decimal/octal/hex, IPv6-mapped, 0.0.0.0, user@internal, #/? truncation."
+    },
+    {
+      "family": 9,
+      "name": "Protocol smuggling from SSRF",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-918",
+      "signal": "gopher:// to write a Redis key or speak SMTP; dict://, file://, ftp://, ldap://."
+    },
+    {
+      "family": 9,
+      "name": "SSRF in headless renderers",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-918",
+      "signal": "HTML-to-PDF/screenshot/preview services fetch iframe/img/link/object; file:// local reads.",
+      "chain_component": true
+    },
+    {
+      "family": 9,
+      "name": "SSRF in image and media processing",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-918",
+      "signal": "SVG external href, XMP references, M3U8 playlists naming an internal host."
+    },
+    {
+      "family": 9,
+      "name": "SSRF via webhooks and integrations",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-918",
+      "signal": "Designed to call a URL you supply; webhook/callback/import-by-URL/RSS/SAML ACS URL."
+    },
+    {
+      "family": 9,
+      "name": "SSRF via link preview / oEmbed / unfurl",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-918",
+      "signal": "Any feature that renders a card for a pasted URL, often with weaker network controls."
+    },
+    {
+      "family": 9,
+      "name": "Request splitting from SSRF",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-918",
+      "signal": "CRLF in a URL path the client does not encode gives a fully controlled internal request."
+    },
+    {
+      "family": 9,
+      "name": "HTTP/2 CONNECT port scanning",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-441",
+      "signal": "CONNECT over HTTP/2 against a proxy reveals internal reachable ports without a classic SSRF sink."
+    },
+    {
+      "family": 10,
+      "name": "SQL injection",
+      "priority": "P1",
+      "payout_rank": 5,
+      "cwe": "CWE-89",
+      "signal": "Error/union-based: a quote changes the response, then ORDER BY and UNION with a matching column count."
+    },
+    {
+      "family": 10,
+      "name": "Blind SQL injection",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-89",
+      "signal": "Boolean (AND 1=1 vs AND 1=2) and time-based (SLEEP, pg_sleep, WAITFOR DELAY)."
+    },
+    {
+      "family": 10,
+      "name": "Out-of-band SQL injection",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-89",
+      "signal": "DB makes a DNS/HTTP request; xp_dirtree, LOAD_FILE on UNC, UTL_HTTP."
+    },
+    {
+      "family": 10,
+      "name": "Second-order SQL injection",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-89",
+      "signal": "Stored safely, injected later when another feature reads it into a query."
+    },
+    {
+      "family": 10,
+      "name": "NoSQL injection",
+      "priority": "P1-P2",
+      "payout_rank": 4,
+      "cwe": "CWE-943",
+      "signal": "password[$ne]=1, {$gt:''}, $regex oracle, $where for JS execution, $lookup."
+    },
+    {
+      "family": 10,
+      "name": "ORM leaking / ORM injection",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-89",
+      "signal": "A JSON filter (select/include/orderBy) passed to the ORM verbatim; a search filter becomes a DB dump."
+    },
+    {
+      "family": 10,
+      "name": "OS command injection",
+      "priority": "P1",
+      "payout_rank": 5,
+      "cwe": "CWE-78",
+      "signal": "Shell metacharacters reach a command in file conversion, PDF gen, network tooling; confirm blind via DNS."
+    },
+    {
+      "family": 10,
+      "name": "Argument injection",
+      "priority": "P1-P2",
+      "payout_rank": 4,
+      "cwe": "CWE-78",
+      "signal": "No metacharacters but you control an argument; a leading dash becomes a flag (--output=, -o, -Fconfig)."
+    },
+    {
+      "family": 10,
+      "name": "Server-Side Template Injection",
+      "priority": "P1-P4",
+      "payout_rank": 5,
+      "cwe": "CWE-1336",
+      "signal": "{{7*7}} -> 49 identifies the engine across Jinja2/Twig/FreeMarker/Velocity/ERB; error-based/blind SSTI too."
+    },
+    {
+      "family": 10,
+      "name": "Expression language injection (SpEL, OGNL, MVEL)",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-917",
+      "signal": "Reachable through a validation message or error-message interpolation path."
+    },
+    {
+      "family": 10,
+      "name": "Remote code execution",
+      "priority": "P1",
+      "payout_rank": 5,
+      "cwe": "CWE-94",
+      "signal": "Terminal state of many of the above; verify non-destructively and stop."
+    },
+    {
+      "family": 10,
+      "name": "LDAP injection",
+      "priority": "P1-P2",
+      "payout_rank": 3,
+      "cwe": "CWE-90",
+      "signal": "*)(uid=*))(|(uid=* on directory-backed login and user search."
+    },
+    {
+      "family": 10,
+      "name": "XPath / XQuery injection",
+      "priority": "P2",
+      "payout_rank": 2,
+      "cwe": "CWE-643",
+      "signal": "' or '1'='1 then substring() extraction."
+    },
+    {
+      "family": 10,
+      "name": "CRLF injection / HTTP response splitting",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-113",
+      "signal": "%0d%0a reaching a Location, Set-Cookie, or any header echoed from a parameter."
+    },
+    {
+      "family": 10,
+      "name": "Host header injection",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-644",
+      "signal": "Absolute URLs, reset links, cache keys, and routing-based SSRF where the header picks the backend."
+    },
+    {
+      "family": 10,
+      "name": "HTTP parameter pollution (HPP)",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-235",
+      "signal": "Duplicate params parsed differently; escalates when it bypasses a filter/signature/cache key.",
+      "informational_only": true
+    },
+    {
+      "family": 10,
+      "name": "Email header injection",
+      "priority": "P4",
+      "payout_rank": 2,
+      "cwe": "CWE-93",
+      "signal": "Newlines in name/subject/address add Bcc/Cc or rewrite the mail body."
+    },
+    {
+      "family": 10,
+      "name": "Log injection and log lookup evaluation",
+      "priority": "P1",
+      "payout_rank": 3,
+      "cwe": "CWE-117",
+      "signal": "Forged log entries, and on a vulnerable stack the log line is evaluated (the Log4j JNDI pattern)."
+    },
+    {
+      "family": 10,
+      "name": "Server-side prototype pollution",
+      "priority": "P2",
+      "payout_rank": 4,
+      "cwe": "CWE-1321",
+      "signal": "__proto__ or constructor.prototype in a JSON body reaching a merge/clone, then a gadget.",
+      "chain_component": true
+    },
+    {
+      "family": 10,
+      "name": "Server-side JavaScript injection",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-94",
+      "signal": "eval/Function/vm or a sandboxed runner fed request data; escape via constructor chains and process."
+    },
+    {
+      "family": 10,
+      "name": "File inclusion, local",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-98",
+      "signal": "A path parameter selecting a file to include/render; php://filter to base64 the source, /proc/self/environ.",
+      "chain_component": true
+    },
+    {
+      "family": 10,
+      "name": "File inclusion, remote",
+      "priority": "P1",
+      "payout_rank": 3,
+      "cwe": "CWE-98",
+      "signal": "The include target can be a URL; legacy PHP and some template loaders."
+    },
+    {
+      "family": 10,
+      "name": "Path traversal, server-side",
+      "priority": "P1-P2",
+      "payout_rank": 4,
+      "cwe": "CWE-22",
+      "signal": "../, encoded and double-encoded, ....//, UTF-8 overlong, unicode normalization variants.",
+      "chain_component": true
+    },
+    {
+      "family": 10,
+      "name": "CSV / formula injection",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-1236",
+      "signal": "=cmd|' /C calc'!A0, plus +, -, @ and tab/CR prefixes in an export staff will open.",
+      "informational_only": true
+    },
+    {
+      "family": 10,
+      "name": "SOAP / WSDL injection and HTTP client proxy abuse",
+      "priority": "P1",
+      "payout_rank": 3,
+      "cwe": "CWE-611",
+      "signal": "An HttpWebClientProtocol chain via attacker-controlled WSDL reaches RCE."
+    },
+    {
+      "family": 11,
+      "name": "XXE file disclosure",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-611",
+      "signal": "A DOCTYPE with a SYSTEM entity reading /etc/passwd or a Windows path, echoed back."
+    },
+    {
+      "family": 11,
+      "name": "Blind and error-based XXE",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-611",
+      "signal": "External DTD you host wrapping the file into a hostname/URL path, or leaking it in a parser error."
+    },
+    {
+      "family": 11,
+      "name": "XInclude injection",
+      "priority": "P1-P2",
+      "payout_rank": 3,
+      "cwe": "CWE-611",
+      "signal": "You control only a fragment and cannot add a DOCTYPE, but xi:include still pulls a file."
+    },
+    {
+      "family": 11,
+      "name": "XXE via document formats",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-611",
+      "signal": "Office/design formats are zipped XML: docx, xlsx, pptx, odt, svg, plus XMP metadata in images."
+    },
+    {
+      "family": 11,
+      "name": "XXE via SOAP and legacy API endpoints",
+      "priority": "P1",
+      "payout_rank": 3,
+      "cwe": "CWE-611",
+      "signal": "Legacy XML endpoints parsing external entities."
+    },
+    {
+      "family": 11,
+      "name": "Entity expansion DoS (billion laughs)",
+      "priority": "P3",
+      "payout_rank": 1,
+      "cwe": "CWE-776",
+      "signal": "Nested entity expansion exhausts memory."
+    },
+    {
+      "family": 11,
+      "name": "Java deserialization",
+      "priority": "P1",
+      "payout_rank": 5,
+      "cwe": "CWE-502",
+      "signal": "A serialized stream from a cookie/param/queue; r00AB base64 prefix, ac ed 00 05 magic. Gadget chains."
+    },
+    {
+      "family": 11,
+      "name": "PHP object injection",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-502",
+      "signal": "unserialize on request data (O:/a: prefixed), or phar:// in any path parameter reaching a filesystem op."
+    },
+    {
+      "family": 11,
+      "name": "Python pickle and unsafe YAML",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-502",
+      "signal": "pickle.loads on a session cookie/cached object, yaml.load without SafeLoader."
+    },
+    {
+      "family": 11,
+      "name": ".NET unsafe type handling",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-502",
+      "signal": "BinaryFormatter, LosFormatter, JSON.NET TypeNameHandling ($type field), a tampered ViewState without a MAC."
+    },
+    {
+      "family": 11,
+      "name": "Node / JavaScript deserialization",
+      "priority": "P1",
+      "payout_rank": 3,
+      "cwe": "CWE-502",
+      "signal": "node-serialize style libraries evaluating an IIFE in the serialized form."
+    },
+    {
+      "family": 11,
+      "name": "Vulnerable media and document libraries",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-1395",
+      "signal": "ImageMagick delegates, Ghostscript, ffmpeg playlist reads, ExifTool, LibreOffice headless conversion."
+    },
+    {
+      "family": 11,
+      "name": "Parser differentials",
+      "priority": "P2-P3",
+      "payout_rank": 4,
+      "cwe": "CWE-436",
+      "signal": "Two components parse the same bytes differently; JSON duplicate keys, YAML, XML, multipart, URLs, JWT segments.",
+      "chain_component": true
+    },
+    {
+      "family": 11,
+      "name": "Unicode normalization bypass",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-176",
+      "signal": "Input validated pre-normalization and used post-normalization; fi folding, Turkish dotless i, case-folding collisions."
+    },
+    {
+      "family": 12,
+      "name": "Price / amount / discount tampering",
+      "priority": "P1-P2",
+      "payout_rank": 4,
+      "cwe": "CWE-472",
+      "signal": "Value taken from the client; change it in the cart, the confirmation, and the provider callback.",
+      "chain_component": true
+    },
+    {
+      "family": 12,
+      "name": "Negative or fractional quantity",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-472",
+      "signal": "A negative line item credits the order; a fractional one exploits rounding. Also test overflow."
+    },
+    {
+      "family": 12,
+      "name": "Currency and unit confusion",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-472",
+      "signal": "Pay in a weak currency for a price quoted in a strong one; change the currency code between quote and capture."
+    },
+    {
+      "family": 12,
+      "name": "Coupon reuse and stacking",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-472",
+      "signal": "Apply, remove, reapply; then apply the same code in two concurrent requests."
+    },
+    {
+      "family": 12,
+      "name": "Race condition on a limit (limit overrun)",
+      "priority": "P1-P3",
+      "payout_rank": 4,
+      "cwe": "CWE-362",
+      "signal": "Non-atomic check-then-update on withdrawals/redemptions/invites; single-packet attack over HTTP/2.",
+      "chain_component": true
+    },
+    {
+      "family": 12,
+      "name": "Time-of-check to time-of-use",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-367",
+      "signal": "Change the object from a second session inside the validation window."
+    },
+    {
+      "family": 12,
+      "name": "Multi-endpoint race / state confusion",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-362",
+      "signal": "Two endpoints touching the same record concurrently produce a state neither allows."
+    },
+    {
+      "family": 12,
+      "name": "Workflow step skipping",
+      "priority": "P1-P2",
+      "payout_rank": 4,
+      "cwe": "CWE-841",
+      "signal": "A multi-step flow that does not verify earlier steps; call the final endpoint with a fresh order id."
+    },
+    {
+      "family": 12,
+      "name": "Payment bypass",
+      "priority": "P1",
+      "payout_rank": 5,
+      "cwe": "CWE-472",
+      "signal": "Mark an order paid without paying: client-side status, unverified callback, test-mode key in production."
+    },
+    {
+      "family": 12,
+      "name": "Refund and cashback loops",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-472",
+      "signal": "Convert value into a form that survives the refund; buy with a coupon, refund to store credit, repeat."
+    },
+    {
+      "family": 12,
+      "name": "Trial, downgrade and entitlement abuse",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-472",
+      "signal": "Downgrade keeps premium, cancelling keeps the seat, a trial restarts forever."
+    },
+    {
+      "family": 12,
+      "name": "Referral and reward abuse",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-472",
+      "signal": "Self-referral, cycles, reward credited before the condition is verified."
+    },
+    {
+      "family": 12,
+      "name": "Inconsistent state across services",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-362",
+      "signal": "Missing idempotency key, or a compensating action that never runs; interrupt mid-way."
+    },
+    {
+      "family": 12,
+      "name": "Rate limit bypass",
+      "priority": "P3-P4",
+      "payout_rank": 2,
+      "cwe": "CWE-307",
+      "signal": "Limiter keys on something you control; case, trailing slash, added param, X-Forwarded-For, API version, GraphQL batching.",
+      "chain_component": true
+    },
+    {
+      "family": 12,
+      "name": "No rate limiting on a form",
+      "priority": "P4-P5",
+      "payout_rank": 1,
+      "cwe": "CWE-307",
+      "signal": "No throttle on a form.",
+      "informational_only": true
+    },
+    {
+      "family": 12,
+      "name": "Unrestricted access to sensitive business flows",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-799",
+      "signal": "Bulk purchase, ticket scalping, mass invite; the absence of anti-automation is the finding."
+    },
+    {
+      "family": 12,
+      "name": "Captcha bypass",
+      "priority": "P4-P5",
+      "payout_rank": 1,
+      "cwe": "CWE-804",
+      "signal": "Captcha implementation flaw or OCR/crowdsourcing.",
+      "informational_only": true
+    },
+    {
+      "family": 12,
+      "name": "Client-side entitlement / feature-flag checks",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-602",
+      "signal": "A paid/admin feature gated by a frontend flag while the API serves it to anyone.",
+      "chain_component": true
+    },
+    {
+      "family": 12,
+      "name": "Expiry and clock logic",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-613",
+      "signal": "Expired subscriptions, invites and links still honored; test negative and far-future timestamps."
+    },
+    {
+      "family": 12,
+      "name": "Quantity/unit mismatch between UI and API",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-472",
+      "signal": "The UI caps at 10, the API accepts 10000."
+    },
+    {
+      "family": 13,
+      "name": "Authentication bypass",
+      "priority": "P1",
+      "payout_rank": 5,
+      "cwe": "CWE-306",
+      "signal": "Any route to an authenticated state without valid credentials.",
+      "chain_component": true
+    },
+    {
+      "family": 13,
+      "name": "Credential stuffing / no login throttling",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": "CWE-307",
+      "signal": "Unlimited attempts; rotate X-Forwarded-For, change username case, use mobile/API/GraphQL login."
+    },
+    {
+      "family": 13,
+      "name": "No account lockout",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-307",
+      "signal": "Reportable only with demonstrated impact.",
+      "informational_only": true
+    },
+    {
+      "family": 13,
+      "name": "Username / email enumeration",
+      "priority": "P4-P5",
+      "payout_rank": 1,
+      "cwe": "CWE-204",
+      "signal": "Status/length/timing differences across login/register/reset/invite.",
+      "informational_only": true
+    },
+    {
+      "family": 13,
+      "name": "OTP / 2FA brute force",
+      "priority": "P1-P2",
+      "payout_rank": 4,
+      "cwe": "CWE-307",
+      "signal": "Six digits with no cap, or a cap counted per code so resending resets it.",
+      "chain_component": true
+    },
+    {
+      "family": 13,
+      "name": "OTP not bound to the session or the user",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-287",
+      "signal": "Request the code as yourself, then submit it in a request that names the victim.",
+      "chain_component": true
+    },
+    {
+      "family": 13,
+      "name": "2FA bypass, step skipped",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-287",
+      "signal": "The second factor is a page, not a gate; request an authed endpoint with the cookie you already hold.",
+      "chain_component": true
+    },
+    {
+      "family": 13,
+      "name": "2FA bypass by response manipulation",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-287",
+      "signal": "The client decides success from a JSON field; flip success:false / mfaRequired:true.",
+      "chain_component": true
+    },
+    {
+      "family": 13,
+      "name": "2FA secret still obtainable after 2FA is enabled",
+      "priority": "P4",
+      "payout_rank": 2,
+      "cwe": "CWE-287",
+      "signal": "The provisioning endpoint keeps returning the TOTP seed."
+    },
+    {
+      "family": 13,
+      "name": "2FA secret cannot be rotated",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": "CWE-287",
+      "signal": "Seed fixed for life.",
+      "informational_only": true
+    },
+    {
+      "family": 13,
+      "name": "Old 2FA code not invalidated when a new one is generated",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-287",
+      "signal": "Prior code still valid.",
+      "informational_only": true
+    },
+    {
+      "family": 13,
+      "name": "Missing 2FA failsafe",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-287",
+      "signal": "No failsafe path.",
+      "informational_only": true
+    },
+    {
+      "family": 13,
+      "name": "Backup / recovery code weaknesses",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-640",
+      "signal": "Short, unthrottled, reusable, or regenerated without invalidating the old set; recovery skips the password."
+    },
+    {
+      "family": 13,
+      "name": "Predictable password reset token",
+      "priority": "P1",
+      "payout_rank": 5,
+      "cwe": "CWE-640",
+      "signal": "A timestamp, counter, md5 of the email, anything derivable; request several and compare by byte.",
+      "chain_component": true
+    },
+    {
+      "family": 13,
+      "name": "Reset token leaked via Referer",
+      "priority": "P4-P5",
+      "payout_rank": 2,
+      "cwe": "CWE-200",
+      "signal": "Token in the URL and the reset page loads analytics/ads/an external font."
+    },
+    {
+      "family": 13,
+      "name": "Reset token leaked via Host header poisoning",
+      "priority": "P2",
+      "payout_rank": 4,
+      "cwe": "CWE-644",
+      "signal": "The email link is built from the incoming Host or X-Forwarded-Host, so you control the domain.",
+      "chain_component": true
+    },
+    {
+      "family": 13,
+      "name": "Reset token not invalidated",
+      "priority": "P4-P5",
+      "payout_rank": 1,
+      "cwe": "CWE-613",
+      "signal": "Not invalidated after use/login/password change.",
+      "informational_only": true
+    },
+    {
+      "family": 13,
+      "name": "Password reset token sent over HTTP",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": "CWE-640",
+      "signal": "Token over cleartext."
+    },
+    {
+      "family": 13,
+      "name": "Session not invalidated on logout",
+      "priority": "P4-P5",
+      "payout_rank": 1,
+      "cwe": "CWE-613",
+      "signal": "Token survives logout.",
+      "informational_only": true
+    },
+    {
+      "family": 13,
+      "name": "Session not invalidated on password reset or change",
+      "priority": "P4",
+      "payout_rank": 2,
+      "cwe": "CWE-640",
+      "signal": "Old session survives a credential change."
+    },
+    {
+      "family": 13,
+      "name": "Session not invalidated on email change, 2FA change, or permission change",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-613",
+      "signal": "Old session survives a sensitive change.",
+      "informational_only": true
+    },
+    {
+      "family": 13,
+      "name": "Concurrent sessions on logout / long timeout / concurrent logins",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-613",
+      "signal": "Weak session lifecycle.",
+      "informational_only": true
+    },
+    {
+      "family": 13,
+      "name": "Session fixation",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-384",
+      "signal": "The identifier is not rotated at login."
+    },
+    {
+      "family": 13,
+      "name": "Cleartext transmission of the session token",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": "CWE-319",
+      "signal": "Token over HTTP.",
+      "informational_only": true
+    },
+    {
+      "family": 13,
+      "name": "Weak login or registration over HTTP",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": "CWE-319",
+      "signal": "Auth over cleartext.",
+      "informational_only": true
+    },
+    {
+      "family": 13,
+      "name": "Cookie scoped to the parent domain",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-565",
+      "signal": ".example.com cookies readable/writable from every subdomain; escalates with subdomain takeover.",
+      "informational_only": true,
+      "chain_component": true
+    },
+    {
+      "family": 13,
+      "name": "Missing Secure or HttpOnly flag",
+      "priority": "P4-P5",
+      "payout_rank": 1,
+      "cwe": "CWE-1004",
+      "signal": "Session cookie missing flags.",
+      "informational_only": true
+    },
+    {
+      "family": 13,
+      "name": "Cookie tossing / cookie injection from a subdomain",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-565",
+      "signal": "Write a path-scoped duplicate cookie shadowing the parent's, breaking CSRF defenses or fixing a session.",
+      "chain_component": true
+    },
+    {
+      "family": 13,
+      "name": "Pre-account takeover",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-287",
+      "signal": "Register the victim's unverified email with a password; when they later sign up via SSO they inherit your account.",
+      "chain_component": true
+    },
+    {
+      "family": 13,
+      "name": "Account merge on an unverified email claim",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-287",
+      "signal": "Social login matches on the provider's email without checking the provider verified it.",
+      "chain_component": true
+    },
+    {
+      "family": 13,
+      "name": "Email verification bypass",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-287",
+      "signal": "Escalates when verification gates a trust decision.",
+      "informational_only": true
+    },
+    {
+      "family": 13,
+      "name": "JWT: alg:none or signature never verified",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-347",
+      "signal": "A decode-only library call, or a trusted header algorithm; also try an empty signature.",
+      "chain_component": true
+    },
+    {
+      "family": 13,
+      "name": "JWT algorithm confusion (RS256 to HS256)",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-347",
+      "signal": "Recover the public key from JWKS or two tokens, then HMAC-sign with it.",
+      "chain_component": true
+    },
+    {
+      "family": 13,
+      "name": "JWT weak HMAC secret",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-347",
+      "signal": "Crackable offline from one token; secret, changeme, the app name.",
+      "chain_component": true
+    },
+    {
+      "family": 13,
+      "name": "JWT header injection via kid, jku, x5u, x5c",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-347",
+      "signal": "The token names its own verification key; kid reaching a file path or SQL, jku pointing at a JWKS you host.",
+      "chain_component": true
+    },
+    {
+      "family": 13,
+      "name": "Excessive JWT lifetime / no revocation",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-347",
+      "signal": "Long-lived, non-revocable token.",
+      "informational_only": true
+    },
+    {
+      "family": 13,
+      "name": "Sensitive information disclosed inside a JWT",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-347",
+      "signal": "PII in the payload.",
+      "informational_only": true
+    },
+    {
+      "family": 13,
+      "name": "SAML replay",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-347",
+      "signal": "Assertion replayable.",
+      "informational_only": true
+    },
+    {
+      "family": 13,
+      "name": "Secret questions used for account verification",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-640",
+      "signal": "Guessable knowledge-based auth.",
+      "informational_only": true
+    },
+    {
+      "family": 13,
+      "name": "Weak or absent password policy",
+      "priority": "P4-P5",
+      "payout_rank": 1,
+      "cwe": "CWE-521",
+      "signal": "No/weak policy.",
+      "informational_only": true
+    },
+    {
+      "family": 13,
+      "name": "Login CSRF",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": "CWE-352",
+      "signal": "Low alone; the standard enabler for turning self-XSS into a real finding.",
+      "informational_only": true,
+      "chain_component": true
+    },
+    {
+      "family": 13,
+      "name": "Client-side authentication gating",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-602",
+      "signal": "The whole authed app ships to anonymous visitors and the frontend hides it while the API still answers.",
+      "chain_component": true
+    },
+    {
+      "family": 14,
+      "name": "IDOR / BOLA, iterable object identifiers, sensitive data",
+      "priority": "P1-P3",
+      "payout_rank": 4,
+      "cwe": "CWE-639",
+      "signal": "An object id used without checking ownership; swap for a second account's id while keeping your session.",
+      "chain_component": true
+    },
+    {
+      "family": 14,
+      "name": "IDOR with complex identifiers (GUID/UUID)",
+      "priority": "P4",
+      "payout_rank": 2,
+      "cwe": "CWE-639",
+      "signal": "Same bug, rated lower because the id is not guessable; rises to P1 if the GUID is leaked anywhere.",
+      "chain_component": true
+    },
+    {
+      "family": 14,
+      "name": "Broken Function Level Authorization (BFLA)",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-862",
+      "signal": "Admin-only endpoint only the UI enforces; recover admin routes from docs/JS/mobile, replay with a low role.",
+      "chain_component": true
+    },
+    {
+      "family": 14,
+      "name": "Broken Object Property Level Authorization",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-915",
+      "signal": "Object authz fine but fields are not: read email/role/internalNotes, or write a field you should not.",
+      "chain_component": true
+    },
+    {
+      "family": 14,
+      "name": "Mass assignment / over-posting",
+      "priority": "P2",
+      "payout_rank": 4,
+      "cwe": "CWE-915",
+      "signal": "Server binds the whole body onto a model; add role/isAdmin/verified/balance/ownerId to a PATCH and re-read.",
+      "chain_component": true
+    },
+    {
+      "family": 14,
+      "name": "Cross-tenant escalation",
+      "priority": "P1",
+      "payout_rank": 5,
+      "cwe": "CWE-639",
+      "signal": "A tenant id supplied by the client: X-Org-Id, workspaceId, a tenant slug in the subdomain, a JWT tenant field.",
+      "chain_component": true
+    },
+    {
+      "family": 14,
+      "name": "Forced browsing to unlinked routes",
+      "priority": "P1-P3",
+      "payout_rank": 3,
+      "cwe": "CWE-863",
+      "signal": "Admin/staging/legacy routes reachable and never checked; route manifests, webpack tables, sitemap, archives."
+    },
+    {
+      "family": 14,
+      "name": "HTTP verb tampering",
+      "priority": "P2",
+      "payout_rank": 2,
+      "cwe": "CWE-650",
+      "signal": "A rule blocking POST leaves PUT/PATCH/DELETE open; X-HTTP-Method-Override: PUT, _method=DELETE."
+    },
+    {
+      "family": 14,
+      "name": "Header-based authorization bypass",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-807",
+      "signal": "Edge blocks a path but origin trusts client-settable headers; X-Original-URL, X-Forwarded-For: 127.0.0.1."
+    },
+    {
+      "family": 14,
+      "name": "Path normalization bypass",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-41",
+      "signal": "Proxy and app disagree on the path; //admin, /./admin, /admin;x=1, %2e%2e, case/trailing-dot/space, unicode."
+    },
+    {
+      "family": 14,
+      "name": "Bypass of password confirmation",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": "CWE-306",
+      "signal": "A sensitive action accepts the request with the confirmation field absent or empty."
+    },
+    {
+      "family": 14,
+      "name": "Lack of password confirmation on sensitive actions",
+      "priority": "P4-P5",
+      "payout_rank": 1,
+      "cwe": "CWE-306",
+      "signal": "The step does not exist; an XSS/CSRF force-multiplier."
+    },
+    {
+      "family": 14,
+      "name": "Stale or revoked permissions still honored",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-863",
+      "signal": "Invite cancelled, member removed, share deleted, downgraded, but the old token/session/object id still works."
+    },
+    {
+      "family": 14,
+      "name": "GraphQL node authorization gap",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-639",
+      "signal": "The top-level query checks ownership; a nested relation or a global node(id:) resolver does not.",
+      "chain_component": true
+    },
+    {
+      "family": 14,
+      "name": "Unprotected export, report and print endpoints",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-862",
+      "signal": "/export, /report, /print, /download?id=; async job result files that skip the main authz layer."
+    },
+    {
+      "family": 14,
+      "name": "Signed URL scope abuse",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-863",
+      "signal": "A pre-signed storage URL too broad/long-lived, or whose path you influence; truncate the key, change the prefix."
+    },
+    {
+      "family": 14,
+      "name": "Suspended, deleted or unverified account still authorized",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-613",
+      "signal": "Account state checked at login, never per request."
+    },
+    {
+      "family": 14,
+      "name": "Batch/bulk endpoint skipping per-item checks",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-863",
+      "signal": "Send one id you own and one you do not in the same array."
+    },
+    {
+      "family": 14,
+      "name": "Privilege escalation, vertical",
+      "priority": "P1",
+      "payout_rank": 5,
+      "cwe": "CWE-269",
+      "signal": "Any path from user to admin: a role field, an admin-only API, an internal header, a self-service grant.",
+      "chain_component": true
+    },
+    {
+      "family": 15,
+      "name": "Unrestricted upload to RCE",
+      "priority": "P1",
+      "payout_rank": 5,
+      "cwe": "CWE-434",
+      "signal": "An executable extension written where the server executes it; php/phtml/jsp/asp, .htaccess/web.config.",
+      "chain_component": true
+    },
+    {
+      "family": 15,
+      "name": "Extension / content-type / magic-byte bypass",
+      "priority": "P1",
+      "payout_rank": 2,
+      "cwe": "CWE-434",
+      "signal": "shell.php.jpg, GIF89a prefix, multipart filename with a semicolon/newline, a second filename= parameter."
+    },
+    {
+      "family": 15,
+      "name": "Path traversal in the multipart filename",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-22",
+      "signal": "../../../var/www/html/x.php, url-encoded and double-encoded forms.",
+      "chain_component": true
+    },
+    {
+      "family": 15,
+      "name": "Zip slip and archive traversal",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-22",
+      "signal": "../ entries and symlink entries inside a zip/tar/plugin bundle an import feature extracts."
+    },
+    {
+      "family": 15,
+      "name": "Arbitrary file write or overwrite",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-73",
+      "signal": "Even without execution: a config file, authorized_keys, a cron entry, a lock file."
+    },
+    {
+      "family": 15,
+      "name": "Arbitrary file read outside the upload area",
+      "priority": "P1-P2",
+      "payout_rank": 4,
+      "cwe": "CWE-22",
+      "signal": "?file=, ?path=, ?key= an id that turns out to be a base64 path.",
+      "chain_component": true
+    },
+    {
+      "family": 15,
+      "name": "Arbitrary file delete",
+      "priority": "P2",
+      "payout_rank": 2,
+      "cwe": "CWE-73",
+      "signal": "Remove a lock file or a security control; on some stacks this reaches an installer."
+    },
+    {
+      "family": 15,
+      "name": "Log poisoning through inclusion",
+      "priority": "P1",
+      "payout_rank": 3,
+      "cwe": "CWE-117",
+      "signal": "Put code in the User-Agent, then include the access log or the mail log."
+    },
+    {
+      "family": 15,
+      "name": "Unauthenticated access to uploaded content",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-306",
+      "signal": "Predictable/enumerable object names: sequential ids, original filenames, short hashes."
+    },
+    {
+      "family": 15,
+      "name": "Stored XSS / SVG payloads via upload",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-79",
+      "signal": "SVG with a script element served inline.",
+      "chain_component": true
+    },
+    {
+      "family": 15,
+      "name": "Decompression and pixel-flood bombs",
+      "priority": "P3",
+      "payout_rank": 1,
+      "cwe": "CWE-409",
+      "signal": "Nested archives, a pixel-flood PNG, a huge SVG viewBox, highly compressible JSON."
+    },
+    {
+      "family": 15,
+      "name": "No size limit / no antivirus",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-434",
+      "signal": "No upload guardrails.",
+      "informational_only": true
+    },
+    {
+      "family": 15,
+      "name": "EXIF geolocation not stripped",
+      "priority": "P3-P4",
+      "payout_rank": 1,
+      "cwe": "CWE-212",
+      "signal": "Document author/revision history surviving the upload; worth more when it enables user enumeration."
+    },
+    {
+      "family": 16,
+      "name": "Reflected XSS, non-self",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-79",
+      "signal": "Test every context: HTML body, attribute, script block, inside a URL, inside JSON that gets rendered, SVG.",
+      "chain_component": true
+    },
+    {
+      "family": 16,
+      "name": "Reflected XSS, self",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-79",
+      "signal": "Only a finding with a delivery chain.",
+      "informational_only": true,
+      "chain_component": true
+    },
+    {
+      "family": 16,
+      "name": "Stored XSS, non-privileged user to anyone",
+      "priority": "P2",
+      "payout_rank": 4,
+      "cwe": "CWE-79",
+      "signal": "Profile fields, filenames, tickets, comments, anything an admin will later view.",
+      "chain_component": true
+    },
+    {
+      "family": 16,
+      "name": "Stored XSS, privileged user with privilege elevation",
+      "priority": "P3",
+      "payout_rank": 3,
+      "cwe": "CWE-79",
+      "signal": "Privileged author, payload crosses a trust boundary."
+    },
+    {
+      "family": 16,
+      "name": "Stored XSS, privileged user without elevation",
+      "priority": "P4",
+      "payout_rank": 2,
+      "cwe": "CWE-79",
+      "signal": "Privileged author, same trust level."
+    },
+    {
+      "family": 16,
+      "name": "Stored XSS, self",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-79",
+      "signal": "Fires only in the author's own session.",
+      "informational_only": true,
+      "chain_component": true
+    },
+    {
+      "family": 16,
+      "name": "Stored XSS, CSRF/URL-based",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-79",
+      "signal": "Persisted from a URL/CSRF vector."
+    },
+    {
+      "family": 16,
+      "name": "DOM-based XSS",
+      "priority": "P2-P3",
+      "payout_rank": 3,
+      "cwe": "CWE-79",
+      "signal": "Sources location.hash/search/referrer, postMessage; sinks innerHTML, eval, setTimeout, document.write.",
+      "chain_component": true
+    },
+    {
+      "family": 16,
+      "name": "Blind XSS",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-79",
+      "signal": "Fires in an internal admin panel/log viewer days later; plant an out-of-band payload in every free-text field.",
+      "chain_component": true
+    },
+    {
+      "family": 16,
+      "name": "Universal XSS (UXSS)",
+      "priority": "P1",
+      "payout_rank": 4,
+      "cwe": "CWE-79",
+      "signal": "A browser/engine bug breaking the same-origin policy itself."
+    },
+    {
+      "family": 16,
+      "name": "Off-domain XSS via data URI",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": "CWE-79",
+      "signal": "data: URI execution off-origin.",
+      "informational_only": true
+    },
+    {
+      "family": 16,
+      "name": "Cookie-based XSS",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-79",
+      "signal": "Needs a cookie-injection primitive to become real.",
+      "informational_only": true,
+      "chain_component": true
+    },
+    {
+      "family": 16,
+      "name": "Referer-based XSS",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": "CWE-79",
+      "signal": "Reflected from the Referer header."
+    },
+    {
+      "family": 16,
+      "name": "XSS via the TRACE method",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-79",
+      "signal": "Cross-site tracing.",
+      "informational_only": true
+    },
+    {
+      "family": 16,
+      "name": "Mutation XSS (mXSS) and sanitizer bypass",
+      "priority": "P2",
+      "payout_rank": 4,
+      "cwe": "CWE-79",
+      "signal": "Sanitizer emits markup the browser re-parses dangerously; foreignObject/noscript/template/svg/math nesting.",
+      "chain_component": true
+    },
+    {
+      "family": 16,
+      "name": "Markdown and rich-text bypass",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-79",
+      "signal": "Raw HTML allowed, javascript: links, reference-style definitions, attribute injection in an image title."
+    },
+    {
+      "family": 16,
+      "name": "XSS via file upload",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-79",
+      "signal": "SVG/HTML/XML/PDF served inline; needs Content-Disposition: inline and a missing X-Content-Type-Options.",
+      "chain_component": true
+    },
+    {
+      "family": 16,
+      "name": "XSS via content-type confusion",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-79",
+      "signal": "JSON/text/file sniffed as HTML because the content type is wrong or missing."
+    },
+    {
+      "family": 16,
+      "name": "postMessage XSS",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-79",
+      "signal": "A message listener writes event.data to the DOM with no event.origin check; grep addEventListener(message).",
+      "chain_component": true
+    },
+    {
+      "family": 16,
+      "name": "Client-side template injection",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-1336",
+      "signal": "Angular/Vue compiling user-controlled markup; {{constructor.constructor('alert(1)')()}} inside an ng-app scope."
+    },
+    {
+      "family": 16,
+      "name": "CSP bypass",
+      "priority": "P3-P4",
+      "payout_rank": 2,
+      "cwe": "CWE-693",
+      "signal": "A whitelisted JSONP/old-AngularJS path, unsafe-eval/inline, a reused nonce, strict-dynamic with an injectable loader."
+    },
+    {
+      "family": 16,
+      "name": "Dangling markup injection",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-80",
+      "signal": "Inject an unterminated tag that swallows the rest of the page, CSRF token included, into an outbound request."
+    },
+    {
+      "family": 16,
+      "name": "CSS injection and style-based exfiltration",
+      "priority": "P3-P4",
+      "payout_rank": 2,
+      "cwe": "CWE-79",
+      "signal": "Attribute selectors plus background: url() leak token characters one at a time; @import chains iterate."
+    },
+    {
+      "family": 16,
+      "name": "Reflected File Download (RFD)",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-494",
+      "signal": "A JSON endpoint that reflects input and can be given an executable filename by path.",
+      "informational_only": true
+    },
+    {
+      "family": 16,
+      "name": "Same-Site Scripting",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-79",
+      "signal": "localhost.target.com resolving to 127.0.0.1 defeats same-site assumptions.",
+      "informational_only": true
+    },
+    {
+      "family": 16,
+      "name": "Cross-Site Script Inclusion (XSSI) and JSON hijacking",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-345",
+      "signal": "A JS/JSONP response containing per-user data, loadable cross-origin via script.",
+      "informational_only": true
+    },
+    {
+      "family": 16,
+      "name": "Binary planting / DLL search order",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-427",
+      "signal": "Desktop-app adjacent, in scope when an installer is."
+    },
+    {
+      "family": 16,
+      "name": "Self-XSS",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-79",
+      "signal": "Fires only in the attacker's own session; report only inside a chain.",
+      "informational_only": true,
+      "chain_component": true
+    },
+    {
+      "family": 17,
+      "name": "CSRF, application-wide",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-352",
+      "signal": "State-changing action with no per-request anti-CSRF binding.",
+      "chain_component": true
+    },
+    {
+      "family": 17,
+      "name": "CSRF, authenticated action",
+      "priority": "P3-P4",
+      "payout_rank": 2,
+      "cwe": "CWE-352",
+      "signal": "Severity by the action it drives."
+    },
+    {
+      "family": 17,
+      "name": "CSRF, unauthenticated action",
+      "priority": "P4-P5",
+      "payout_rank": 1,
+      "cwe": "CWE-352",
+      "signal": "Low-value unauth action."
+    },
+    {
+      "family": 17,
+      "name": "CSRF on logout",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-352",
+      "signal": "Logout CSRF.",
+      "informational_only": true
+    },
+    {
+      "family": 17,
+      "name": "CSRF token not unique per request",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-352",
+      "signal": "Reusable token.",
+      "informational_only": true
+    },
+    {
+      "family": 17,
+      "name": "CSRF token not bound to the session",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-352",
+      "signal": "Validated for structure but not tied to the user; take your token and put it in a request with the victim's cookie.",
+      "chain_component": true
+    },
+    {
+      "family": 17,
+      "name": "CSRF with a removable or empty token",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-352",
+      "signal": "Delete the parameter, send it empty, send it with the wrong name.",
+      "chain_component": true
+    },
+    {
+      "family": 17,
+      "name": "JSON CSRF",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-352",
+      "signal": "A JSON API reachable from a form if it tolerates text/plain or ignores the content type."
+    },
+    {
+      "family": 17,
+      "name": "Method-override CSRF",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-352",
+      "signal": "_method or X-HTTP-Method-Override turning a form POST into a PUT or DELETE."
+    },
+    {
+      "family": 17,
+      "name": "SameSite bypass",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-1275",
+      "signal": "Lax still allows top-level GET navigation, and a sibling subdomain is same-site."
+    },
+    {
+      "family": 17,
+      "name": "CORS: reflected origin with credentials",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-942",
+      "signal": "Server echoes Origin and sets Allow-Credentials: true; any site reads authenticated responses.",
+      "chain_component": true
+    },
+    {
+      "family": 17,
+      "name": "CORS: null origin allowed",
+      "priority": "P2",
+      "payout_rank": 2,
+      "cwe": "CWE-942",
+      "signal": "Deliver the request from a sandboxed iframe or a data: URL.",
+      "chain_component": true
+    },
+    {
+      "family": 17,
+      "name": "CORS: origin matching mistakes",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-942",
+      "signal": "A regex anchored on the wrong end matching target.com.evil.com, an unescaped dot, a trusted subdomain taken over.",
+      "chain_component": true
+    },
+    {
+      "family": 17,
+      "name": "Clickjacking on a sensitive click-based action",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": "CWE-1021",
+      "signal": "No frame-ancestors/X-Frame-Options on a page where one click deletes/grants/transfers; report the action."
+    },
+    {
+      "family": 17,
+      "name": "Clickjacking, form input or non-sensitive action",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-1021",
+      "signal": "Non-sensitive framing.",
+      "informational_only": true
+    },
+    {
+      "family": 17,
+      "name": "Cross-Site WebSocket Hijacking (CSWSH)",
+      "priority": "P2",
+      "payout_rank": 3,
+      "cwe": "CWE-1385",
+      "signal": "The handshake authenticates by cookie and does not check Origin; open the socket from an attacker page.",
+      "chain_component": true
+    },
+    {
+      "family": 17,
+      "name": "postMessage missing origin validation, both directions",
+      "priority": "P2-P3",
+      "payout_rank": 3,
+      "cwe": "CWE-345",
+      "signal": "Check every listener for an event.origin test, and every postMessage call for a '*' target origin.",
+      "chain_component": true
+    },
+    {
+      "family": 17,
+      "name": "XS-Leaks (cross-site leaks)",
+      "priority": "P3-P4",
+      "payout_rank": 2,
+      "cwe": "CWE-203",
+      "signal": "Infer authenticated state cross-origin; cross-site ETag length leak, connection-pool prioritization, frame counting."
+    },
+    {
+      "family": 17,
+      "name": "Unvalidated redirect / open redirect",
+      "priority": "P4-P5",
+      "payout_rank": 1,
+      "cwe": "CWE-601",
+      "signal": "//evil.tld, https:evil.tld, \\evil.tld, a param that survives double URL-encoding. Essential in chains.",
+      "informational_only": true,
+      "chain_component": true
+    },
+    {
+      "family": 17,
+      "name": "Tabnabbing / missing noopener",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-1022",
+      "signal": "Largely mitigated by modern browser defaults.",
+      "informational_only": true
+    },
+    {
+      "family": 17,
+      "name": "Lack of a security speed-bump page",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-693",
+      "signal": "No interstitial on an outbound link.",
+      "informational_only": true
+    },
+    {
+      "family": 18,
+      "name": "Client-Side Path Traversal (CSPT)",
+      "priority": "P2-P3",
+      "payout_rank": 4,
+      "cwe": "CWE-441",
+      "signal": "A value you control concatenated into a client-side fetch path; fetch('/api/v1/items/' + id) with ../ forms.",
+      "chain_component": true
+    },
+    {
+      "family": 18,
+      "name": "CSPT via user-uploaded JSON",
+      "priority": "P2",
+      "payout_rank": 4,
+      "cwe": "CWE-441",
+      "signal": "Point the traversed fetch at a file you uploaded so you control the response body the SPA trusts.",
+      "chain_component": true
+    },
+    {
+      "family": 18,
+      "name": "DOM clobbering",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": null,
+      "signal": "Injected named HTML shadows global variables the page reads (window.config, window.CSP_NONCE).",
+      "chain_component": true
+    },
+    {
+      "family": 18,
+      "name": "Client-side prototype pollution",
+      "priority": "P3",
+      "payout_rank": 3,
+      "cwe": "CWE-1321",
+      "signal": "?__proto__[src]=data: reaching a URL-parameter parser in jQuery/Lodash/Vue or an analytics library.",
+      "chain_component": true
+    },
+    {
+      "family": 18,
+      "name": "Open redirect in the client router",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": "CWE-601",
+      "signal": "A next=/returnTo= value handled by client-side navigation rather than a server redirect.",
+      "informational_only": true,
+      "chain_component": true
+    },
+    {
+      "family": 18,
+      "name": "postMessage data exfiltration (sender side)",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-345",
+      "signal": "postMessage(secret, '*') sends to whoever framed the page."
+    },
+    {
+      "family": 18,
+      "name": "Client-side race / state confusion in an SPA",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": "CWE-362",
+      "signal": "Two in-flight requests whose responses are applied out of order, rendering one user's data in another's view."
+    },
+    {
+      "family": 19,
+      "name": "iframe injection",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-1021",
+      "signal": "Controlled iframe embedded."
+    },
+    {
+      "family": 19,
+      "name": "Impersonation via broken link hijacking",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": null,
+      "signal": "Register an expired linked resource to impersonate the target.",
+      "informational_only": true
+    },
+    {
+      "family": 19,
+      "name": "Email HTML injection",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": "CWE-80",
+      "signal": "Markup injected into an outbound email."
+    },
+    {
+      "family": 19,
+      "name": "External authentication injection",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": "CWE-287",
+      "signal": "Spoofed external auth prompt."
+    },
+    {
+      "family": 19,
+      "name": "Email hyperlink injection based on the email provider",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-80",
+      "signal": "Provider-rendered link injection.",
+      "informational_only": true
+    },
+    {
+      "family": 19,
+      "name": "HTML content injection",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-80",
+      "signal": "Non-script markup injection.",
+      "informational_only": true
+    },
+    {
+      "family": 19,
+      "name": "Text injection",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-451",
+      "signal": "Reflected text spoofing.",
+      "informational_only": true
+    },
+    {
+      "family": 19,
+      "name": "Homograph / IDN-based spoofing",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-1007",
+      "signal": "Lookalike unicode domain/text.",
+      "informational_only": true
+    },
+    {
+      "family": 19,
+      "name": "Right-to-left override (RTLO)",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-451",
+      "signal": "RTL override reorders displayed text.",
+      "informational_only": true
+    },
+    {
+      "family": 19,
+      "name": "Self email HTML injection",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-80",
+      "signal": "Injection only into the attacker's own email.",
+      "informational_only": true
+    },
+    {
+      "family": 19,
+      "name": "Open redirect",
+      "priority": "P4-P5",
+      "payout_rank": 1,
+      "cwe": "CWE-601",
+      "signal": "redirect/next param sends the user off-origin; chain fuel, weak alone.",
+      "informational_only": true,
+      "chain_component": true
+    },
+    {
+      "family": 19,
+      "name": "Tabnabbing",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-1022",
+      "signal": "Reverse-tabnabbing on an outbound link.",
+      "informational_only": true
+    },
+    {
+      "family": 20,
+      "name": "Application-level DoS, critical impact or easy difficulty",
+      "priority": "P2",
+      "payout_rank": 2,
+      "cwe": "CWE-400",
+      "signal": "One small request does outsized damage."
+    },
+    {
+      "family": 20,
+      "name": "Application-level DoS, high impact or medium difficulty",
+      "priority": "P3",
+      "payout_rank": 1,
+      "cwe": "CWE-400",
+      "signal": "Harder or lower-impact resource exhaustion."
+    },
+    {
+      "family": 20,
+      "name": "ReDoS",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-1333",
+      "signal": "Catastrophic backtracking in a validation regex, reachable with a long crafted string."
+    },
+    {
+      "family": 20,
+      "name": "Algorithmic complexity",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-407",
+      "signal": "Hash collisions, quadratic parsing, an unindexed query turned into a full table scan."
+    },
+    {
+      "family": 20,
+      "name": "Decompression and pixel-flood bombs",
+      "priority": "P3",
+      "payout_rank": 1,
+      "cwe": "CWE-409",
+      "signal": "Compression/pixel bombs."
+    },
+    {
+      "family": 20,
+      "name": "Unbounded pagination and export",
+      "priority": "P4",
+      "payout_rank": 1,
+      "cwe": "CWE-400",
+      "signal": "No ceiling on page size or export volume."
+    },
+    {
+      "family": 20,
+      "name": "Amplified email and SMS triggering",
+      "priority": "P4",
+      "payout_rank": 2,
+      "cwe": "CWE-770",
+      "signal": "Real money/reputation cost; resend on verification/invite/notification triggers."
+    },
+    {
+      "family": 20,
+      "name": "Cache poisoning DoS",
+      "priority": "P2",
+      "payout_rank": 2,
+      "cwe": "CWE-400",
+      "signal": "Poisoned error cached and served to everyone."
+    },
+    {
+      "family": 20,
+      "name": "App crash via malformed input",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": "CWE-248",
+      "signal": "Crash via mobile intents and URL schemes.",
+      "informational_only": true
+    },
+    {
+      "family": 20,
+      "name": "Mishandling of exceptional conditions",
+      "priority": "P2-P4",
+      "payout_rank": 2,
+      "cwe": "CWE-755",
+      "signal": "Errors that fail open, skip an authz step, bypass validation, or leave a partial write committed."
+    },
+    {
+      "family": 21,
+      "name": "Mobile",
+      "priority": "P4-P5",
+      "payout_rank": 1,
+      "cwe": null,
+      "signal": "Unencrypted storage, exported Android intents, deep-link hijacking, WebView addJavascriptInterface/file://, hardcoded keys."
+    },
+    {
+      "family": 21,
+      "name": "Desktop / thick client",
+      "priority": "P3",
+      "payout_rank": 1,
+      "cwe": null,
+      "signal": "Binary planting, insecure update channel, local privilege escalation, kiosk escape, unsigned installer."
+    },
+    {
+      "family": 21,
+      "name": "IoT / firmware",
+      "priority": "P1",
+      "payout_rank": 1,
+      "cwe": null,
+      "signal": "Command injection in firmware, hardcoded passwords, firmware not integrity-checked, over-permissioned storage creds."
+    },
+    {
+      "family": 21,
+      "name": "Blockchain and smart contracts",
+      "priority": "P1",
+      "payout_rank": 1,
+      "cwe": null,
+      "signal": "Reentrancy, owner takeover, unauthorized fund transfer, uninitialized variables, integer overflow, oracle manipulation."
+    },
+    {
+      "family": 21,
+      "name": "Physical and social",
+      "priority": "P5",
+      "payout_rank": 1,
+      "cwe": null,
+      "signal": "Only where a program explicitly scopes them.",
+      "informational_only": true
+    },
+    {
+      "family": 22,
+      "name": "Side channels as a core primitive",
+      "priority": "P3",
+      "payout_rank": 2,
+      "cwe": "CWE-203",
+      "signal": "XS-Leaks, timing and connection-pool oracles as mainstream exploitation, not curiosities."
+    },
+    {
+      "family": 22,
+      "name": "The desync endgame (0.CL / CL.0, CVE-2025-32094)",
+      "priority": "P1",
+      "payout_rank": 5,
+      "cwe": "CWE-444",
+      "signal": "Request-boundary ambiguity is systemic to HTTP/1.1; enabling HTTP/2 only at the edge does not close it."
+    }
+  ],
+  "chains": [
+    {
+      "name": "Open redirect -> OAuth code theft -> ATO",
+      "result_impact": "Full account takeover via leaked authorization code",
+      "result_priority": "P1",
+      "components": [
+        {
+          "text": "Open redirect",
+          "family": 19,
+          "name": "Open redirect"
+        },
+        {
+          "text": "OAuth redirect_uri accepts attacker value",
+          "family": 5,
+          "name": "Weak redirect_uri validation"
+        }
+      ]
+    },
+    {
+      "name": "Self-XSS + login CSRF -> stored XSS",
+      "result_impact": "Real stored XSS against a victim",
+      "result_priority": "P2",
+      "components": [
+        {
+          "text": "Self-XSS",
+          "family": 16,
+          "name": "Self-XSS"
+        },
+        {
+          "text": "login CSRF",
+          "family": 13,
+          "name": "Login CSRF"
+        }
+      ]
+    },
+    {
+      "name": "Blind SSRF + IMDSv1 -> cloud role credentials",
+      "result_impact": "Cloud role credential theft — stops being a web bug",
+      "result_priority": "P1",
+      "components": [
+        {
+          "text": "Blind SSRF (OOB only)",
+          "family": 9,
+          "name": "Blind SSRF"
+        },
+        {
+          "text": "IMDSv1 reachable"
+        }
+      ]
+    },
+    {
+      "name": "IDOR email read + reset flow -> ATO",
+      "result_impact": "Account takeover",
+      "result_priority": "P1",
+      "components": [
+        {
+          "text": "IDOR reading another user's object (BOLA)",
+          "family": 14,
+          "name": "IDOR / BOLA, iterable object identifiers, sensitive data"
+        },
+        {
+          "text": "reset flow that trusts that email",
+          "family": 13,
+          "name": "Reset token leaked via Host header poisoning"
+        }
+      ]
+    },
+    {
+      "name": "Subdomain takeover + parent cookie -> session theft",
+      "result_impact": "Session theft on the parent app",
+      "result_priority": "P1",
+      "components": [
+        {
+          "text": "Subdomain takeover",
+          "family": 4,
+          "name": "Subdomain takeover"
+        },
+        {
+          "text": "cookie scoped to .example.com",
+          "family": 13,
+          "name": "Cookie scoped to the parent domain"
+        }
+      ]
+    },
+    {
+      "name": "Cookie tossing + cookie-based XSS",
+      "result_impact": "XSS from a P5 primitive",
+      "result_priority": "P2",
+      "components": [
+        {
+          "text": "Cookie tossing",
+          "family": 13,
+          "name": "Cookie tossing / cookie injection from a subdomain"
+        },
+        {
+          "text": "cookie-based XSS",
+          "family": 16,
+          "name": "Cookie-based XSS"
+        }
+      ]
+    },
+    {
+      "name": "Cache poisoning + self-only reflected XSS",
+      "result_impact": "Stored, unauthenticated, served to everyone",
+      "result_priority": "P1",
+      "components": [
+        {
+          "text": "Cache poisoning",
+          "family": 2,
+          "name": "Web cache poisoning"
+        },
+        {
+          "text": "Reflected XSS",
+          "family": 16,
+          "name": "Reflected XSS, non-self"
+        }
+      ]
+    },
+    {
+      "name": "Web cache deception + authed token page -> mass credential theft",
+      "result_impact": "Mass credential theft",
+      "result_priority": "P1",
+      "components": [
+        {
+          "text": "Web cache deception",
+          "family": 2,
+          "name": "Web cache deception"
+        },
+        {
+          "text": "authenticated page containing a token"
+        }
+      ]
+    },
+    {
+      "name": "File upload + LFI -> RCE",
+      "result_impact": "RCE when neither alone is exploitable",
+      "result_priority": "P1",
+      "components": [
+        {
+          "text": "Unrestricted file upload to web-exec path",
+          "family": 15,
+          "name": "Unrestricted upload to RCE"
+        },
+        {
+          "text": "Path traversal / LFI",
+          "family": 10,
+          "name": "File inclusion, local"
+        }
+      ]
+    },
+    {
+      "name": "Prototype pollution + gadget -> XSS/RCE",
+      "result_impact": "XSS in the browser or RCE on Node",
+      "result_priority": "P1",
+      "components": [
+        {
+          "text": "Prototype pollution"
+        },
+        {
+          "text": "gadget already on the page"
+        }
+      ]
+    },
+    {
+      "name": "DOM clobbering + HTML injection",
+      "result_impact": "Script execution with no script tag",
+      "result_priority": "P2",
+      "components": [
+        {
+          "text": "DOM clobbering",
+          "family": 18,
+          "name": "DOM clobbering"
+        },
+        {
+          "text": "HTML injection"
+        }
+      ]
+    },
+    {
+      "name": "CSPT + user-uploaded JSON -> OAuth takeover",
+      "result_impact": "Forged API response the SPA trusts -> OAuth takeover",
+      "result_priority": "P1",
+      "components": [
+        {
+          "text": "Client-side path traversal (CSPT)",
+          "family": 18,
+          "name": "Client-Side Path Traversal (CSPT)"
+        },
+        {
+          "text": "user-uploaded JSON the SPA trusts",
+          "family": 18,
+          "name": "CSPT via user-uploaded JSON"
+        }
+      ]
+    },
+    {
+      "name": "Request smuggling + authed internal route",
+      "result_impact": "Capturing other users' requests and credentials",
+      "result_priority": "P1",
+      "components": [
+        {
+          "text": "HTTP request smuggling / desync",
+          "family": 2,
+          "name": "HTTP request smuggling, classic"
+        },
+        {
+          "text": "authenticated internal route"
+        }
+      ]
+    },
+    {
+      "name": "Parser differential + proxy authz rule",
+      "result_impact": "Admin access at the origin",
+      "result_priority": "P1",
+      "components": [
+        {
+          "text": "Parser differential",
+          "family": 11,
+          "name": "Parser differentials"
+        },
+        {
+          "text": "proxy authorization rule"
+        }
+      ]
+    },
+    {
+      "name": "GraphQL alias batching + OTP -> 2FA brute",
+      "result_impact": "2FA brute force inside the rate limit",
+      "result_priority": "P1",
+      "components": [
+        {
+          "text": "GraphQL alias batching",
+          "family": 3,
+          "name": "GraphQL alias and batching abuse"
+        },
+        {
+          "text": "2FA/OTP bypass",
+          "family": 13,
+          "name": "OTP / 2FA brute force"
+        }
+      ]
+    },
+    {
+      "name": "Race condition + coupon/withdrawal limit",
+      "result_impact": "Unbounded value extraction",
+      "result_priority": "P2",
+      "components": [
+        {
+          "text": "Race condition on a limit (coupon/withdrawal/balance)",
+          "family": 12,
+          "name": "Race condition on a limit (limit overrun)"
+        }
+      ]
+    },
+    {
+      "name": "Indirect prompt injection + agent fetch tool -> SSRF + exfil",
+      "result_impact": "SSRF and data exfiltration behind an LLM",
+      "result_priority": "P1",
+      "components": [
+        {
+          "text": "Indirect prompt injection into a tool-calling agent",
+          "family": 6,
+          "name": "Prompt injection, indirect"
+        },
+        {
+          "text": "agent URL-fetch tool",
+          "family": 6,
+          "name": "Tool and function-call abuse"
+        }
+      ]
+    },
+    {
+      "name": "Dependency confusion + CI runner -> build compromise",
+      "result_impact": "Build-system compromise",
+      "result_priority": "P1",
+      "components": [
+        {
+          "text": "Dependency confusion (internal package name)",
+          "family": 7,
+          "name": "Dependency confusion"
+        },
+        {
+          "text": "CI runner that resolves it"
+        }
+      ]
+    },
+    {
+      "name": "Exposed source map + hardcoded key",
+      "result_impact": "P1 from a P3",
+      "result_priority": "P1",
+      "components": [
+        {
+          "text": "Exposed source map",
+          "family": 1,
+          "name": "Exposed source maps"
+        },
+        {
+          "text": "hardcoded key in the recovered source",
+          "family": 1,
+          "name": "Secrets in JavaScript bundles"
+        }
+      ]
+    }
+  ],
+  "informational_standalone": [
+    "Missing security headers alone (CSP, HSTS, X-Frame-Options, X-Content-Type-Options)",
+    "Self-XSS with no delivery mechanism",
+    "Clickjacking on a page with no state-changing action",
+    "CSRF on logout, language switch, or a trivial preference",
+    "CSRF token not unique per request",
+    "Missing SPF or DMARC on a non-sending domain; spoofing that only reaches spam",
+    "Absence of rate limiting with no cost, lockout or data reached",
+    "Version and banner disclosure, software versions in response headers",
+    "Weak TLS configuration, certificate errors, no forward secrecy, mixed content",
+    "Open redirect on its own (out of scope on many programs)",
+    "User enumeration on its own (closed on most consumer platforms)",
+    "Autocomplete enabled, save-password allowed, plaintext password field, autocorrect enabled",
+    "No password policy, weak password policy, long session timeout, concurrent logins",
+    "Session not invalidated server-side only on logout; not invalidated on email or 2FA change",
+    "Reset token with a long expiry, or not invalidated after login or after a new request",
+    "OPTIONS or TRACE enabled",
+    "Internal IP disclosure, full path disclosure, descriptive stack trace",
+    "Publicly accessible robots.txt, GraphQL introspection enabled, missing SRI",
+    "Cookie scoped to the parent domain, missing HttpOnly on a non-session cookie",
+    "Missing CAA, missing DNSSEC, bitsquatting",
+    "A public CVE matched by version number only, with no verification on the target",
+    "Unpatched JavaScript libraries with no reachable sink",
+    "Raw, unvalidated scanner output (the single most common reason a report is closed)",
+    "Best-practice recommendations with no attack narrative"
+  ],
+  "reporting_checklist": [
+    "One finding per report, with the class named the way the program's taxonomy names it",
+    "Impact stated first, in the terms the business cares about: whose data, how many, what action, reversible or not",
+    "Reproduction that works from a clean session, with two accounts where the bug needs two",
+    "Minimal proof, not maximal exploitation. Read one record, not the table. Enumerate permissions read-only, never escalate further than needed to prove the class",
+    "The chain written out when it is a chain, with each link's own severity noted",
+    "No third-party or out-of-scope collateral, no DoS unless explicitly permitted, no data exfiltration beyond proof, nothing published",
+    "A concrete fix suggestion. It shortens triage and it is what separates a researcher from a scanner"
+  ]
+}

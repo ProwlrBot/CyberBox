@@ -68,7 +68,7 @@ export default function MCP() {
     try {
       const [goriRes, healthRes, projRes, packRes] = await Promise.all([
         fetch("/api/v1/gori/status", { headers }),
-        fetch("/api/v1/health", { headers }),
+        fetch("/health", { headers }),
         fetch("/api/v1/projects", { headers }),
         fetch("/api/v1/knowledge/packs", { headers }),
       ]);

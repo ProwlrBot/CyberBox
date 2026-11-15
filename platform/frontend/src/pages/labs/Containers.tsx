@@ -132,7 +132,7 @@ export default function Containers() {
     const key = getApiKey();
     const headers: Record<string, string> = key ? { "X-Api-Key": key } : {};
     try {
-      const r = await fetch("/api/v1/health", { headers });
+      const r = await fetch("/health", { headers });
       setServerOk(r.ok);
     } catch {
       setServerOk(false);

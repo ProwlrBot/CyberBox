@@ -1,5 +1,8 @@
--- CyberBox platform — local-first schema (SQLite, WAL mode).
-PRAGMA journal_mode = WAL;
+-- CyberBox platform — local-first schema (SQLite).
+-- Journal mode is NOT set here: it is owned by config/_connect/ensure_journal_mode
+-- (env-aware: DELETE+NORMAL on WSL2, WAL+NORMAL on a real FS). A hardcoded
+-- `PRAGMA journal_mode = WAL` here would re-flip the DB to WAL on every init_db()
+-- run, re-triggering the WSL2 mmap/SHM lock after startup already set DELETE.
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS users (
@@ -468,6 +471,7 @@ CREATE TABLE IF NOT EXISTS finding_reviews (
     id            TEXT PRIMARY KEY,
     vulnerability_id TEXT NOT NULL REFERENCES vulnerabilities(id) ON DELETE CASCADE,
     reviewer_type TEXT NOT NULL,
+    reviewer_id   TEXT,
     verdict       TEXT NOT NULL,
     confidence    TEXT NOT NULL,
     rationale     TEXT NOT NULL,
@@ -481,6 +485,33 @@ CREATE TABLE IF NOT EXISTS finding_links (
     experiment_id    TEXT REFERENCES experiments(id) ON DELETE SET NULL,
     PRIMARY KEY (vulnerability_id, experiment_id)
 );
+
+-- Six-stage investigation lifecycle: LEARN -> MAP -> COORDINATE -> TEST -> PROVE -> VERIFY.
+-- A mission is the unit of investigation. Its stage advances only when the entry
+-- prerequisite for the target stage is met (real hypotheses/experiments/findings exist),
+-- so the stage label can never run ahead of the evidence. Every transition is logged.
+CREATE TABLE IF NOT EXISTS missions (
+    id            TEXT PRIMARY KEY,
+    project_id    TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    engagement_id TEXT NOT NULL REFERENCES engagements(id) ON DELETE CASCADE,
+    title         TEXT NOT NULL,
+    stage         TEXT NOT NULL DEFAULT 'LEARN',
+    status        TEXT NOT NULL DEFAULT 'active',  -- active | paused | done | abandoned
+    created_by    TEXT,
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS mission_stage_log (
+    id          TEXT PRIMARY KEY,
+    mission_id  TEXT NOT NULL REFERENCES missions(id) ON DELETE CASCADE,
+    from_stage  TEXT,
+    to_stage    TEXT NOT NULL,
+    note        TEXT,
+    actor       TEXT,
+    occurred_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_mission_stage_log_mission ON mission_stage_log(mission_id);
 
 CREATE TABLE IF NOT EXISTS evidence_bundles (
     id          TEXT PRIMARY KEY,
@@ -618,6 +649,7 @@ CREATE INDEX IF NOT EXISTS idx_model_providers_enabled ON model_providers(enable
 CREATE TABLE IF NOT EXISTS campaigns (
     id             TEXT PRIMARY KEY,
     project_id     TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    engagement_id  TEXT REFERENCES engagements(id),
     name           TEXT NOT NULL,
     target_url     TEXT NOT NULL,
     hunt_type      TEXT NOT NULL DEFAULT 'full_auto',
@@ -651,3 +683,446 @@ CREATE TABLE IF NOT EXISTS campaign_events (
     occurred_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_campaign_events_campaign ON campaign_events(campaign_id);
+
+-- ── Techniques (active methodology guides) ────────────────────────────────────
+CREATE TABLE IF NOT EXISTS techniques (
+    id           TEXT PRIMARY KEY,
+    name         TEXT NOT NULL,
+    slug         TEXT NOT NULL UNIQUE,
+    description  TEXT,
+    category     TEXT NOT NULL DEFAULT 'web',
+    difficulty   TEXT NOT NULL DEFAULT 'medium',
+    cwe_classes  TEXT NOT NULL DEFAULT '[]',
+    tags         TEXT NOT NULL DEFAULT '[]',
+    builtin      INTEGER NOT NULL DEFAULT 1,
+    created_at   TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS technique_stages (
+    id            TEXT PRIMARY KEY,
+    technique_id  TEXT NOT NULL REFERENCES techniques(id) ON DELETE CASCADE,
+    stage_order   INTEGER NOT NULL,
+    name          TEXT NOT NULL,
+    description   TEXT,
+    goal          TEXT
+);
+
+CREATE TABLE IF NOT EXISTS technique_tests (
+    id          TEXT PRIMARY KEY,
+    stage_id    TEXT NOT NULL REFERENCES technique_stages(id) ON DELETE CASCADE,
+    test_order  INTEGER NOT NULL,
+    name        TEXT NOT NULL,
+    description TEXT,
+    payload     TEXT,
+    tool        TEXT,
+    endpoint    TEXT,
+    expected    TEXT,
+    manual      INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS technique_runs (
+    id            TEXT PRIMARY KEY,
+    technique_id  TEXT NOT NULL REFERENCES techniques(id),
+    project_id    TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    target_host   TEXT,
+    status        TEXT NOT NULL DEFAULT 'active',
+    created_at    TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS technique_test_results (
+    id           TEXT PRIMARY KEY,
+    run_id       TEXT NOT NULL REFERENCES technique_runs(id) ON DELETE CASCADE,
+    test_id      TEXT NOT NULL REFERENCES technique_tests(id),
+    status       TEXT NOT NULL DEFAULT 'pending',
+    notes        TEXT,
+    result       TEXT,
+    completed_at TEXT,
+    UNIQUE (run_id, test_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_techniques_category ON techniques(category);
+CREATE INDEX IF NOT EXISTS idx_technique_stages_tech ON technique_stages(technique_id, stage_order);
+CREATE INDEX IF NOT EXISTS idx_technique_tests_stage ON technique_tests(stage_id, test_order);
+CREATE INDEX IF NOT EXISTS idx_technique_runs_project ON technique_runs(project_id);
+CREATE INDEX IF NOT EXISTS idx_technique_results_run ON technique_test_results(run_id);
+
+-- ── Tool registry (catalogs executable tools; danger_tier gates policy) ────────
+CREATE TABLE IF NOT EXISTS tool_registry (
+    id             TEXT PRIMARY KEY,
+    name           TEXT NOT NULL UNIQUE,
+    category       TEXT NOT NULL DEFAULT 'utility',
+    -- recon|fuzzer|scanner|exploit|source-analysis|mobile|binary|osint|utility
+    description    TEXT,
+    danger_tier    TEXT NOT NULL DEFAULT 'passive',
+    -- passive|active|exploit — maps to a policy risk_class
+    scope_required INTEGER NOT NULL DEFAULT 1,
+    binary_path    TEXT,
+    invocation     TEXT,
+    output_parser  TEXT,
+    approval       TEXT NOT NULL DEFAULT 'auto',   -- auto|operator
+    source         TEXT NOT NULL DEFAULT 'builtin', -- builtin|inventory|plugin
+    enabled        INTEGER NOT NULL DEFAULT 1,
+    created_at     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tool_registry_category ON tool_registry(category);
+CREATE INDEX IF NOT EXISTS idx_tool_registry_enabled ON tool_registry(enabled);
+
+-- ── Advisories & affected versions (Patchstack/CVE/NVD correlation) ────────────
+CREATE TABLE IF NOT EXISTS advisories (
+    id            TEXT PRIMARY KEY,
+    source        TEXT NOT NULL,            -- patchstack|nvd|cve|wpvulndb|manual
+    external_id   TEXT,                     -- CVE-2024-XXXX, PS-XXXX, etc.
+    title         TEXT NOT NULL,
+    description   TEXT,
+    severity      TEXT,                     -- critical|high|medium|low|info|unknown
+    cvss          REAL,
+    cwe           TEXT,
+    product_type  TEXT,                     -- wordpress-plugin|theme|core|library|...
+    product_slug  TEXT,                     -- woocommerce, elementor, ...
+    published_at  TEXT,
+    reference_urls TEXT NOT NULL DEFAULT '[]',
+    raw           TEXT NOT NULL DEFAULT '{}',  -- provenance: original upstream record
+    content_hash  TEXT,                     -- dedup across re-imports
+    created_at    TEXT NOT NULL,
+    UNIQUE (source, external_id)
+);
+
+CREATE TABLE IF NOT EXISTS affected_versions (
+    id                 TEXT PRIMARY KEY,
+    advisory_id        TEXT NOT NULL REFERENCES advisories(id) ON DELETE CASCADE,
+    product_slug       TEXT NOT NULL,
+    version_introduced TEXT,                -- affected from (inclusive), null = from 0
+    version_fixed      TEXT,                -- patched in (exclusive), null = unpatched
+    version_constraint TEXT,                -- raw upstream constraint string
+    created_at         TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_advisories_product ON advisories(product_slug);
+CREATE INDEX IF NOT EXISTS idx_advisories_source ON advisories(source);
+CREATE INDEX IF NOT EXISTS idx_affected_versions_advisory ON affected_versions(advisory_id);
+CREATE INDEX IF NOT EXISTS idx_affected_versions_product ON affected_versions(product_slug);
+
+-- Source-revision model (audit #9): track a watched source (GitLab/GitHub/Vercel/WordPress
+-- plugin) through its revisions, record the diff between two revisions, and surface
+-- "regression candidates" — a security-relevant fix diff whose pre-fix revision is still
+-- the one observed deployed. This is the patch-diff -> silent-fix -> still-vulnerable chain.
+CREATE TABLE IF NOT EXISTS sources (
+    id            TEXT PRIMARY KEY,
+    project_id    TEXT REFERENCES projects(id) ON DELETE CASCADE,
+    engagement_id TEXT REFERENCES engagements(id) ON DELETE SET NULL,
+    kind          TEXT NOT NULL,                 -- gitlab | github | vercel | wordpress-plugin | ...
+    identifier    TEXT NOT NULL,                 -- repo URL, project slug, deploy project
+    label         TEXT,
+    observed_revision TEXT,                       -- the revision seen live on the target, if known
+    metadata      TEXT NOT NULL DEFAULT '{}',
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL,
+    UNIQUE (kind, identifier)
+);
+
+CREATE TABLE IF NOT EXISTS source_revisions (
+    id              TEXT PRIMARY KEY,
+    source_id       TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    revision        TEXT NOT NULL,               -- commit sha / deploy id / version
+    parent_revision TEXT,
+    ref             TEXT,                         -- branch / tag
+    authored_at     TEXT,
+    metadata        TEXT NOT NULL DEFAULT '{}',
+    created_at      TEXT NOT NULL,
+    UNIQUE (source_id, revision)
+);
+
+CREATE TABLE IF NOT EXISTS revision_diffs (
+    id                TEXT PRIMARY KEY,
+    source_id         TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    from_revision     TEXT NOT NULL,
+    to_revision       TEXT NOT NULL,
+    files_changed     TEXT NOT NULL DEFAULT '[]',
+    summary           TEXT,
+    security_relevant INTEGER NOT NULL DEFAULT 0,
+    advisory_id       TEXT REFERENCES advisories(id) ON DELETE SET NULL,
+    created_at        TEXT NOT NULL,
+    UNIQUE (source_id, from_revision, to_revision)
+);
+
+CREATE INDEX IF NOT EXISTS idx_source_revisions_source ON source_revisions(source_id);
+CREATE INDEX IF NOT EXISTS idx_revision_diffs_source ON revision_diffs(source_id);
+
+-- GitHub integration: diff-scoped code scanning (Semgrep/Strix-style). A github_scan is one
+-- scan of a repo at a revision (optionally a PR); code_findings are its results, keyed to the
+-- source+revision and exportable to SARIF 2.1.0. Outbound posting (PR comments, check-runs) is
+-- opt-in and uses a token read from the OS env — never stored here.
+CREATE TABLE IF NOT EXISTS github_scans (
+    id            TEXT PRIMARY KEY,
+    source_id     TEXT REFERENCES sources(id) ON DELETE SET NULL,
+    execution_id  TEXT REFERENCES executions(id) ON DELETE SET NULL,
+    repo          TEXT NOT NULL,                 -- owner/name or local path
+    revision      TEXT,                           -- head sha scanned
+    base_revision TEXT,                           -- diff base (for diff-scoped PR scans)
+    pr_number     INTEGER,
+    trigger       TEXT NOT NULL DEFAULT 'manual', -- manual | webhook | scheduled
+    scope         TEXT NOT NULL DEFAULT 'full',   -- full | diff
+    status        TEXT NOT NULL DEFAULT 'queued', -- queued | running | completed | failed
+    fail_on       TEXT NOT NULL DEFAULT 'high',   -- severity threshold that fails the gate
+    exit_code     INTEGER,                         -- 0 pass, 2 findings>=threshold, 1 error
+    summary       TEXT NOT NULL DEFAULT '{}',
+    created_at    TEXT NOT NULL,
+    finished_at   TEXT
+);
+
+CREATE TABLE IF NOT EXISTS code_findings (
+    id           TEXT PRIMARY KEY,
+    scan_id      TEXT NOT NULL REFERENCES github_scans(id) ON DELETE CASCADE,
+    source_id    TEXT REFERENCES sources(id) ON DELETE SET NULL,
+    revision     TEXT,
+    rule_id      TEXT NOT NULL,                   -- stable detector id -> SARIF ruleId
+    detector     TEXT NOT NULL,                   -- human name
+    severity     TEXT NOT NULL,                   -- critical | high | medium | low
+    file         TEXT NOT NULL,
+    line         INTEGER NOT NULL DEFAULT 1,
+    message      TEXT NOT NULL,
+    snippet      TEXT,
+    fingerprint  TEXT NOT NULL,                   -- dedup across scans (rule+file+line+snippet)
+    status       TEXT NOT NULL DEFAULT 'open',    -- open | resolved | dismissed
+    created_at   TEXT NOT NULL,
+    UNIQUE (scan_id, fingerprint)
+);
+CREATE INDEX IF NOT EXISTS idx_code_findings_scan ON code_findings(scan_id);
+CREATE INDEX IF NOT EXISTS idx_github_scans_repo ON github_scans(repo);
+
+-- Scheduler: recurring scans + attack-surface drift re-checks. The runner leases a due job,
+-- runs it, and reschedules by interval. Every job is bound to an engagement for policy.
+CREATE TABLE IF NOT EXISTS scheduled_jobs (
+    id              TEXT PRIMARY KEY,
+    project_id      TEXT REFERENCES projects(id) ON DELETE CASCADE,
+    engagement_id   TEXT REFERENCES engagements(id) ON DELETE CASCADE,
+    kind            TEXT NOT NULL,                 -- github_scan | surface_rescan | ...
+    spec            TEXT NOT NULL DEFAULT '{}',    -- job-specific args (repo, target, fail_on)
+    interval_seconds INTEGER NOT NULL,
+    enabled         INTEGER NOT NULL DEFAULT 1,
+    next_run_at     TEXT NOT NULL,
+    last_run_at     TEXT,
+    last_status     TEXT,
+    lease_owner     TEXT,
+    lease_expires_at TEXT,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_due ON scheduled_jobs(enabled, next_run_at);
+
+-- Attack-surface snapshots: each scan of a project's hosts is a snapshot; drift = the diff
+-- between consecutive snapshots (new/removed hosts, port/status changes).
+CREATE TABLE IF NOT EXISTS surface_snapshots (
+    id          TEXT PRIMARY KEY,
+    project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    hosts       TEXT NOT NULL DEFAULT '[]',        -- sorted list of host:port:scheme fingerprints
+    host_count  INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_surface_snapshots_project ON surface_snapshots(project_id, created_at);
+
+-- Notification channels (Discord / ntfy / generic webhook / JSONL), mirroring cve-intel's
+-- model. Secrets are NEVER stored: url_env/secret_env name OS env vars the service reads at
+-- send time. Non-secret config (ntfy topic, jsonl path) lives in config. The scheduler and
+-- code-scan gate emit events through these channels.
+CREATE TABLE IF NOT EXISTS notification_channels (
+    id          TEXT PRIMARY KEY,
+    kind        TEXT NOT NULL,                 -- discord | ntfy | webhook | jsonl
+    name        TEXT NOT NULL,
+    url_env     TEXT,                           -- env var holding the webhook URL / ntfy server
+    secret_env  TEXT,                           -- env var holding an HMAC key (generic webhook)
+    config      TEXT NOT NULL DEFAULT '{}',     -- non-secret: {topic, path, min_severity}
+    enabled     INTEGER NOT NULL DEFAULT 1,
+    created_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS notifications_log (
+    id          TEXT PRIMARY KEY,
+    channel_id  TEXT REFERENCES notification_channels(id) ON DELETE SET NULL,
+    event       TEXT NOT NULL,
+    status      TEXT NOT NULL,                  -- sent | skipped | error
+    detail      TEXT,
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_log_created ON notifications_log(created_at);
+
+-- ── Methodology spine: the bug-bounty finding taxonomy ──────────────────────────
+-- Families, classes, chain recipes, and per-target coverage. This is the framework
+-- backbone: tools and AI are swappable engines that execute methodologies for classes;
+-- coverage and chains are the non-commoditized intelligence layer.
+
+CREATE TABLE IF NOT EXISTS taxonomy_families (
+    num         INTEGER PRIMARY KEY,
+    name        TEXT NOT NULL,
+    owasp       TEXT,
+    money_rank  INTEGER,                       -- 1..5 payout concentration (null = not a top-money family)
+    note        TEXT
+);
+
+CREATE TABLE IF NOT EXISTS taxonomy_classes (
+    id                TEXT PRIMARY KEY,         -- deterministic slug from family+name
+    family_num        INTEGER NOT NULL REFERENCES taxonomy_families(num),
+    name              TEXT NOT NULL,
+    priority          TEXT NOT NULL,            -- P1..P5 (Bugcrowd VRT baseline)
+    payout_rank       INTEGER NOT NULL,         -- 1..5 ($..$$$$$), runs opposite to priority
+    cwe               TEXT,
+    signal            TEXT,                     -- the tell that gives the class away
+    informational_only INTEGER NOT NULL DEFAULT 0, -- never report standalone (chain-only)
+    chain_component   INTEGER NOT NULL DEFAULT 0  -- participates in a §23 chain recipe
+);
+CREATE INDEX IF NOT EXISTS idx_taxonomy_classes_family ON taxonomy_classes(family_num);
+
+CREATE TABLE IF NOT EXISTS chain_recipes (
+    id              TEXT PRIMARY KEY,
+    name            TEXT NOT NULL,
+    result_impact   TEXT NOT NULL,
+    result_priority TEXT NOT NULL,              -- escalated priority the chain reaches
+    components      TEXT NOT NULL DEFAULT '[]'   -- JSON array of component descriptions
+);
+
+CREATE TABLE IF NOT EXISTS target_coverage (
+    id           TEXT PRIMARY KEY,
+    project_id   TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    class_id     TEXT NOT NULL REFERENCES taxonomy_classes(id),
+    status       TEXT NOT NULL DEFAULT 'none',  -- none | partial | covered
+    evidence_ids TEXT NOT NULL DEFAULT '[]',     -- JSON array of artifact/finding ids
+    note         TEXT,
+    updated_at   TEXT NOT NULL,
+    UNIQUE(project_id, class_id)
+);
+CREATE INDEX IF NOT EXISTS idx_target_coverage_project ON target_coverage(project_id);
+
+CREATE TABLE IF NOT EXISTS class_methodology (
+    class_id   TEXT PRIMARY KEY REFERENCES taxonomy_classes(id),
+    steps      TEXT NOT NULL DEFAULT '[]',  -- JSON array of deterministic step strings
+    ai_hook    TEXT,                         -- optional light AI-enhancement note (never required)
+    boundary   TEXT,                         -- optional: the one-line invariant two components disagree on
+    updated_at TEXT NOT NULL
+);
+
+-- Visual recon: headless-browser screenshots of in-scope hosts for fast triage of attack surface.
+CREATE TABLE IF NOT EXISTS screenshots (
+    id          TEXT PRIMARY KEY,
+    project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    url         TEXT NOT NULL,
+    path        TEXT,                        -- PNG on disk under <home>/screenshots/<project>/
+    title       TEXT,
+    width       INTEGER NOT NULL DEFAULT 0,
+    height      INTEGER NOT NULL DEFAULT 0,
+    status      TEXT NOT NULL DEFAULT 'ok',  -- ok | error
+    error       TEXT,
+    captured_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_screenshots_project ON screenshots(project_id, captured_at);
+
+-- JS content snapshots for full-diff hunting: fetch a JS bundle over time, store each distinct
+-- revision, and diff them to surface NEW endpoints / params / secrets a fresh deploy introduced.
+-- Only a changed content hash makes a new row (same bundle re-fetched is a no-op).
+CREATE TABLE IF NOT EXISTS js_snapshots (
+    id           TEXT PRIMARY KEY,
+    project_id   TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    url          TEXT NOT NULL,
+    content_hash TEXT NOT NULL,              -- sha256 of the body; identity for de-dup + diff pairing
+    content      TEXT NOT NULL,
+    size         INTEGER NOT NULL DEFAULT 0,
+    endpoints    TEXT NOT NULL DEFAULT '[]', -- extracted endpoints at this revision (cached)
+    secrets      TEXT NOT NULL DEFAULT '[]', -- extracted secret-shaped tokens at this revision
+    fetched_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_js_snap_project_url ON js_snapshots(project_id, url, fetched_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_js_snap_hash ON js_snapshots(project_id, url, content_hash);
+
+-- Lightweight signals / leads bucket (audit fix): the sweep + import paths (cve-sweep,
+-- nuclei-sweep, caido import, preflight/dedup/howtohunt/loss notes) record findings-shaped
+-- leads here. This is NOT the research `hypotheses` table (claim/confidence under an engagement);
+-- those paths used to write into it with a stale column set and silently stored nothing.
+CREATE TABLE IF NOT EXISTS signals (
+    id          TEXT PRIMARY KEY,
+    project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    source      TEXT NOT NULL DEFAULT '',   -- cve_sweep | nuclei_sweep | caido | preflight_check | dedup_check | howtohunt_sync | loss_close
+    title       TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    severity    TEXT NOT NULL DEFAULT 'info',
+    status      TEXT NOT NULL DEFAULT 'open',
+    evidence    TEXT NOT NULL DEFAULT '{}',  -- JSON blob, carries the "source" key too
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_signals_project ON signals(project_id);
+CREATE INDEX IF NOT EXISTS idx_signals_source ON signals(project_id, source);
+
+-- Disclosed-report intel (HackerOne hacktivity et al). Global (not per-project): a market-wide
+-- feed of what's being found + paid, mapped onto the taxonomy spine by CWE. The enrichment
+-- columns are the "extra pull" — root cause → recurrence → patch → how-to-hunt, filled by an
+-- optional LLM pass so each disclosure becomes reusable methodology. Deduped by (source, report_id).
+CREATE TABLE IF NOT EXISTS disclosures (
+    id              TEXT PRIMARY KEY,
+    report_id       TEXT NOT NULL,
+    source          TEXT NOT NULL DEFAULT 'hackerone',
+    title           TEXT NOT NULL DEFAULT '',
+    url             TEXT NOT NULL DEFAULT '',
+    program_handle  TEXT,
+    program_name    TEXT,
+    severity        TEXT,                        -- none|low|medium|high|critical
+    cwe             TEXT,                        -- e.g. CWE-79
+    cve_ids         TEXT NOT NULL DEFAULT '[]',
+    bounty_amount   REAL,
+    currency        TEXT,
+    reporter        TEXT,
+    disclosed_at    TEXT,
+    summary         TEXT,                        -- hacktivity_summary (redacted blocks kept as-is)
+    substate        TEXT,
+    class_id        TEXT,                        -- resolved taxonomy class id (via CWE), NULL if unmapped
+    family_num      INTEGER,
+    -- enrichment ("the extra pull") — NULL until enriched
+    root_cause      TEXT,
+    recurrence      TEXT,                        -- how it can happen again
+    patch           TEXT,                        -- how it's fixed
+    hunt_guidance   TEXT,                        -- how to hunt / reproduce on targets
+    first_finder_edge TEXT,                      -- why the researcher got there first
+    improvement     TEXT,                        -- how we improve our own hunting
+    enriched_at     TEXT,
+    ingested_at     TEXT NOT NULL,
+    UNIQUE (source, report_id)
+);
+CREATE INDEX IF NOT EXISTS idx_disclosures_class ON disclosures(class_id);
+
+-- Technique extraction: the reusable INVARIANT a disclosed report teaches, mapped to an authored
+-- methodology class. status is always 'observed' — a technique seen in a report is a hypothesis to
+-- test on your own target, never a confirmed finding. Rebuilt per disclosure (dedup on class).
+CREATE TABLE IF NOT EXISTS disclosure_techniques (
+    id            TEXT PRIMARY KEY,
+    disclosure_id TEXT NOT NULL REFERENCES disclosures(id) ON DELETE CASCADE,
+    class_id      TEXT REFERENCES taxonomy_classes(id),
+    rank          INTEGER NOT NULL DEFAULT 1,   -- 1 = primary technique for this report
+    is_boundary   INTEGER NOT NULL DEFAULT 0,   -- one of the 2026 boundary-differential pack
+    confidence    TEXT NOT NULL DEFAULT 'low',  -- high|medium|low
+    novelty       INTEGER NOT NULL DEFAULT 0,   -- 0-100, rewards non-generic / high-tail payout
+    signals       TEXT NOT NULL DEFAULT '[]',   -- JSON: the regex signals that fired
+    status        TEXT NOT NULL DEFAULT 'observed',
+    extracted_at  TEXT NOT NULL,
+    UNIQUE (disclosure_id, class_id)
+);
+CREATE INDEX IF NOT EXISTS idx_disc_tech_class ON disclosure_techniques(class_id);
+CREATE INDEX IF NOT EXISTS idx_disc_tech_disc ON disclosure_techniques(disclosure_id);
+CREATE INDEX IF NOT EXISTS idx_disclosures_program ON disclosures(program_handle);
+CREATE INDEX IF NOT EXISTS idx_disclosures_disclosed ON disclosures(disclosed_at);
+
+-- OWASP WSTG v4.2 catalog: a second authoritative coverage axis over the same taxonomy spine.
+-- A WSTG test's per-target coverage is DERIVED from target_coverage via wstg_class_map (no own
+-- writes) so engine evidence auto-fills WSTG coverage too.
+CREATE TABLE IF NOT EXISTS wstg_tests (
+    id          TEXT PRIMARY KEY,            -- e.g. WSTG-v42-ATHZ-04
+    chapter     TEXT NOT NULL,               -- INFO | CONF | IDNT | ATHN | ATHZ | SESS | INPV | ERRH | CRYP | BUSL | CLNT
+    num         INTEGER NOT NULL,
+    title       TEXT NOT NULL,
+    how_to_test TEXT NOT NULL DEFAULT '',
+    evidence    TEXT NOT NULL DEFAULT '',
+    reject_if   TEXT NOT NULL DEFAULT '',
+    updated_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS wstg_class_map (
+    wstg_id  TEXT NOT NULL REFERENCES wstg_tests(id) ON DELETE CASCADE,
+    class_id TEXT NOT NULL REFERENCES taxonomy_classes(id),
+    PRIMARY KEY (wstg_id, class_id)
+);
+CREATE INDEX IF NOT EXISTS idx_wstg_map_class ON wstg_class_map(class_id);

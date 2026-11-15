@@ -75,7 +75,10 @@ class RaptorScanTest(unittest.TestCase):
                 run_raptor_scan(self.project_id, self.engagement_id, "php",
                                 "/tmp/fake", self.user_id)
 
-    def test_unauthorized_engagement_raises(self) -> None:
+    def test_local_scan_not_engagement_gated(self) -> None:
+        # Raptor is a local static scan — it never reaches a target over the network, so
+        # it is NOT engagement/scope-gated. A blocked-status engagement must not stop it,
+        # and a missing engagement (None) must still run.
         blocked_id = str(uuid.uuid4())
         db.insert("engagements", {
             "id": blocked_id, "project_id": self.project_id, "name": "Blocked",
@@ -84,10 +87,18 @@ class RaptorScanTest(unittest.TestCase):
             "scope_version": 1, "budget": "{}", "policy": "{}", "starts_at": None,
             "ends_at": None, "created_by": None, "created_at": "now",
         })
-        with patch("cyberbox.services.scanner.shutil.which", return_value="/usr/bin/raptor"):
-            with self.assertRaises(PermissionError, msg="raptor scan blocked"):
-                run_raptor_scan(self.project_id, blocked_id, "php",
-                                "/tmp/fake", self.user_id)
+        mock_proc = MagicMock(returncode=0, stdout=FIXTURE_JSONL, stderr="")
+        with patch("cyberbox.services.scanner.shutil.which", return_value="/usr/bin/raptor"), \
+             patch("cyberbox.services.scanner.subprocess.run", return_value=mock_proc):
+            # blocked engagement → still runs
+            result = run_raptor_scan(self.project_id, blocked_id, "php", "/tmp/fake", self.user_id)
+            self.assertIn("execution_id", result)
+            # no engagement at all → still runs, and the stale id is dropped to NULL
+            none_result = run_raptor_scan(self.project_id, None, "php", "/tmp/fake", self.user_id)
+            self.assertIn("execution_id", none_result)
+        row = db.query_one("SELECT engagement_id FROM executions WHERE id=?",
+                           [none_result["execution_id"]])
+        self.assertIsNone(row["engagement_id"])
 
     def test_parses_jsonl_output_correctly(self) -> None:
         mock_proc = MagicMock()

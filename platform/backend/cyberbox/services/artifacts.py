@@ -47,6 +47,16 @@ def store(project_id: str, kind: str, content: bytes, media_type: str,
     return db.decode_row(row)
 
 
+def list_for_project(project_id: str, limit: int = 200) -> list[dict]:
+    rows = db.query(
+        "SELECT id, project_id, execution_id, kind, media_type, sha256, size, "
+        "storage_path, metadata, created_at FROM artifacts WHERE project_id=? "
+        "ORDER BY created_at DESC LIMIT ?",
+        [project_id, min(max(limit, 1), 500)],
+    )
+    return [db.decode_row(r) for r in rows]
+
+
 def read(artifact_id: str) -> tuple[dict, bytes] | None:
     row = db.query_one("SELECT * FROM artifacts WHERE id=?", [artifact_id])
     if not row:

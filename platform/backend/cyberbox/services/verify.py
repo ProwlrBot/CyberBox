@@ -1,11 +1,16 @@
 """Runtime verification — confirms exploitability and produces reproducible PoCs."""
 from __future__ import annotations
 
+import os
 import urllib.parse
 import urllib.request
 import urllib.error
 
 from . import policy
+
+# Out-of-band sentinel host for redirect/SSRF canaries. Point this at a real
+# OOB/interactsh domain you control via CYBERBOX_OOB_DOMAIN to catch blind cases.
+OOB_DOMAIN = os.environ.get("CYBERBOX_OOB_DOMAIN", "cyberbox-oob.example.org")
 
 
 def _curl_poc(method: str, url: str, headers: dict | None = None, body: str | None = None) -> str:
@@ -46,11 +51,11 @@ def _fetch(url: str, headers: dict | None = None, method: str = "GET",
 
 
 def verify_open_redirect(url: str, engagement_id: str) -> tuple[bool, str, list]:
-    canary = "https://cyberbox-oob.example.org/"
+    canary = f"https://{OOB_DOMAIN}/"
     test = url.split("?")[0] + "?url=" + urllib.parse.quote(canary)
     status, headers, _ = _fetch(test, follow_redirects=False, engagement_id=engagement_id)
     loc = headers.get("Location", "")
-    if loc.startswith(canary) or "cyberbox-oob.example.org" in loc:
+    if loc.startswith(canary) or OOB_DOMAIN in loc:
         poc = _curl_poc("GET", test)
         return True, f"Redirect honored to attacker host:\n{poc}\n-> {loc}", \
             [{"request": poc, "response": f"{status} Location: {loc}"}]

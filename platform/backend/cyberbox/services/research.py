@@ -36,6 +36,27 @@ def create_hypothesis(project_id: str, engagement_id: str, title: str, claim: st
     return db.decode_row(row)
 
 
+# Statuses a hypothesis may be moved to from the UI (e.g. queuing a CVE for hunt).
+HYPOTHESIS_STATUSES = {"proposed", "active", "supported", "rejected", "archived"}
+
+
+def update_hypothesis_status(project_id: str, hypothesis_id: str, status: str,
+                             actor_id: str | None = None) -> dict:
+    """Move a hypothesis to a new lifecycle status. Validated against an allowlist."""
+    if status not in HYPOTHESIS_STATUSES:
+        raise ValueError(f"invalid status: {status!r}")
+    row = db.query_one("SELECT * FROM hypotheses WHERE id=? AND project_id=?",
+                       [hypothesis_id, project_id])
+    if not row:
+        raise ValueError("hypothesis not found in project")
+    db.execute("UPDATE hypotheses SET status=?, updated_at=? WHERE id=?",
+               [status, _now(), hypothesis_id])
+    events.append(project_id, "hypothesis.status_changed",
+                  {"hypothesis_id": hypothesis_id, "status": status},
+                  actor_type="user", actor_id=actor_id)
+    return db.decode_row(db.query_one("SELECT * FROM hypotheses WHERE id=?", [hypothesis_id]))
+
+
 def create_experiment(hypothesis_id: str, name: str, procedure: str, risk_class: str,
                       target_url: str, method: str, expected_signal: str) -> dict:
     hypothesis = db.query_one("SELECT * FROM hypotheses WHERE id=?", [hypothesis_id])

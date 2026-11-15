@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import subprocess
 import uuid
@@ -12,17 +13,49 @@ from pathlib import Path
 from .. import db
 from ..config import get_settings
 from ..hub import hub
+from . import engines
+from . import policy as policy_svc
 from . import verify
 
 logger = logging.getLogger(__name__)
+
+_AUTHORIZED_STATUSES = ("active", "authorized", "local-laboratory", "ctf")
+
+
+def _scope_filter(project_id: str, hosts: list[str], risk_class: str, scan_id: str) -> list[str]:
+    """Keep only hosts whose URL passes policy for the project's active engagement.
+
+    Default-deny: no authorized engagement → empty list, nothing runs. Out-of-scope or
+    approval-required hosts are dropped and logged. This is the scope gate the full-scan
+    pipeline previously lacked — subfinder/httpx/nuclei ran against every discovered host.
+    """
+    placeholders = ",".join("?" for _ in _AUTHORIZED_STATUSES)
+    engagement = db.query_one(
+        f"SELECT id FROM engagements WHERE project_id=? AND status IN ({placeholders}) "
+        "ORDER BY created_at DESC LIMIT 1",
+        [project_id, *_AUTHORIZED_STATUSES],
+    )
+    if not engagement:
+        _append_log(scan_id, "[scope] no authorized engagement for project — blocked")
+        return []
+    allowed: list[str] = []
+    for host in hosts:
+        url = host if "://" in host else f"https://{host}"
+        decision = policy_svc.evaluate(engagement["id"], url, "GET", risk_class)
+        if decision.get("allowed") and not decision.get("requires_approval"):
+            allowed.append(host)
+        else:
+            _append_log(scan_id, f"[scope] blocked {host}: {decision.get('reason')}")
+    return allowed
 
 RAPTOR_PROTOCOLS = frozenset([
     "mcp", "pkg", "skill", "pypi", "go", "gitlab", "ruby",
     "java", "php", "gha", "github", "js", "crystal",
 ])
 
-# Default location; overridable via settings.tools["raptor"]
-_RAPTOR_DEFAULT = "/home/anon/raptor/raptor"
+# Resolved from PATH by default; override with settings.tools["raptor"] (CYBERBOX_TOOL_RAPTOR)
+# or the RAPTOR_BIN env var for a non-PATH install.
+_RAPTOR_DEFAULT = os.environ.get("RAPTOR_BIN", "raptor")
 
 
 def _now() -> str:
@@ -122,18 +155,41 @@ def _category_for(rec: dict) -> str:
     return "Misconfiguration"
 
 
-def _ingest_finding(project_id: str, task_id: str | None, rec: dict, scan_id: str) -> bool:
+def parse_nuclei_record(rec: dict) -> dict:
+    """Normalize a nuclei JSONL record into finding fields. Pure — no DB, no network.
+
+    Shared by the scan path (scanner.run_nuclei) and the campaign tool path
+    (tool_runner), so both produce the SAME dedup_key, category, cve and tags for a
+    given record instead of diverging.
+    """
     info = rec.get("info", {})
-    severity = (info.get("severity") or "info").lower()
     template_id = rec.get("template-id") or "unknown"
     matched_at = rec.get("matched-at") or rec.get("host", "")
-    host = rec.get("host", "")
-    name = info.get("name", template_id)
-    cve = None
     cve_ids = (info.get("classification") or {}).get("cve-id") or []
-    if cve_ids:
-        cve = cve_ids[0] if isinstance(cve_ids, list) else cve_ids
-    dedup_key = f"{template_id}|{matched_at}"
+    if isinstance(cve_ids, list):
+        cve = cve_ids[0] if cve_ids else None
+    else:
+        cve = cve_ids or None
+    raw_tags = info.get("tags", [])
+    tags = raw_tags if isinstance(raw_tags, list) else [t for t in str(raw_tags).split(",") if t]
+    return {
+        "template_id": template_id,
+        "severity": (info.get("severity") or "info").lower(),
+        "matched_at": matched_at,
+        "host": rec.get("host", ""),
+        "name": info.get("name", template_id),
+        "description": info.get("description", ""),
+        "cve": cve,
+        "category": _category_for(rec),
+        "tags": tags,
+        "dedup_key": f"{template_id}|{matched_at}",
+    }
+
+
+def _ingest_finding(project_id: str, task_id: str | None, rec: dict, scan_id: str) -> bool:
+    f = parse_nuclei_record(rec)
+    severity, matched_at, host = f["severity"], f["matched_at"], f["host"]
+    name, template_id, dedup_key = f["name"], f["template_id"], f["dedup_key"]
     if db.query_one("SELECT id FROM vulnerabilities WHERE project_id=? AND dedup_key=?",
                     [project_id, dedup_key]):
         return False
@@ -151,18 +207,25 @@ def _ingest_finding(project_id: str, task_id: str | None, rec: dict, scan_id: st
     vuln = {
         "id": str(uuid.uuid4()), "project_id": project_id,
         "asset_id": asset["id"] if asset else None, "template_id": template_id,
-        "name": name, "severity": severity, "category": _category_for(rec),
-        "description": info.get("description", ""), "cve": cve,
+        "name": name, "severity": severity, "category": f["category"],
+        "description": f["description"], "cve": f["cve"],
         "host": host, "matched_at": matched_at, "status": "open",
         "verified": 1 if verified else 0, "poc": poc,
         "request_chain": json.dumps(chain),
-        "tags": json.dumps(info.get("tags", []) if isinstance(info.get("tags"), list)
-                           else str(info.get("tags", "")).split(",")),
+        "tags": json.dumps(f["tags"]),
         "dedup_key": dedup_key, "sla_due": sla_due, "detected_at": _now(), "fixed_at": None,
     }
     db.insert("vulnerabilities", vuln)
     _append_log(scan_id, f"  [{severity.upper()}] {name} @ {matched_at} verified={verified}")
     hub.broadcast("vuln.found", {"name": name, "severity": severity, "verified": verified, "host": host})
+    # Engine layer: a real finding auto-marks its taxonomy class covered, with this row as evidence.
+    # Guarded so a mapping/DB hiccup can never fail the scan; failures are logged, never swallowed.
+    try:
+        marked = engines.apply_nuclei_finding(project_id, f, vuln["id"])
+        if marked:
+            _append_log(scan_id, f"    coverage: marked {len(marked)} taxonomy class(es) from this finding")
+    except Exception as exc:  # pragma: no cover - defensive; mapping must never break ingestion
+        _append_log(scan_id, f"    coverage mapping failed (non-fatal): {exc}")
     return True
 
 
@@ -188,7 +251,7 @@ def run_nuclei(project_id: str, scan_id: str, task_id: str | None, targets: list
 
 def run_raptor_scan(
     project_id: str,
-    engagement_id: str,
+    engagement_id: str | None,
     protocol: str,
     target_path: str,
     created_by: str,
@@ -196,10 +259,13 @@ def run_raptor_scan(
 ) -> dict:
     """Run Raptor source scanner and return structured results.
 
+    Raptor is a local static source/package scan — it never makes an outbound
+    request to a target — so it is not scope- or engagement-gated. ``engagement_id``
+    is recorded for provenance when provided; a stale id is dropped rather than failing.
+
     Returns {"execution_id": str, "findings_count": int, "output_lines": list[str]}.
     Raises RuntimeError if raptor binary is absent.
     Raises ValueError for unknown protocol.
-    Raises PermissionError if the engagement is not in an authorized state.
     """
     if protocol not in RAPTOR_PROTOCOLS:
         raise ValueError(
@@ -207,20 +273,14 @@ def run_raptor_scan(
             f"valid: {', '.join(sorted(RAPTOR_PROTOCOLS))}"
         )
 
-    engagement = db.query_one("SELECT status FROM engagements WHERE id=?", [engagement_id])
-    if not engagement:
-        raise ValueError(f"engagement not found: {engagement_id}")
-    if engagement["status"] not in ("active", "authorized", "local-laboratory", "ctf"):
-        raise PermissionError(
-            f"raptor scan blocked: engagement status is {engagement['status']!r}; "
-            "must be active, authorized, local-laboratory, or ctf"
-        )
+    if engagement_id and not db.query_one("SELECT id FROM engagements WHERE id=?", [engagement_id]):
+        engagement_id = None  # local scan — don't fail over a stale engagement reference
 
     raptor_bin = get_settings().tools.get("raptor", _RAPTOR_DEFAULT)
-    if not shutil.which(raptor_bin):
+    if not (shutil.which(raptor_bin) or os.path.isfile(raptor_bin)):
         raise RuntimeError(
-            f"raptor binary not found: install raptor from /home/anon/raptor/ "
-            f"(looked for {raptor_bin!r})"
+            f"raptor binary not found (looked for {raptor_bin!r}); set the RAPTOR_BIN "
+            "env var or settings.tools['raptor'] to its path"
         )
 
     target_path = str(Path(target_path).resolve())
@@ -293,10 +353,21 @@ def run_full_scan(scan_id: str) -> None:
     hub.broadcast("scan.status", {"scan_id": scan_id, "status": "running"})
     project_id, target = scan["project_id"], scan["target"]
     try:
+        # Default-deny gate: the seed target must be in authorized scope before discovery.
+        if not _scope_filter(project_id, [target], "passive", scan_id):
+            _append_log(scan_id, "[scope] seed target not authorized — scan aborted")
+            db.execute("UPDATE scans SET status='blocked', finished_at=? WHERE id=?",
+                       [_now(), scan_id])
+            hub.broadcast("scan.status", {"scan_id": scan_id, "status": "blocked"})
+            return
         hosts = discover_hosts(target, scan_id)
+        # Drop discovered subdomains that fall outside scope before probing them.
+        hosts = _scope_filter(project_id, hosts, "low-impact", scan_id)
         assets = probe_hosts(project_id, hosts, scan_id)
         live = [f"{a['scheme']}://{a['host']}:{a['port']}" for a in assets] or \
                [f"https://{h}" for h in hosts]
+        # Nuclei is higher-risk; re-gate the concrete target URLs.
+        live = _scope_filter(project_id, live, "state-changing", scan_id)
         found = run_nuclei(project_id, scan_id, scan["task_id"], live)
         stats = {"hosts": len(hosts), "assets": len(assets), "findings": found}
         db.execute("UPDATE scans SET status='done', finished_at=?, stats=? WHERE id=?",

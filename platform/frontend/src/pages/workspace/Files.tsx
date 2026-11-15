@@ -34,12 +34,28 @@ export default function Files() {
       setProjectId(pid);
       const headers = { "X-Api-Key": getApiKey() };
       const [er, rr] = await Promise.allSettled([
-        fetch(`/api/v1/projects/${encodeURIComponent(pid)}/evidence`, { headers }).then((r) => r.json()),
-        fetch(`/api/v1/projects/${encodeURIComponent(pid)}/reports`, { headers }).then((r) => r.json()),
+        // Evidence = content-addressed artifacts captured during scans/campaigns.
+        fetch(`/api/v1/projects/${encodeURIComponent(pid)}/artifacts`, { headers }).then((r) => r.json()),
+        // Reports = per-campaign generated reports.
+        fetch(`/api/v1/projects/${encodeURIComponent(pid)}/campaigns`, { headers }).then((r) => r.json()),
       ]);
       if (!cancelled) {
-        setEvidence(er.status === "fulfilled" && Array.isArray(er.value) ? er.value : []);
-        setReports(rr.status === "fulfilled" && Array.isArray(rr.value) ? rr.value : []);
+        const arts = er.status === "fulfilled" && Array.isArray(er.value) ? er.value : [];
+        setEvidence(arts.map((a: Record<string, unknown>): EvidenceFile => ({
+          id: a.id as string,
+          label: ((a.metadata as Record<string, unknown> | undefined)?.label as string) || (a.kind as string) || "artifact",
+          path: (a.storage_path as string) || "",
+          kind: (a.kind as string) || "—",
+          created_at: a.created_at as string,
+          size_bytes: (a.size as number) ?? null,
+        })));
+        const camps = rr.status === "fulfilled" && Array.isArray(rr.value) ? rr.value : [];
+        setReports(camps.map((c: Record<string, unknown>): Report => ({
+          id: c.id as string,
+          title: (c.name as string) || "Campaign report",
+          format: "markdown",
+          created_at: (c.created_at as string) ?? "",
+        })));
         setLoading(false);
       }
     }).catch(() => { if (!cancelled) setLoading(false); });
@@ -48,14 +64,37 @@ export default function Files() {
 
   async function viewReport(report: Report) {
     try {
-      const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/reports/${encodeURIComponent(report.id)}`, {
+      const r = await fetch(`/api/v1/campaigns/${encodeURIComponent(report.id)}/report`, {
         headers: { "X-Api-Key": getApiKey() },
       });
       if (r.ok) {
         const data = await r.json();
-        setModalContent({ title: report.title, body: data.content ?? data.body ?? JSON.stringify(data, null, 2) });
+        setModalContent({
+          title: report.title,
+          body: data.report_md || "No report has been generated for this campaign yet.",
+        });
+      } else {
+        setModalContent({ title: report.title, body: "Report unavailable." });
       }
-    } catch { /* ignore */ }
+    } catch {
+      setModalContent({ title: report.title, body: "Failed to load report." });
+    }
+  }
+
+  async function downloadArtifact(ev: EvidenceFile) {
+    const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/artifacts/${encodeURIComponent(ev.id)}/download`, {
+      headers: { "X-Api-Key": getApiKey() },
+    });
+    if (!r.ok) return;
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = ev.label || ev.id;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   }
 
   const filteredEvidence = filter
@@ -121,13 +160,9 @@ export default function Files() {
                     <td className="muted-cell">{formatSize(ev.size_bytes)}</td>
                     <td className="time-cell">{fmtDate(ev.created_at)}</td>
                     <td>
-                      <a
-                        href={`/api/v1/projects/${encodeURIComponent(projectId)}/evidence/${encodeURIComponent(ev.id)}/download`}
-                        download
-                        style={{ textDecoration: "none" }}
-                      >
-                        <button className="action-btn"><Download size={12} /> Download</button>
-                      </a>
+                      <button className="action-btn" onClick={() => downloadArtifact(ev)}>
+                        <Download size={12} /> Download
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -137,7 +172,7 @@ export default function Files() {
         )
       ) : (
         filteredReports.length === 0 ? (
-          <div className="empty-state-block"><p>No reports yet — generate a report from the Reports page.</p></div>
+          <div className="empty-state-block"><p>No campaign reports yet — launch a campaign to generate one.</p></div>
         ) : (
           <div className="data-table-wrap">
             <table className="data-table">

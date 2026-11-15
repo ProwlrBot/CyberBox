@@ -1,0 +1,1237 @@
+{
+  "version": "1.0.0",
+  "source": "OWASP WSTG v4.2 (96 top-level tests) \u2014 ANOM5X / RedAmon Deep Coverage Audit rev 2.0",
+  "coverage_model": [
+    "Discover",
+    "Execute",
+    "Observe",
+    "Prove",
+    "Regress"
+  ],
+  "chapters": [
+    {
+      "code": "INFO",
+      "name": "Information Gathering",
+      "count": 10
+    },
+    {
+      "code": "CONF",
+      "name": "Configuration and Deploy Management",
+      "count": 11
+    },
+    {
+      "code": "IDNT",
+      "name": "Identity Management",
+      "count": 5
+    },
+    {
+      "code": "ATHN",
+      "name": "Authentication",
+      "count": 10
+    },
+    {
+      "code": "ATHZ",
+      "name": "Authorization",
+      "count": 4
+    },
+    {
+      "code": "SESS",
+      "name": "Session Management",
+      "count": 9
+    },
+    {
+      "code": "INPV",
+      "name": "Input Validation",
+      "count": 19
+    },
+    {
+      "code": "ERRH",
+      "name": "Error Handling",
+      "count": 2
+    },
+    {
+      "code": "CRYP",
+      "name": "Weak Cryptography",
+      "count": 4
+    },
+    {
+      "code": "BUSL",
+      "name": "Business Logic",
+      "count": 9
+    },
+    {
+      "code": "CLNT",
+      "name": "Client-side",
+      "count": 13
+    }
+  ],
+  "tests": [
+    {
+      "id": "WSTG-v42-INFO-01",
+      "chapter": "INFO",
+      "num": 1,
+      "title": "Search engine discovery",
+      "how_to_test": "Inventory target-specific feature, expected security invariant and baseline behavior; run one safe negative variant using owned objects and document the complete request path.",
+      "evidence": "A prohibited behavior or sensitive exposure is independently verifiable.",
+      "reject_if": "Do not report fingerprint/indicator alone without confirmed adverse consequence.",
+      "maps": []
+    },
+    {
+      "id": "WSTG-v42-INFO-02",
+      "chapter": "INFO",
+      "num": 2,
+      "title": "Fingerprint web server",
+      "how_to_test": "Inventory target-specific feature, expected security invariant and baseline behavior; run one safe negative variant using owned objects and document the complete request path.",
+      "evidence": "A prohibited behavior or sensitive exposure is independently verifiable.",
+      "reject_if": "Do not report fingerprint/indicator alone without confirmed adverse consequence.",
+      "maps": [
+        "Fingerprinting / banner disclosure, software versions in headers"
+      ]
+    },
+    {
+      "id": "WSTG-v42-INFO-03",
+      "chapter": "INFO",
+      "num": 3,
+      "title": "Review server metafiles",
+      "how_to_test": "Inventory allowed file endpoints and owned file objects; compare read/write/extension/preview behavior using a benign marker; inspect response plus stored artifact and cache.",
+      "evidence": "A prohibited file or object operation completes in an owned fixture, or unintended sensitive content becomes readable.",
+      "reject_if": "Distinct filenames, preview-only success, public files, or metadata alone are not security proof.",
+      "maps": [
+        "Publicly accessible robots.txt with sensitive paths",
+        "Exposed version control and environment files"
+      ]
+    },
+    {
+      "id": "WSTG-v42-INFO-04",
+      "chapter": "INFO",
+      "num": 4,
+      "title": "Enumerate webserver applications",
+      "how_to_test": "Inventory target-specific feature, expected security invariant and baseline behavior; run one safe negative variant using owned objects and document the complete request path.",
+      "evidence": "A prohibited behavior or sensitive exposure is independently verifiable.",
+      "reject_if": "Do not report fingerprint/indicator alone without confirmed adverse consequence.",
+      "maps": [
+        "Improper inventory management"
+      ]
+    },
+    {
+      "id": "WSTG-v42-INFO-05",
+      "chapter": "INFO",
+      "num": 5,
+      "title": "Review webpage content",
+      "how_to_test": "Inventory target-specific feature, expected security invariant and baseline behavior; run one safe negative variant using owned objects and document the complete request path.",
+      "evidence": "A prohibited behavior or sensitive exposure is independently verifiable.",
+      "reject_if": "Do not report fingerprint/indicator alone without confirmed adverse consequence.",
+      "maps": [
+        "Secrets in JavaScript bundles",
+        "Exposed source maps"
+      ]
+    },
+    {
+      "id": "WSTG-v42-INFO-06",
+      "chapter": "INFO",
+      "num": 6,
+      "title": "Identify application entry points",
+      "how_to_test": "Inventory target-specific feature, expected security invariant and baseline behavior; run one safe negative variant using owned objects and document the complete request path.",
+      "evidence": "A prohibited behavior or sensitive exposure is independently verifiable.",
+      "reject_if": "Do not report fingerprint/indicator alone without confirmed adverse consequence.",
+      "maps": []
+    },
+    {
+      "id": "WSTG-v42-INFO-07",
+      "chapter": "INFO",
+      "num": 7,
+      "title": "Map application execution paths",
+      "how_to_test": "Inventory target-specific feature, expected security invariant and baseline behavior; run one safe negative variant using owned objects and document the complete request path.",
+      "evidence": "A prohibited behavior or sensitive exposure is independently verifiable.",
+      "reject_if": "Do not report fingerprint/indicator alone without confirmed adverse consequence.",
+      "maps": []
+    },
+    {
+      "id": "WSTG-v42-INFO-08",
+      "chapter": "INFO",
+      "num": 8,
+      "title": "Fingerprint web framework",
+      "how_to_test": "Inventory target-specific feature, expected security invariant and baseline behavior; run one safe negative variant using owned objects and document the complete request path.",
+      "evidence": "A prohibited behavior or sensitive exposure is independently verifiable.",
+      "reject_if": "Do not report fingerprint/indicator alone without confirmed adverse consequence.",
+      "maps": [
+        "Fingerprinting / banner disclosure, software versions in headers"
+      ]
+    },
+    {
+      "id": "WSTG-v42-INFO-09",
+      "chapter": "INFO",
+      "num": 9,
+      "title": "Fingerprint application",
+      "how_to_test": "Inventory target-specific feature, expected security invariant and baseline behavior; run one safe negative variant using owned objects and document the complete request path.",
+      "evidence": "A prohibited behavior or sensitive exposure is independently verifiable.",
+      "reject_if": "Do not report fingerprint/indicator alone without confirmed adverse consequence.",
+      "maps": [
+        "Fingerprinting / banner disclosure, software versions in headers"
+      ]
+    },
+    {
+      "id": "WSTG-v42-INFO-10",
+      "chapter": "INFO",
+      "num": 10,
+      "title": "Map application architecture",
+      "how_to_test": "Inventory target-specific feature, expected security invariant and baseline behavior; run one safe negative variant using owned objects and document the complete request path.",
+      "evidence": "A prohibited behavior or sensitive exposure is independently verifiable.",
+      "reject_if": "Do not report fingerprint/indicator alone without confirmed adverse consequence.",
+      "maps": []
+    },
+    {
+      "id": "WSTG-v42-CONF-01",
+      "chapter": "CONF",
+      "num": 1,
+      "title": "Network infrastructure configuration",
+      "how_to_test": "Inventory target-specific feature, expected security invariant and baseline behavior; run one safe negative variant using owned objects and document the complete request path.",
+      "evidence": "A prohibited behavior or sensitive exposure is independently verifiable.",
+      "reject_if": "Do not report fingerprint/indicator alone without confirmed adverse consequence.",
+      "maps": [
+        "Open management ports to the internet",
+        "Lack of network segmentation"
+      ]
+    },
+    {
+      "id": "WSTG-v42-CONF-02",
+      "chapter": "CONF",
+      "num": 2,
+      "title": "Application platform configuration",
+      "how_to_test": "Inventory target-specific feature, expected security invariant and baseline behavior; run one safe negative variant using owned objects and document the complete request path.",
+      "evidence": "A prohibited behavior or sensitive exposure is independently verifiable.",
+      "reject_if": "Do not report fingerprint/indicator alone without confirmed adverse consequence.",
+      "maps": [
+        "Exposed debug and management endpoints",
+        "Lack of security headers"
+      ]
+    },
+    {
+      "id": "WSTG-v42-CONF-03",
+      "chapter": "CONF",
+      "num": 3,
+      "title": "File extensions handling",
+      "how_to_test": "Inventory allowed file endpoints and owned file objects; compare read/write/extension/preview behavior using a benign marker; inspect response plus stored artifact and cache.",
+      "evidence": "A prohibited file or object operation completes in an owned fixture, or unintended sensitive content becomes readable.",
+      "reject_if": "Distinct filenames, preview-only success, public files, or metadata alone are not security proof.",
+      "maps": [
+        "Extension / content-type / magic-byte bypass"
+      ]
+    },
+    {
+      "id": "WSTG-v42-CONF-04",
+      "chapter": "CONF",
+      "num": 4,
+      "title": "Old backup/unreferenced files",
+      "how_to_test": "Inventory allowed file endpoints and owned file objects; compare read/write/extension/preview behavior using a benign marker; inspect response plus stored artifact and cache.",
+      "evidence": "A prohibited file or object operation completes in an owned fixture, or unintended sensitive content becomes readable.",
+      "reject_if": "Distinct filenames, preview-only success, public files, or metadata alone are not security proof.",
+      "maps": [
+        "Backup and temporary files",
+        "Exposed version control and environment files"
+      ]
+    },
+    {
+      "id": "WSTG-v42-CONF-05",
+      "chapter": "CONF",
+      "num": 5,
+      "title": "Admin interfaces",
+      "how_to_test": "Inventory target-specific feature, expected security invariant and baseline behavior; run one safe negative variant using owned objects and document the complete request path.",
+      "evidence": "A prohibited behavior or sensitive exposure is independently verifiable.",
+      "reject_if": "Do not report fingerprint/indicator alone without confirmed adverse consequence.",
+      "maps": [
+        "Exposed admin panels"
+      ]
+    },
+    {
+      "id": "WSTG-v42-CONF-06",
+      "chapter": "CONF",
+      "num": 6,
+      "title": "HTTP methods",
+      "how_to_test": "Record baseline parse/transport behavior; vary one benign input type or boundary at a time and compare server processing with a safe oracle and negative control.",
+      "evidence": "A defined trust boundary is crossed, with reproducible server interpretation difference and application-level effect.",
+      "reject_if": "Raw errors, status code changes, WAF rejection or a banner alone do not establish exploitation.",
+      "maps": [
+        "Potentially unsafe HTTP method enabled (OPTIONS, TRACE)",
+        "HTTP verb tampering"
+      ]
+    },
+    {
+      "id": "WSTG-v42-CONF-07",
+      "chapter": "CONF",
+      "num": 7,
+      "title": "HTTP Strict Transport Security",
+      "how_to_test": "Record baseline parse/transport behavior; vary one benign input type or boundary at a time and compare server processing with a safe oracle and negative control.",
+      "evidence": "A defined trust boundary is crossed, with reproducible server interpretation difference and application-level effect.",
+      "reject_if": "Raw errors, status code changes, WAF rejection or a banner alone do not establish exploitation.",
+      "maps": [
+        "Lack of security headers"
+      ]
+    },
+    {
+      "id": "WSTG-v42-CONF-08",
+      "chapter": "CONF",
+      "num": 8,
+      "title": "RIA cross-domain policy",
+      "how_to_test": "Locate user-controlled source; trace browser sink or network request; test inert marker first then safe browser-only execution in an owned origin; capture DevTools trace.",
+      "evidence": "Browser code runs or a disallowed authenticated cross-origin request/data read occurs under a trusted origin.",
+      "reject_if": "Reflection, permissive headers, navigation, or JS source presence without an effect are not proof.",
+      "maps": []
+    },
+    {
+      "id": "WSTG-v42-CONF-09",
+      "chapter": "CONF",
+      "num": 9,
+      "title": "File permissions",
+      "how_to_test": "Inventory allowed file endpoints and owned file objects; compare read/write/extension/preview behavior using a benign marker; inspect response plus stored artifact and cache.",
+      "evidence": "A prohibited file or object operation completes in an owned fixture, or unintended sensitive content becomes readable.",
+      "reject_if": "Distinct filenames, preview-only success, public files, or metadata alone are not security proof.",
+      "maps": [
+        "Misconfigured file share"
+      ]
+    },
+    {
+      "id": "WSTG-v42-CONF-10",
+      "chapter": "CONF",
+      "num": 10,
+      "title": "Subdomain takeover",
+      "how_to_test": "Inventory target-specific feature, expected security invariant and baseline behavior; run one safe negative variant using owned objects and document the complete request path.",
+      "evidence": "A prohibited behavior or sensitive exposure is independently verifiable.",
+      "reject_if": "Do not report fingerprint/indicator alone without confirmed adverse consequence.",
+      "maps": [
+        "Subdomain takeover"
+      ]
+    },
+    {
+      "id": "WSTG-v42-CONF-11",
+      "chapter": "CONF",
+      "num": 11,
+      "title": "Cloud storage",
+      "how_to_test": "Inventory allowed file endpoints and owned file objects; compare read/write/extension/preview behavior using a benign marker; inspect response plus stored artifact and cache.",
+      "evidence": "A prohibited file or object operation completes in an owned fixture, or unintended sensitive content becomes readable.",
+      "reject_if": "Distinct filenames, preview-only success, public files, or metadata alone are not security proof.",
+      "maps": [
+        "Publicly accessible cloud storage"
+      ]
+    },
+    {
+      "id": "WSTG-v42-IDNT-01",
+      "chapter": "IDNT",
+      "num": 1,
+      "title": "Role definitions",
+      "how_to_test": "Use two owned accounts and an explicit role/session baseline; perform controlled account or session transition; replay captured requests and independently check server-side outcome.",
+      "evidence": "Expected denial or revocation is broken and a concrete account/role/session action persists.",
+      "reject_if": "Browser caching, UI-only state and policy-expected session TTL must be excluded.",
+      "maps": []
+    },
+    {
+      "id": "WSTG-v42-IDNT-02",
+      "chapter": "IDNT",
+      "num": 2,
+      "title": "Registration process",
+      "how_to_test": "Write the business invariant; create two owned fixtures; test normal transition, invalid sequence and post-state, without financial or operational impact.",
+      "evidence": "The persisted state violates an enforced business rule or yields unintended benefit.",
+      "reject_if": "A 2xx response is not enough; retries, async state and intended limits require verification.",
+      "maps": [
+        "Weak login or registration over HTTP"
+      ]
+    },
+    {
+      "id": "WSTG-v42-IDNT-03",
+      "chapter": "IDNT",
+      "num": 3,
+      "title": "Account provisioning",
+      "how_to_test": "Use two owned accounts and an explicit role/session baseline; perform controlled account or session transition; replay captured requests and independently check server-side outcome.",
+      "evidence": "Expected denial or revocation is broken and a concrete account/role/session action persists.",
+      "reject_if": "Browser caching, UI-only state and policy-expected session TTL must be excluded.",
+      "maps": [
+        "Suspended, deleted or unverified account still authorized"
+      ]
+    },
+    {
+      "id": "WSTG-v42-IDNT-04",
+      "chapter": "IDNT",
+      "num": 4,
+      "title": "Account enumeration",
+      "how_to_test": "Use two owned accounts and an explicit role/session baseline; perform controlled account or session transition; replay captured requests and independently check server-side outcome.",
+      "evidence": "Expected denial or revocation is broken and a concrete account/role/session action persists.",
+      "reject_if": "Browser caching, UI-only state and policy-expected session TTL must be excluded.",
+      "maps": [
+        "Username / email enumeration"
+      ]
+    },
+    {
+      "id": "WSTG-v42-IDNT-05",
+      "chapter": "IDNT",
+      "num": 5,
+      "title": "Username policy",
+      "how_to_test": "Inventory target-specific feature, expected security invariant and baseline behavior; run one safe negative variant using owned objects and document the complete request path.",
+      "evidence": "A prohibited behavior or sensitive exposure is independently verifiable.",
+      "reject_if": "Do not report fingerprint/indicator alone without confirmed adverse consequence.",
+      "maps": [
+        "Username / email enumeration"
+      ]
+    },
+    {
+      "id": "WSTG-v42-ATHN-01",
+      "chapter": "ATHN",
+      "num": 1,
+      "title": "Credentials over encrypted channels",
+      "how_to_test": "Use two owned accounts and an explicit role/session baseline; perform controlled account or session transition; replay captured requests and independently check server-side outcome.",
+      "evidence": "Expected denial or revocation is broken and a concrete account/role/session action persists.",
+      "reject_if": "Browser caching, UI-only state and policy-expected session TTL must be excluded.",
+      "maps": [
+        "Weak login or registration over HTTP",
+        "Cleartext transmission of the session token"
+      ]
+    },
+    {
+      "id": "WSTG-v42-ATHN-02",
+      "chapter": "ATHN",
+      "num": 2,
+      "title": "Default credentials",
+      "how_to_test": "Use two owned accounts and an explicit role/session baseline; perform controlled account or session transition; replay captured requests and independently check server-side outcome.",
+      "evidence": "Expected denial or revocation is broken and a concrete account/role/session action persists.",
+      "reject_if": "Browser caching, UI-only state and policy-expected session TTL must be excluded.",
+      "maps": [
+        "Using default credentials"
+      ]
+    },
+    {
+      "id": "WSTG-v42-ATHN-03",
+      "chapter": "ATHN",
+      "num": 3,
+      "title": "Lockout mechanism",
+      "how_to_test": "Use two owned accounts and an explicit role/session baseline; perform controlled account or session transition; replay captured requests and independently check server-side outcome.",
+      "evidence": "Expected denial or revocation is broken and a concrete account/role/session action persists.",
+      "reject_if": "Browser caching, UI-only state and policy-expected session TTL must be excluded.",
+      "maps": [
+        "No account lockout",
+        "Credential stuffing / no login throttling"
+      ]
+    },
+    {
+      "id": "WSTG-v42-ATHN-04",
+      "chapter": "ATHN",
+      "num": 4,
+      "title": "Authentication bypass",
+      "how_to_test": "Use two owned accounts and an explicit role/session baseline; perform controlled account or session transition; replay captured requests and independently check server-side outcome.",
+      "evidence": "Expected denial or revocation is broken and a concrete account/role/session action persists.",
+      "reject_if": "Browser caching, UI-only state and policy-expected session TTL must be excluded.",
+      "maps": [
+        "Authentication bypass"
+      ]
+    },
+    {
+      "id": "WSTG-v42-ATHN-05",
+      "chapter": "ATHN",
+      "num": 5,
+      "title": "Remember-password feature",
+      "how_to_test": "Use two owned accounts and an explicit role/session baseline; perform controlled account or session transition; replay captured requests and independently check server-side outcome.",
+      "evidence": "Expected denial or revocation is broken and a concrete account/role/session action persists.",
+      "reject_if": "Browser caching, UI-only state and policy-expected session TTL must be excluded.",
+      "maps": []
+    },
+    {
+      "id": "WSTG-v42-ATHN-06",
+      "chapter": "ATHN",
+      "num": 6,
+      "title": "Browser cache weaknesses",
+      "how_to_test": "Locate user-controlled source; trace browser sink or network request; test inert marker first then safe browser-only execution in an owned origin; capture DevTools trace.",
+      "evidence": "Browser code runs or a disallowed authenticated cross-origin request/data read occurs under a trusted origin.",
+      "reject_if": "Reflection, permissive headers, navigation, or JS source presence without an effect are not proof.",
+      "maps": [
+        "Missing Cache-Control on a sensitive page"
+      ]
+    },
+    {
+      "id": "WSTG-v42-ATHN-07",
+      "chapter": "ATHN",
+      "num": 7,
+      "title": "Password policy",
+      "how_to_test": "Use two owned accounts and an explicit role/session baseline; perform controlled account or session transition; replay captured requests and independently check server-side outcome.",
+      "evidence": "Expected denial or revocation is broken and a concrete account/role/session action persists.",
+      "reject_if": "Browser caching, UI-only state and policy-expected session TTL must be excluded.",
+      "maps": [
+        "Weak or absent password policy"
+      ]
+    },
+    {
+      "id": "WSTG-v42-ATHN-08",
+      "chapter": "ATHN",
+      "num": 8,
+      "title": "Security questions",
+      "how_to_test": "Inventory target-specific feature, expected security invariant and baseline behavior; run one safe negative variant using owned objects and document the complete request path.",
+      "evidence": "A prohibited behavior or sensitive exposure is independently verifiable.",
+      "reject_if": "Do not report fingerprint/indicator alone without confirmed adverse consequence.",
+      "maps": [
+        "Secret questions used for account verification"
+      ]
+    },
+    {
+      "id": "WSTG-v42-ATHN-09",
+      "chapter": "ATHN",
+      "num": 9,
+      "title": "Password reset/change",
+      "how_to_test": "Request a password reset for an owned account; record token issuance; redeem once; retry; change password; replay the earlier session; test link expiry and token audience.",
+      "evidence": "A consumed/expired token works again, reset changes another owned account, or stale session performs privileged action after revocation.",
+      "reject_if": "A 200 response with generic text is not proof; inspect actual account state.",
+      "maps": [
+        "Predictable password reset token",
+        "Reset token not invalidated",
+        "Reset token leaked via Host header poisoning"
+      ]
+    },
+    {
+      "id": "WSTG-v42-ATHN-10",
+      "chapter": "ATHN",
+      "num": 10,
+      "title": "Alternative authentication channels",
+      "how_to_test": "Use two owned accounts and an explicit role/session baseline; perform controlled account or session transition; replay captured requests and independently check server-side outcome.",
+      "evidence": "Expected denial or revocation is broken and a concrete account/role/session action persists.",
+      "reject_if": "Browser caching, UI-only state and policy-expected session TTL must be excluded.",
+      "maps": []
+    },
+    {
+      "id": "WSTG-v42-ATHZ-01",
+      "chapter": "ATHZ",
+      "num": 1,
+      "title": "Traversal/file include",
+      "how_to_test": "Inventory allowed file endpoints and owned file objects; compare read/write/extension/preview behavior using a benign marker; inspect response plus stored artifact and cache.",
+      "evidence": "A prohibited file or object operation completes in an owned fixture, or unintended sensitive content becomes readable.",
+      "reject_if": "Distinct filenames, preview-only success, public files, or metadata alone are not security proof.",
+      "maps": [
+        "Path traversal, server-side",
+        "File inclusion, local",
+        "File inclusion, remote"
+      ]
+    },
+    {
+      "id": "WSTG-v42-ATHZ-02",
+      "chapter": "ATHZ",
+      "num": 2,
+      "title": "Authorization bypass",
+      "how_to_test": "Inventory target-specific feature, expected security invariant and baseline behavior; run one safe negative variant using owned objects and document the complete request path.",
+      "evidence": "A prohibited behavior or sensitive exposure is independently verifiable.",
+      "reject_if": "Do not report fingerprint/indicator alone without confirmed adverse consequence.",
+      "maps": [
+        "Header-based authorization bypass",
+        "Forced browsing to unlinked routes",
+        "Path normalization bypass"
+      ]
+    },
+    {
+      "id": "WSTG-v42-ATHZ-03",
+      "chapter": "ATHZ",
+      "num": 3,
+      "title": "Privilege escalation",
+      "how_to_test": "Capture admin-only operation using your authorized admin test identity. Replay with lower-privileged owned identity; compare request and target resource; check downstream job completion.",
+      "evidence": "Low-privileged identity creates an admin outcome or privileged job despite UI denial.",
+      "reject_if": "Client-side hidden buttons are not the authorization boundary.",
+      "maps": [
+        "Privilege escalation, vertical",
+        "Cross-tenant escalation"
+      ]
+    },
+    {
+      "id": "WSTG-v42-ATHZ-04",
+      "chapter": "ATHZ",
+      "num": 4,
+      "title": "Insecure direct object references",
+      "how_to_test": "Inventory target-specific feature, expected security invariant and baseline behavior; run one safe negative variant using owned objects and document the complete request path.",
+      "evidence": "A prohibited behavior or sensitive exposure is independently verifiable.",
+      "reject_if": "Do not report fingerprint/indicator alone without confirmed adverse consequence.",
+      "maps": [
+        "IDOR / BOLA, iterable object identifiers, sensitive data",
+        "IDOR with complex identifiers (GUID/UUID)"
+      ]
+    },
+    {
+      "id": "WSTG-v42-SESS-01",
+      "chapter": "SESS",
+      "num": 1,
+      "title": "Session management schema",
+      "how_to_test": "Use two owned accounts and an explicit role/session baseline; perform controlled account or session transition; replay captured requests and independently check server-side outcome.",
+      "evidence": "Expected denial or revocation is broken and a concrete account/role/session action persists.",
+      "reject_if": "Browser caching, UI-only state and policy-expected session TTL must be excluded.",
+      "maps": [
+        "Predictable identifiers and tokens"
+      ]
+    },
+    {
+      "id": "WSTG-v42-SESS-02",
+      "chapter": "SESS",
+      "num": 2,
+      "title": "Cookie attributes",
+      "how_to_test": "Use two owned accounts and an explicit role/session baseline; perform controlled account or session transition; replay captured requests and independently check server-side outcome.",
+      "evidence": "Expected denial or revocation is broken and a concrete account/role/session action persists.",
+      "reject_if": "Browser caching, UI-only state and policy-expected session TTL must be excluded.",
+      "maps": [
+        "Missing Secure or HttpOnly flag",
+        "Cookie scoped to the parent domain"
+      ]
+    },
+    {
+      "id": "WSTG-v42-SESS-03",
+      "chapter": "SESS",
+      "num": 3,
+      "title": "Session fixation",
+      "how_to_test": "Use two owned accounts and an explicit role/session baseline; perform controlled account or session transition; replay captured requests and independently check server-side outcome.",
+      "evidence": "Expected denial or revocation is broken and a concrete account/role/session action persists.",
+      "reject_if": "Browser caching, UI-only state and policy-expected session TTL must be excluded.",
+      "maps": [
+        "Session fixation"
+      ]
+    },
+    {
+      "id": "WSTG-v42-SESS-04",
+      "chapter": "SESS",
+      "num": 4,
+      "title": "Exposed session variables",
+      "how_to_test": "Use two owned accounts and an explicit role/session baseline; perform controlled account or session transition; replay captured requests and independently check server-side outcome.",
+      "evidence": "Expected denial or revocation is broken and a concrete account/role/session action persists.",
+      "reject_if": "Browser caching, UI-only state and policy-expected session TTL must be excluded.",
+      "maps": [
+        "Cleartext transmission of the session token",
+        "Sensitive token in URL"
+      ]
+    },
+    {
+      "id": "WSTG-v42-SESS-05",
+      "chapter": "SESS",
+      "num": 5,
+      "title": "Cross-site request forgery",
+      "how_to_test": "Locate user-controlled source; trace browser sink or network request; test inert marker first then safe browser-only execution in an owned origin; capture DevTools trace.",
+      "evidence": "Browser code runs or a disallowed authenticated cross-origin request/data read occurs under a trusted origin.",
+      "reject_if": "Reflection, permissive headers, navigation, or JS source presence without an effect are not proof.",
+      "maps": [
+        "CSRF, authenticated action",
+        "CSRF token not bound to the session"
+      ]
+    },
+    {
+      "id": "WSTG-v42-SESS-06",
+      "chapter": "SESS",
+      "num": 6,
+      "title": "Logout functionality",
+      "how_to_test": "With owned session, capture a harmless authenticated API request. Logout. Replay exact request using old cookie/token. Repeat for alternate API host after short settling period.",
+      "evidence": "Privileged API action remains permitted contrary to documented logout policy.",
+      "reject_if": "Stateless token expiration semantics may be expected; verify program requirements.",
+      "maps": [
+        "Session not invalidated on logout"
+      ]
+    },
+    {
+      "id": "WSTG-v42-SESS-07",
+      "chapter": "SESS",
+      "num": 7,
+      "title": "Session timeout",
+      "how_to_test": "Observe idle and absolute timeout. Reissue old session after defined timeout and verify by protected server action.",
+      "evidence": "Session persists beyond an enforced documented security bound.",
+      "reject_if": "UI auto-logout without server invalidation is not equivalent to backend revocation.",
+      "maps": [
+        "Concurrent sessions on logout / long timeout / concurrent logins"
+      ]
+    },
+    {
+      "id": "WSTG-v42-SESS-08",
+      "chapter": "SESS",
+      "num": 8,
+      "title": "Session puzzling",
+      "how_to_test": "Use two owned accounts and an explicit role/session baseline; perform controlled account or session transition; replay captured requests and independently check server-side outcome.",
+      "evidence": "Expected denial or revocation is broken and a concrete account/role/session action persists.",
+      "reject_if": "Browser caching, UI-only state and policy-expected session TTL must be excluded.",
+      "maps": []
+    },
+    {
+      "id": "WSTG-v42-SESS-09",
+      "chapter": "SESS",
+      "num": 9,
+      "title": "Session hijacking",
+      "how_to_test": "Use two owned accounts and an explicit role/session baseline; perform controlled account or session transition; replay captured requests and independently check server-side outcome.",
+      "evidence": "Expected denial or revocation is broken and a concrete account/role/session action persists.",
+      "reject_if": "Browser caching, UI-only state and policy-expected session TTL must be excluded.",
+      "maps": [
+        "Session not invalidated on logout",
+        "Cleartext transmission of the session token"
+      ]
+    },
+    {
+      "id": "WSTG-v42-INPV-01",
+      "chapter": "INPV",
+      "num": 1,
+      "title": "Reflected XSS",
+      "how_to_test": "Locate user-controlled source; trace browser sink or network request; test inert marker first then safe browser-only execution in an owned origin; capture DevTools trace.",
+      "evidence": "Browser code runs or a disallowed authenticated cross-origin request/data read occurs under a trusted origin.",
+      "reject_if": "Reflection, permissive headers, navigation, or JS source presence without an effect are not proof.",
+      "maps": [
+        "Reflected XSS, non-self"
+      ]
+    },
+    {
+      "id": "WSTG-v42-INPV-02",
+      "chapter": "INPV",
+      "num": 2,
+      "title": "Stored XSS",
+      "how_to_test": "Submit an inert unique marker through an owned editable field; observe status and later retrieve the stored object in a fresh session. Map rendering sink and use safe execution marker only where allowed.",
+      "evidence": "Browser executes a harmless controlled action in a different rendering context.",
+      "reject_if": "500 during write does not prove failure: re-read state before discarding.",
+      "maps": [
+        "Stored XSS, non-privileged user to anyone"
+      ]
+    },
+    {
+      "id": "WSTG-v42-INPV-03",
+      "chapter": "INPV",
+      "num": 3,
+      "title": "HTTP verb tampering",
+      "how_to_test": "Record baseline parse/transport behavior; vary one benign input type or boundary at a time and compare server processing with a safe oracle and negative control.",
+      "evidence": "A defined trust boundary is crossed, with reproducible server interpretation difference and application-level effect.",
+      "reject_if": "Raw errors, status code changes, WAF rejection or a banner alone do not establish exploitation.",
+      "maps": [
+        "HTTP verb tampering"
+      ]
+    },
+    {
+      "id": "WSTG-v42-INPV-04",
+      "chapter": "INPV",
+      "num": 4,
+      "title": "HTTP parameter pollution",
+      "how_to_test": "Record baseline parse/transport behavior; vary one benign input type or boundary at a time and compare server processing with a safe oracle and negative control.",
+      "evidence": "A defined trust boundary is crossed, with reproducible server interpretation difference and application-level effect.",
+      "reject_if": "Raw errors, status code changes, WAF rejection or a banner alone do not establish exploitation.",
+      "maps": [
+        "HTTP parameter pollution (HPP)"
+      ]
+    },
+    {
+      "id": "WSTG-v42-INPV-05",
+      "chapter": "INPV",
+      "num": 5,
+      "title": "SQL injection",
+      "how_to_test": "Find authorized query endpoints; compare number/string/null/array/object field shapes with unchanged query semantics; record error, result count and security filter consistency.",
+      "evidence": "Controlled structure affects query authorization or bypasses a filter.",
+      "reject_if": "Different error messages alone are insufficient; do not dump unrelated rows.",
+      "maps": [
+        "SQL injection",
+        "Blind SQL injection"
+      ]
+    },
+    {
+      "id": "WSTG-v42-INPV-06",
+      "chapter": "INPV",
+      "num": 6,
+      "title": "LDAP injection",
+      "how_to_test": "Record baseline parse/transport behavior; vary one benign input type or boundary at a time and compare server processing with a safe oracle and negative control.",
+      "evidence": "A defined trust boundary is crossed, with reproducible server interpretation difference and application-level effect.",
+      "reject_if": "Raw errors, status code changes, WAF rejection or a banner alone do not establish exploitation.",
+      "maps": [
+        "LDAP injection"
+      ]
+    },
+    {
+      "id": "WSTG-v42-INPV-07",
+      "chapter": "INPV",
+      "num": 7,
+      "title": "XML injection",
+      "how_to_test": "Record baseline parse/transport behavior; vary one benign input type or boundary at a time and compare server processing with a safe oracle and negative control.",
+      "evidence": "A defined trust boundary is crossed, with reproducible server interpretation difference and application-level effect.",
+      "reject_if": "Raw errors, status code changes, WAF rejection or a banner alone do not establish exploitation.",
+      "maps": [
+        "XXE file disclosure"
+      ]
+    },
+    {
+      "id": "WSTG-v42-INPV-08",
+      "chapter": "INPV",
+      "num": 8,
+      "title": "Server-side includes injection",
+      "how_to_test": "Record baseline parse/transport behavior; vary one benign input type or boundary at a time and compare server processing with a safe oracle and negative control.",
+      "evidence": "A defined trust boundary is crossed, with reproducible server interpretation difference and application-level effect.",
+      "reject_if": "Raw errors, status code changes, WAF rejection or a banner alone do not establish exploitation.",
+      "maps": []
+    },
+    {
+      "id": "WSTG-v42-INPV-09",
+      "chapter": "INPV",
+      "num": 9,
+      "title": "XPath injection",
+      "how_to_test": "Record baseline parse/transport behavior; vary one benign input type or boundary at a time and compare server processing with a safe oracle and negative control.",
+      "evidence": "A defined trust boundary is crossed, with reproducible server interpretation difference and application-level effect.",
+      "reject_if": "Raw errors, status code changes, WAF rejection or a banner alone do not establish exploitation.",
+      "maps": [
+        "XPath / XQuery injection"
+      ]
+    },
+    {
+      "id": "WSTG-v42-INPV-10",
+      "chapter": "INPV",
+      "num": 10,
+      "title": "IMAP/SMTP injection",
+      "how_to_test": "Record baseline parse/transport behavior; vary one benign input type or boundary at a time and compare server processing with a safe oracle and negative control.",
+      "evidence": "A defined trust boundary is crossed, with reproducible server interpretation difference and application-level effect.",
+      "reject_if": "Raw errors, status code changes, WAF rejection or a banner alone do not establish exploitation.",
+      "maps": [
+        "Email header injection"
+      ]
+    },
+    {
+      "id": "WSTG-v42-INPV-11",
+      "chapter": "INPV",
+      "num": 11,
+      "title": "Code injection / file inclusion",
+      "how_to_test": "Inventory allowed file endpoints and owned file objects; compare read/write/extension/preview behavior using a benign marker; inspect response plus stored artifact and cache.",
+      "evidence": "A prohibited file or object operation completes in an owned fixture, or unintended sensitive content becomes readable.",
+      "reject_if": "Distinct filenames, preview-only success, public files, or metadata alone are not security proof.",
+      "maps": [
+        "File inclusion, local",
+        "File inclusion, remote",
+        "Remote code execution"
+      ]
+    },
+    {
+      "id": "WSTG-v42-INPV-12",
+      "chapter": "INPV",
+      "num": 12,
+      "title": "Command injection",
+      "how_to_test": "Record baseline parse/transport behavior; vary one benign input type or boundary at a time and compare server processing with a safe oracle and negative control.",
+      "evidence": "A defined trust boundary is crossed, with reproducible server interpretation difference and application-level effect.",
+      "reject_if": "Raw errors, status code changes, WAF rejection or a banner alone do not establish exploitation.",
+      "maps": [
+        "OS command injection"
+      ]
+    },
+    {
+      "id": "WSTG-v42-INPV-13",
+      "chapter": "INPV",
+      "num": 13,
+      "title": "Format string injection",
+      "how_to_test": "Record baseline parse/transport behavior; vary one benign input type or boundary at a time and compare server processing with a safe oracle and negative control.",
+      "evidence": "A defined trust boundary is crossed, with reproducible server interpretation difference and application-level effect.",
+      "reject_if": "Raw errors, status code changes, WAF rejection or a banner alone do not establish exploitation.",
+      "maps": []
+    },
+    {
+      "id": "WSTG-v42-INPV-14",
+      "chapter": "INPV",
+      "num": 14,
+      "title": "Incubated vulnerability",
+      "how_to_test": "Inventory target-specific feature, expected security invariant and baseline behavior; run one safe negative variant using owned objects and document the complete request path.",
+      "evidence": "A prohibited behavior or sensitive exposure is independently verifiable.",
+      "reject_if": "Do not report fingerprint/indicator alone without confirmed adverse consequence.",
+      "maps": [
+        "Second-order SQL injection"
+      ]
+    },
+    {
+      "id": "WSTG-v42-INPV-15",
+      "chapter": "INPV",
+      "num": 15,
+      "title": "HTTP splitting/smuggling",
+      "how_to_test": "Compare request interpretation at each proxy boundary in owned lab or explicitly authorized scope; begin with benign requests, no desync flooding.",
+      "evidence": "Different hop parsing causes measurable request routing or response association mismatch.",
+      "reject_if": "Timeouts, generic 400s, and intermediary retries are not proof of smuggling.",
+      "maps": [
+        "HTTP request smuggling, classic",
+        "CRLF injection / HTTP response splitting"
+      ]
+    },
+    {
+      "id": "WSTG-v42-INPV-16",
+      "chapter": "INPV",
+      "num": 16,
+      "title": "HTTP incoming requests",
+      "how_to_test": "Record baseline parse/transport behavior; vary one benign input type or boundary at a time and compare server processing with a safe oracle and negative control.",
+      "evidence": "A defined trust boundary is crossed, with reproducible server interpretation difference and application-level effect.",
+      "reject_if": "Raw errors, status code changes, WAF rejection or a banner alone do not establish exploitation.",
+      "maps": []
+    },
+    {
+      "id": "WSTG-v42-INPV-17",
+      "chapter": "INPV",
+      "num": 17,
+      "title": "Host header injection",
+      "how_to_test": "Record baseline parse/transport behavior; vary one benign input type or boundary at a time and compare server processing with a safe oracle and negative control.",
+      "evidence": "A defined trust boundary is crossed, with reproducible server interpretation difference and application-level effect.",
+      "reject_if": "Raw errors, status code changes, WAF rejection or a banner alone do not establish exploitation.",
+      "maps": [
+        "Host header injection"
+      ]
+    },
+    {
+      "id": "WSTG-v42-INPV-18",
+      "chapter": "INPV",
+      "num": 18,
+      "title": "Server-side template injection",
+      "how_to_test": "Find template-rendered owned values; test an inert arithmetic marker supported by known template engine; compare literal rendering and controls.",
+      "evidence": "Server evaluates user-origin expression in a privileged template context.",
+      "reject_if": "Arithmetic evaluation alone may be feature-by-design; show prohibited capability or cross-tenant effect.",
+      "maps": [
+        "Server-Side Template Injection",
+        "Expression language injection (SpEL, OGNL, MVEL)"
+      ]
+    },
+    {
+      "id": "WSTG-v42-INPV-19",
+      "chapter": "INPV",
+      "num": 19,
+      "title": "Server-side request forgery",
+      "how_to_test": "Submit externally observable URL to an authorized webhook/preview feature using a unique callback under your control; compare allowlist and redirect behavior.",
+      "evidence": "Server contacts a prohibited endpoint or can cross a network trust boundary.",
+      "reject_if": "Only use an approved callback host; DNS resolution by a browser does not prove backend SSRF.",
+      "maps": [
+        "Full-read SSRF",
+        "Blind SSRF",
+        "Cloud metadata access"
+      ]
+    },
+    {
+      "id": "WSTG-v42-ERRH-01",
+      "chapter": "ERRH",
+      "num": 1,
+      "title": "Improper error handling",
+      "how_to_test": "Inventory target-specific feature, expected security invariant and baseline behavior; run one safe negative variant using owned objects and document the complete request path.",
+      "evidence": "A prohibited behavior or sensitive exposure is independently verifiable.",
+      "reject_if": "Do not report fingerprint/indicator alone without confirmed adverse consequence.",
+      "maps": [
+        "Visible detailed error / debug page",
+        "Mishandling of exceptional conditions"
+      ]
+    },
+    {
+      "id": "WSTG-v42-ERRH-02",
+      "chapter": "ERRH",
+      "num": 2,
+      "title": "Stack traces",
+      "how_to_test": "Inventory target-specific feature, expected security invariant and baseline behavior; run one safe negative variant using owned objects and document the complete request path.",
+      "evidence": "A prohibited behavior or sensitive exposure is independently verifiable.",
+      "reject_if": "Do not report fingerprint/indicator alone without confirmed adverse consequence.",
+      "maps": [
+        "Visible detailed error / debug page"
+      ]
+    },
+    {
+      "id": "WSTG-v42-CRYP-01",
+      "chapter": "CRYP",
+      "num": 1,
+      "title": "Weak TLS",
+      "how_to_test": "Record baseline parse/transport behavior; vary one benign input type or boundary at a time and compare server processing with a safe oracle and negative control.",
+      "evidence": "A defined trust boundary is crossed, with reproducible server interpretation difference and application-level effect.",
+      "reject_if": "Raw errors, status code changes, WAF rejection or a banner alone do not establish exploitation.",
+      "maps": [
+        "Insecure SSL/TLS"
+      ]
+    },
+    {
+      "id": "WSTG-v42-CRYP-02",
+      "chapter": "CRYP",
+      "num": 2,
+      "title": "Padding oracle",
+      "how_to_test": "Record baseline parse/transport behavior; vary one benign input type or boundary at a time and compare server processing with a safe oracle and negative control.",
+      "evidence": "A defined trust boundary is crossed, with reproducible server interpretation difference and application-level effect.",
+      "reject_if": "Raw errors, status code changes, WAF rejection or a banner alone do not establish exploitation.",
+      "maps": [
+        "Padding oracle attack"
+      ]
+    },
+    {
+      "id": "WSTG-v42-CRYP-03",
+      "chapter": "CRYP",
+      "num": 3,
+      "title": "Unencrypted sensitive information",
+      "how_to_test": "Record baseline parse/transport behavior; vary one benign input type or boundary at a time and compare server processing with a safe oracle and negative control.",
+      "evidence": "A defined trust boundary is crossed, with reproducible server interpretation difference and application-level effect.",
+      "reject_if": "Raw errors, status code changes, WAF rejection or a banner alone do not establish exploitation.",
+      "maps": [
+        "Unencrypted sensitive data at rest",
+        "Cleartext transmission of the session token"
+      ]
+    },
+    {
+      "id": "WSTG-v42-CRYP-04",
+      "chapter": "CRYP",
+      "num": 4,
+      "title": "Weak encryption",
+      "how_to_test": "Record baseline parse/transport behavior; vary one benign input type or boundary at a time and compare server processing with a safe oracle and negative control.",
+      "evidence": "A defined trust boundary is crossed, with reproducible server interpretation difference and application-level effect.",
+      "reject_if": "Raw errors, status code changes, WAF rejection or a banner alone do not establish exploitation.",
+      "maps": [
+        "Use of a broken cryptographic primitive or a vulnerable crypto library",
+        "Weak hash: lack of salt, predictable salt, insufficient key stretching"
+      ]
+    },
+    {
+      "id": "WSTG-v42-BUSL-01",
+      "chapter": "BUSL",
+      "num": 1,
+      "title": "Data validation",
+      "how_to_test": "Write the business invariant; create two owned fixtures; test normal transition, invalid sequence and post-state, without financial or operational impact.",
+      "evidence": "The persisted state violates an enforced business rule or yields unintended benefit.",
+      "reject_if": "A 2xx response is not enough; retries, async state and intended limits require verification.",
+      "maps": [
+        "Price / amount / discount tampering",
+        "Negative or fractional quantity"
+      ]
+    },
+    {
+      "id": "WSTG-v42-BUSL-02",
+      "chapter": "BUSL",
+      "num": 2,
+      "title": "Request forgery",
+      "how_to_test": "Inventory target-specific feature, expected security invariant and baseline behavior; run one safe negative variant using owned objects and document the complete request path.",
+      "evidence": "A prohibited behavior or sensitive exposure is independently verifiable.",
+      "reject_if": "Do not report fingerprint/indicator alone without confirmed adverse consequence.",
+      "maps": [
+        "CSRF, authenticated action"
+      ]
+    },
+    {
+      "id": "WSTG-v42-BUSL-03",
+      "chapter": "BUSL",
+      "num": 3,
+      "title": "Integrity checks",
+      "how_to_test": "Write the business invariant; create two owned fixtures; test normal transition, invalid sequence and post-state, without financial or operational impact.",
+      "evidence": "The persisted state violates an enforced business rule or yields unintended benefit.",
+      "reject_if": "A 2xx response is not enough; retries, async state and intended limits require verification.",
+      "maps": [
+        "Client-side entitlement / feature-flag checks",
+        "Mass assignment / over-posting"
+      ]
+    },
+    {
+      "id": "WSTG-v42-BUSL-04",
+      "chapter": "BUSL",
+      "num": 4,
+      "title": "Process timing",
+      "how_to_test": "Model idempotency and pre/post state. Perform sequential controls, then a small bounded two-request overlap on owned resources if permitted.",
+      "evidence": "One-time state is granted twice or invalid state persists from concurrency.",
+      "reject_if": "Do not use high request rates; concurrency alone is not business impact.",
+      "maps": [
+        "Time-of-check to time-of-use",
+        "Race condition on a limit (limit overrun)"
+      ]
+    },
+    {
+      "id": "WSTG-v42-BUSL-05",
+      "chapter": "BUSL",
+      "num": 5,
+      "title": "Function use limits",
+      "how_to_test": "Write the business invariant; create two owned fixtures; test normal transition, invalid sequence and post-state, without financial or operational impact.",
+      "evidence": "The persisted state violates an enforced business rule or yields unintended benefit.",
+      "reject_if": "A 2xx response is not enough; retries, async state and intended limits require verification.",
+      "maps": [
+        "Rate limit bypass",
+        "Unrestricted access to sensitive business flows"
+      ]
+    },
+    {
+      "id": "WSTG-v42-BUSL-06",
+      "chapter": "BUSL",
+      "num": 6,
+      "title": "Workflow circumvention",
+      "how_to_test": "Record expected transition graph for owned entity; attempt later-step request without earlier step; compare audit events and final entitlement.",
+      "evidence": "A forbidden final state is reachable without mandatory approval.",
+      "reject_if": "HTTP 200 from a workflow status endpoint is not sufficient.",
+      "maps": [
+        "Workflow step skipping"
+      ]
+    },
+    {
+      "id": "WSTG-v42-BUSL-07",
+      "chapter": "BUSL",
+      "num": 7,
+      "title": "Application misuse",
+      "how_to_test": "Write the business invariant; create two owned fixtures; test normal transition, invalid sequence and post-state, without financial or operational impact.",
+      "evidence": "The persisted state violates an enforced business rule or yields unintended benefit.",
+      "reject_if": "A 2xx response is not enough; retries, async state and intended limits require verification.",
+      "maps": [
+        "Unrestricted access to sensitive business flows"
+      ]
+    },
+    {
+      "id": "WSTG-v42-BUSL-08",
+      "chapter": "BUSL",
+      "num": 8,
+      "title": "Unexpected file uploads",
+      "how_to_test": "Inventory allowed file endpoints and owned file objects; compare read/write/extension/preview behavior using a benign marker; inspect response plus stored artifact and cache.",
+      "evidence": "A prohibited file or object operation completes in an owned fixture, or unintended sensitive content becomes readable.",
+      "reject_if": "Distinct filenames, preview-only success, public files, or metadata alone are not security proof.",
+      "maps": [
+        "Extension / content-type / magic-byte bypass",
+        "No size limit / no antivirus"
+      ]
+    },
+    {
+      "id": "WSTG-v42-BUSL-09",
+      "chapter": "BUSL",
+      "num": 9,
+      "title": "Malicious file uploads",
+      "how_to_test": "Inventory allowed file endpoints and owned file objects; compare read/write/extension/preview behavior using a benign marker; inspect response plus stored artifact and cache.",
+      "evidence": "A prohibited file or object operation completes in an owned fixture, or unintended sensitive content becomes readable.",
+      "reject_if": "Distinct filenames, preview-only success, public files, or metadata alone are not security proof.",
+      "maps": [
+        "Unrestricted upload to RCE",
+        "Stored XSS / SVG payloads via upload"
+      ]
+    },
+    {
+      "id": "WSTG-v42-CLNT-01",
+      "chapter": "CLNT",
+      "num": 1,
+      "title": "DOM-based XSS",
+      "how_to_test": "Trace location/query/fragment/postMessage into DOM sinks with DevTools. Use harmless execution proof, then reproduce under normal CSP.",
+      "evidence": "Untrusted input reaches executable sink and runs under the affected origin.",
+      "reject_if": "DOM text insertion or reflected markup alone does not prove XSS.",
+      "maps": [
+        "DOM-based XSS"
+      ]
+    },
+    {
+      "id": "WSTG-v42-CLNT-02",
+      "chapter": "CLNT",
+      "num": 2,
+      "title": "JavaScript execution",
+      "how_to_test": "Locate user-controlled source; trace browser sink or network request; test inert marker first then safe browser-only execution in an owned origin; capture DevTools trace.",
+      "evidence": "Browser code runs or a disallowed authenticated cross-origin request/data read occurs under a trusted origin.",
+      "reject_if": "Reflection, permissive headers, navigation, or JS source presence without an effect are not proof.",
+      "maps": [
+        "DOM-based XSS"
+      ]
+    },
+    {
+      "id": "WSTG-v42-CLNT-03",
+      "chapter": "CLNT",
+      "num": 3,
+      "title": "HTML injection",
+      "how_to_test": "Locate user-controlled source; trace browser sink or network request; test inert marker first then safe browser-only execution in an owned origin; capture DevTools trace.",
+      "evidence": "Browser code runs or a disallowed authenticated cross-origin request/data read occurs under a trusted origin.",
+      "reject_if": "Reflection, permissive headers, navigation, or JS source presence without an effect are not proof.",
+      "maps": [
+        "HTML content injection"
+      ]
+    },
+    {
+      "id": "WSTG-v42-CLNT-04",
+      "chapter": "CLNT",
+      "num": 4,
+      "title": "Client-side URL redirect",
+      "how_to_test": "Locate user-controlled source; trace browser sink or network request; test inert marker first then safe browser-only execution in an owned origin; capture DevTools trace.",
+      "evidence": "Browser code runs or a disallowed authenticated cross-origin request/data read occurs under a trusted origin.",
+      "reject_if": "Reflection, permissive headers, navigation, or JS source presence without an effect are not proof.",
+      "maps": [
+        "Open redirect in the client router",
+        "Unvalidated redirect / open redirect"
+      ]
+    },
+    {
+      "id": "WSTG-v42-CLNT-05",
+      "chapter": "CLNT",
+      "num": 5,
+      "title": "CSS injection",
+      "how_to_test": "Locate user-controlled source; trace browser sink or network request; test inert marker first then safe browser-only execution in an owned origin; capture DevTools trace.",
+      "evidence": "Browser code runs or a disallowed authenticated cross-origin request/data read occurs under a trusted origin.",
+      "reject_if": "Reflection, permissive headers, navigation, or JS source presence without an effect are not proof.",
+      "maps": [
+        "CSS injection and style-based exfiltration"
+      ]
+    },
+    {
+      "id": "WSTG-v42-CLNT-06",
+      "chapter": "CLNT",
+      "num": 6,
+      "title": "Client-side resource manipulation",
+      "how_to_test": "Inventory target-specific feature, expected security invariant and baseline behavior; run one safe negative variant using owned objects and document the complete request path.",
+      "evidence": "A prohibited behavior or sensitive exposure is independently verifiable.",
+      "reject_if": "Do not report fingerprint/indicator alone without confirmed adverse consequence.",
+      "maps": [
+        "Client-side prototype pollution",
+        "DOM clobbering"
+      ]
+    },
+    {
+      "id": "WSTG-v42-CLNT-07",
+      "chapter": "CLNT",
+      "num": 7,
+      "title": "CORS",
+      "how_to_test": "With owned session, issue cross-origin read from an explicitly controlled test origin; verify preflight/credentials and actual readable sensitive body.",
+      "evidence": "Attacker-origin JavaScript reads protected data cross-origin.",
+      "reject_if": "Reflected ACAO header alone is not exploitable CORS.",
+      "maps": [
+        "CORS: reflected origin with credentials",
+        "CORS: null origin allowed",
+        "CORS: origin matching mistakes"
+      ]
+    },
+    {
+      "id": "WSTG-v42-CLNT-08",
+      "chapter": "CLNT",
+      "num": 8,
+      "title": "Cross-site flashing",
+      "how_to_test": "Locate user-controlled source; trace browser sink or network request; test inert marker first then safe browser-only execution in an owned origin; capture DevTools trace.",
+      "evidence": "Browser code runs or a disallowed authenticated cross-origin request/data read occurs under a trusted origin.",
+      "reject_if": "Reflection, permissive headers, navigation, or JS source presence without an effect are not proof.",
+      "maps": []
+    },
+    {
+      "id": "WSTG-v42-CLNT-09",
+      "chapter": "CLNT",
+      "num": 9,
+      "title": "Clickjacking",
+      "how_to_test": "Inventory target-specific feature, expected security invariant and baseline behavior; run one safe negative variant using owned objects and document the complete request path.",
+      "evidence": "A prohibited behavior or sensitive exposure is independently verifiable.",
+      "reject_if": "Do not report fingerprint/indicator alone without confirmed adverse consequence.",
+      "maps": [
+        "Clickjacking on a sensitive click-based action"
+      ]
+    },
+    {
+      "id": "WSTG-v42-CLNT-10",
+      "chapter": "CLNT",
+      "num": 10,
+      "title": "WebSockets",
+      "how_to_test": "Use owned identities for WebSocket handshake and post-auth event replay; vary session lifecycle and topic subscription.",
+      "evidence": "Unauthorized subscription or privileged event/action works after authorization change.",
+      "reject_if": "Open socket handshake alone is not a security defect.",
+      "maps": [
+        "Cross-Site WebSocket Hijacking (CSWSH)"
+      ]
+    },
+    {
+      "id": "WSTG-v42-CLNT-11",
+      "chapter": "CLNT",
+      "num": 11,
+      "title": "Web messaging",
+      "how_to_test": "Trace message origin, source, schema, and sink; send benign controlled messages from owned test origin.",
+      "evidence": "Untrusted origin message invokes privileged action or DOM code execution.",
+      "reject_if": "Message listener without impact is not reportable.",
+      "maps": [
+        "postMessage missing origin validation, both directions",
+        "postMessage XSS"
+      ]
+    },
+    {
+      "id": "WSTG-v42-CLNT-12",
+      "chapter": "CLNT",
+      "num": 12,
+      "title": "Browser storage",
+      "how_to_test": "Inventory allowed file endpoints and owned file objects; compare read/write/extension/preview behavior using a benign marker; inspect response plus stored artifact and cache.",
+      "evidence": "A prohibited file or object operation completes in an owned fixture, or unintended sensitive content becomes readable.",
+      "reject_if": "Distinct filenames, preview-only success, public files, or metadata alone are not security proof.",
+      "maps": [
+        "Sensitive token in localStorage / sessionStorage"
+      ]
+    },
+    {
+      "id": "WSTG-v42-CLNT-13",
+      "chapter": "CLNT",
+      "num": 13,
+      "title": "Cross-site script inclusion",
+      "how_to_test": "Locate user-controlled source; trace browser sink or network request; test inert marker first then safe browser-only execution in an owned origin; capture DevTools trace.",
+      "evidence": "Browser code runs or a disallowed authenticated cross-origin request/data read occurs under a trusted origin.",
+      "reject_if": "Reflection, permissive headers, navigation, or JS source presence without an effect are not proof.",
+      "maps": [
+        "Cross-Site Script Inclusion (XSSI) and JSON hijacking"
+      ]
+    }
+  ]
+}

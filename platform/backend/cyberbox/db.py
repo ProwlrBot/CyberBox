@@ -1,25 +1,57 @@
-"""SQLite access layer (WAL mode)."""
+"""SQLite access layer."""
 from __future__ import annotations
 
 import json
 import sqlite3
 import threading
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterable
 
 from .config import get_settings
 
 _local = threading.local()
-_lock = threading.Lock()
+_lock = threading.RLock()  # RLock: init_db() holds lock then calls conn()→_connect()
+
+
+def _maybe_commit() -> None:
+    """Commit now unless we are inside a batch(), where one commit covers the whole block."""
+    if getattr(_local, "batch_depth", 0) == 0:
+        conn().commit()
+
+
+@contextmanager
+def batch():
+    """Group many writes into ONE transaction/commit (one fsync instead of hundreds).
+
+    Reentrant per thread; the outermost block commits on success and rolls the whole block
+    back on error. Seeding 386 taxonomy classes drops from ~40s of per-row fsyncs to <1s."""
+    _local.batch_depth = getattr(_local, "batch_depth", 0) + 1
+    try:
+        yield
+    except Exception:
+        _local.batch_depth = 0
+        conn().rollback()
+        raise
+    else:
+        _local.batch_depth -= 1
+        if _local.batch_depth == 0:
+            conn().commit()
 
 
 def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(get_settings().db_path, check_same_thread=False, timeout=30)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode = WAL")
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA busy_timeout = 5000")
-    return conn
+    # Serialize initial connections (journal-mode conversion needs an exclusive lock).
+    # Journal mode + synchronous are env-aware (config): WAL+NORMAL on a real FS (durable
+    # and fast), DELETE+NORMAL on WSL2 (WAL's mmap SHM hangs there). Never synchronous=OFF.
+    s = get_settings()
+    with _lock:
+        c = sqlite3.connect(s.db_path, check_same_thread=False, timeout=60)
+        c.row_factory = sqlite3.Row
+        c.execute(f"PRAGMA journal_mode = {s.db_journal_mode}")
+        c.execute("PRAGMA foreign_keys = ON")
+        c.execute("PRAGMA busy_timeout = 15000")
+        c.execute(f"PRAGMA synchronous = {s.db_synchronous}")
+        return c
 
 
 def conn() -> sqlite3.Connection:
@@ -28,6 +60,78 @@ def conn() -> sqlite3.Connection:
         c = _connect()
         _local.conn = c
     return c
+
+
+def ensure_journal_mode() -> None:
+    """Bring the DB to the configured journal mode before uvicorn spawns threads.
+
+    WAL (or other) target: a plain PRAGMA sets it, non-destructively.
+    DELETE target on a DB currently in WAL (WSL2): migrate via the backup() API to avoid
+    the mmap/SHM hang. Guarded by a cross-process lock, verified with integrity_check, and
+    non-destructive — the original is copied to <db>.pre_migrate.bak before replacement and
+    stale WAL/SHM are removed only after their committed content is confirmed in the new DB.
+    """
+    import os
+    import fcntl
+    import shutil
+    s = get_settings()
+    db_path = str(s.db_path)
+    target = s.db_journal_mode.lower()
+
+    lock_path = db_path + ".migrate.lock"
+    lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        has_wal = os.path.exists(db_path + "-wal")
+
+        c = sqlite3.connect(db_path, timeout=30)
+        try:
+            current = c.execute("PRAGMA journal_mode").fetchone()[0].lower()
+            if target != "delete":
+                new = c.execute(f"PRAGMA journal_mode = {s.db_journal_mode}").fetchone()[0].lower()
+                c.execute(f"PRAGMA synchronous = {s.db_synchronous}")
+                if new != target:
+                    raise RuntimeError(f"could not set journal_mode={target}, got {new}")
+                return
+            if current == "delete" and not has_wal:
+                return  # already in the target state
+        finally:
+            c.close()
+
+        # target == delete but DB is in WAL (or a stale WAL exists): migrate via backup().
+        tmp_path = db_path + ".migrate_tmp"
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        src = sqlite3.connect(db_path, timeout=30, isolation_level=None)
+        src.execute("PRAGMA busy_timeout = 10000")
+        try:
+            src.execute("PRAGMA wal_checkpoint(PASSIVE)")  # fold committed frames in if possible
+        except sqlite3.OperationalError:
+            pass  # may fail on WSL2 SHM; backup() still copies committed WAL content
+        dst = sqlite3.connect(tmp_path, isolation_level=None)
+        src.backup(dst)
+        src.close()
+        dst.execute("PRAGMA journal_mode = DELETE")
+        dst.execute(f"PRAGMA synchronous = {s.db_synchronous}")
+        integ = dst.execute("PRAGMA integrity_check").fetchone()[0]
+        dst.close()
+        for ext in ["-wal", "-shm"]:
+            p = tmp_path + ext
+            if os.path.exists(p):
+                os.unlink(p)
+        if integ != "ok":
+            os.unlink(tmp_path)
+            raise RuntimeError(f"migrated DB failed integrity_check: {integ!r}")
+
+        shutil.copy2(db_path, db_path + ".pre_migrate.bak")  # keep a recoverable original
+        shutil.move(tmp_path, db_path)
+        for ext in ["-wal", "-shm"]:
+            p = db_path + ext
+            if os.path.exists(p):
+                os.unlink(p)
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        os.close(lock_fd)
 
 
 def init_db() -> None:
@@ -49,7 +153,7 @@ def query_one(sql: str, params: Iterable[Any] = ()) -> dict | None:
 def execute(sql: str, params: Iterable[Any] = ()) -> None:
     with _lock:
         conn().execute(sql, tuple(params))
-        conn().commit()
+        _maybe_commit()
 
 
 def insert(table: str, row: dict) -> dict:
@@ -57,7 +161,7 @@ def insert(table: str, row: dict) -> dict:
     placeholders = ", ".join("?" for _ in row)
     with _lock:
         conn().execute(f"INSERT INTO {table} ({cols}) VALUES ({placeholders})", tuple(row.values()))
-        conn().commit()
+        _maybe_commit()
     return row
 
 
@@ -70,7 +174,7 @@ def upsert(table: str, row: dict, conflict_cols: list[str], update_cols: list[st
            f"ON CONFLICT ({conflict}) DO UPDATE SET {updates}")
     with _lock:
         conn().execute(sql, tuple(row.values()))
-        conn().commit()
+        _maybe_commit()
 
 
 JSON_COLUMNS = {
@@ -82,7 +186,8 @@ JSON_COLUMNS = {
     "inputs", "context", "supporting_artifacts", "contradicting_artifacts",
     "knowledge_citations", "result", "artifact_ids", "finding_ids",
     "technology_tags", "evidence_ids", "expected",
-    "allowed_methods", "permissions",
+    "allowed_methods", "permissions", "reference_urls", "files_changed",
+    "hosts", "spec", "summary",
 }
 
 

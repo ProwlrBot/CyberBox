@@ -2,11 +2,12 @@ import { lazy, Suspense } from "react";
 import type { RouteObject } from "react-router-dom";
 import {
   Target, Search, Activity, Flag, Archive, Workflow, BarChart2,
-  Code2, GitBranch, Network, GitMerge, Layers, GitFork,
-  FlaskConical, Globe, Container, Zap, Package, LayoutGrid, Server,
+  GitBranch, Network,
+  FlaskConical, Container, Zap, LayoutGrid, Server,
   Plug, Wrench, Bot, Cpu, Brain,
   Monitor, Terminal, BookOpen, FolderOpen, FileCode2, ScrollText, Compass,
   Radio, Heart, ShieldAlert, KeyRound, Settings, ShieldCheck, ListTodo,
+  Crosshair, Radar, ClipboardCheck, FileDiff, Camera, Table2, Fingerprint,
 } from "lucide-react";
 import { StubPage } from "./pages/_stubs/StubPage";
 
@@ -15,22 +16,29 @@ const Targets      = lazy(() => import("./pages/hunt/Targets"));
 const Findings     = lazy(() => import("./pages/hunt/Findings"));
 const CveIntel     = lazy(() => import("./pages/hunt/CveIntel"));
 const Jobs         = lazy(() => import("./pages/hunt/Jobs"));
+const Cockpit      = lazy(() => import("./pages/hunt/Cockpit"));
+const Wstg         = lazy(() => import("./pages/hunt/Wstg"));
+const JsDiff       = lazy(() => import("./pages/hunt/JsDiff"));
+const Screenshots  = lazy(() => import("./pages/hunt/Screenshots"));
+const Genome       = lazy(() => import("./pages/hunt/Genome"));
+const NodeInspector = lazy(() => import("./pages/hunt/NodeInspector"));
+const ToolPalette  = lazy(() => import("./pages/hunt/ToolPalette"));
+const Surface      = lazy(() => import("./pages/hunt/Surface"));
+const Memory       = lazy(() => import("./pages/hunt/Memory"));
 const Traffic      = lazy(() => import("./pages/hunt/Traffic"));
 const Evidence     = lazy(() => import("./pages/hunt/Evidence"));
 const Workflows    = lazy(() => import("./pages/hunt/Workflows"));
 const Reports      = lazy(() => import("./pages/hunt/Reports"));
+const Campaigns    = lazy(() => import("./pages/hunt/Campaigns"));
+const CampaignDetail = lazy(() => import("./pages/hunt/CampaignDetail"));
+const Techniques   = lazy(() => import("./pages/hunt/Techniques"));
+const Disclosures  = lazy(() => import("./pages/hunt/Disclosures"));
 const SettingsPage = lazy(() => import("./pages/settings/Settings"));
 const BrowserHunt  = lazy(() => import("./pages/workspace/BrowserHunt"));
 const HQ           = lazy(() => import("./pages/workspace/HQ"));
 const ReconPage    = lazy(() => import("./pages/hunt/Recon"));
-const Raptor       = lazy(() => import("./pages/source/Raptor"));
-const Repositories = lazy(() => import("./pages/source/Repositories"));
-const SourceGraph  = lazy(() => import("./pages/source/SourceGraph"));
-const PatchIntel      = lazy(() => import("./pages/source/PatchIntel"));
-const GitLabProfile   = lazy(() => import("./pages/source/GitLabProfile"));
-const VercelProfile   = lazy(() => import("./pages/source/VercelProfile"));
-const WordPressProfile = lazy(() => import("./pages/source/WordPressProfile"));
-const VariantHunt  = lazy(() => import("./pages/source/VariantHunt"));
+const Source       = lazy(() => import("./pages/source/Source"));
+const NewPentest   = lazy(() => import("./pages/pentests/NewPentest"));
 const LabManager   = lazy(() => import("./pages/labs/LabManager"));
 const WordPress    = lazy(() => import("./pages/labs/WordPress"));
 const GitLabLab    = lazy(() => import("./pages/labs/GitLab"));
@@ -56,24 +64,30 @@ export interface NavSection { id: string; label: string; items: NavItem[] }
 
 export const NAV_SECTIONS: NavSection[] = [
   { id: "hunt", label: "HUNT", items: [
+    { label: "New Pentest", path: "/pentests/new", Icon: Crosshair },
+    { label: "Cockpit",   path: "/hunt/cockpit",   Icon: LayoutGrid },
+    { label: "WSTG v4.2", path: "/hunt/wstg",      Icon: ClipboardCheck },
     { label: "Targets",   path: "/hunt/targets",   Icon: Target },
     { label: "Recon",     path: "/hunt/recon",     Icon: Search },
     { label: "Traffic",   path: "/hunt/traffic",   Icon: Activity },
+    { label: "API Genome", path: "/hunt/genome",   Icon: Network },
+    { label: "Node Inspector", path: "/hunt/inspector", Icon: Table2 },
+    { label: "Tool Palette", path: "/hunt/tools", Icon: Wrench },
+    { label: "JS Diff",    path: "/hunt/js-diff",  Icon: FileDiff },
+    { label: "Screenshots", path: "/hunt/screenshots", Icon: Camera },
+    { label: "Surface",    path: "/hunt/surface",  Icon: Radar },
     { label: "Findings",  path: "/hunt/findings",  Icon: Flag },
     { label: "CVE Intel", path: "/hunt/cve-intel", Icon: ShieldAlert },
+    { label: "Disclosures", path: "/hunt/disclosures", Icon: Fingerprint },
     { label: "Evidence",  path: "/hunt/evidence",  Icon: Archive },
     { label: "Workflows", path: "/hunt/workflows", Icon: Workflow },
     { label: "Reports",   path: "/hunt/reports",   Icon: BarChart2 },
+    { label: "Campaigns", path: "/hunt/campaigns", Icon: Crosshair },
+    { label: "Techniques", path: "/hunt/techniques", Icon: BookOpen },
+    { label: "Memory",     path: "/hunt/memory",    Icon: Brain },
   ]},
   { id: "source", label: "SOURCE", items: [
-    { label: "Raptor",       path: "/source/raptor",    Icon: Code2 },
-    { label: "Repositories", path: "/source/repos",     Icon: GitBranch },
-    { label: "Source Graph", path: "/source/graph",     Icon: Network },
-    { label: "Patch Intel",  path: "/source/patch",     Icon: GitMerge },
-    { label: "Variant Hunt", path: "/source/variants",  Icon: Layers },
-    { label: "GitLab",       path: "/source/gitlab",    Icon: GitFork },
-    { label: "Vercel Hunt",  path: "/source/vercel",    Icon: Globe },
-    { label: "WordPress",    path: "/source/wordpress", Icon: Package },
+    { label: "Source", path: "/source", Icon: GitBranch },
   ]},
   { id: "labs", label: "LABS", items: [
     { label: "Lab Manager", path: "/labs/manager",    Icon: FlaskConical },
@@ -122,20 +136,28 @@ export const appRoutes: RouteObject[] = [
   { path: "hunt/targets",   element: <Suspense fallback={null}><Targets /></Suspense> },
   { path: "hunt/recon",     element: <Suspense fallback={null}><ReconPage /></Suspense> },
   { path: "hunt/traffic",   element: <Suspense fallback={null}><Traffic /></Suspense> },
+  { path: "hunt/cockpit",   element: <Suspense fallback={null}><Cockpit /></Suspense> },
+  { path: "hunt/wstg",      element: <Suspense fallback={null}><Wstg /></Suspense> },
+  { path: "hunt/js-diff",   element: <Suspense fallback={null}><JsDiff /></Suspense> },
+  { path: "hunt/screenshots", element: <Suspense fallback={null}><Screenshots /></Suspense> },
+  { path: "hunt/genome",    element: <Suspense fallback={null}><Genome /></Suspense> },
+  { path: "hunt/inspector", element: <Suspense fallback={null}><NodeInspector /></Suspense> },
+  { path: "hunt/tools",     element: <Suspense fallback={null}><ToolPalette /></Suspense> },
+  { path: "hunt/surface",   element: <Suspense fallback={null}><Surface /></Suspense> },
   { path: "hunt/findings",  element: <Suspense fallback={null}><Findings /></Suspense> },
   { path: "hunt/cve-intel", element: <Suspense fallback={null}><CveIntel /></Suspense> },
   { path: "hunt/evidence",  element: <Suspense fallback={null}><Evidence /></Suspense> },
-  { path: "hunt/workflows", element: <Suspense fallback={null}><Workflows /></Suspense> },
-  { path: "hunt/reports",   element: <Suspense fallback={null}><Reports /></Suspense> },
+  { path: "hunt/workflows",    element: <Suspense fallback={null}><Workflows /></Suspense> },
+  { path: "hunt/reports",     element: <Suspense fallback={null}><Reports /></Suspense> },
+  { path: "hunt/campaigns",   element: <Suspense fallback={null}><Campaigns /></Suspense> },
+  { path: "hunt/campaigns/:id", element: <Suspense fallback={null}><CampaignDetail /></Suspense> },
+  { path: "hunt/techniques",   element: <Suspense fallback={null}><Techniques /></Suspense> },
+  { path: "hunt/disclosures",  element: <Suspense fallback={null}><Disclosures /></Suspense> },
+  { path: "hunt/memory",       element: <Suspense fallback={null}><Memory /></Suspense> },
   // Source
-  { path: "source/raptor",    element: <Suspense fallback={null}><Raptor /></Suspense> },
-  { path: "source/repos",     element: <Suspense fallback={null}><Repositories /></Suspense> },
-  { path: "source/graph",     element: <Suspense fallback={null}><SourceGraph /></Suspense> },
-  { path: "source/patch",     element: <Suspense fallback={null}><PatchIntel /></Suspense> },
-  { path: "source/variants",  element: <Suspense fallback={null}><VariantHunt /></Suspense> },
-  { path: "source/gitlab",    element: <Suspense fallback={null}><GitLabProfile /></Suspense> },
-  { path: "source/vercel",    element: <Suspense fallback={null}><VercelProfile /></Suspense> },
-  { path: "source/wordpress", element: <Suspense fallback={null}><WordPressProfile /></Suspense> },
+  { path: "source",           element: <Suspense fallback={null}><Source /></Suspense> },
+  { path: "source/:tab",      element: <Suspense fallback={null}><Source /></Suspense> },
+  { path: "pentests/new",     element: <Suspense fallback={null}><NewPentest /></Suspense> },
   { path: "source/*",         element: S("Source") },
   // Labs
   { path: "labs/manager",     element: <Suspense fallback={null}><LabManager /></Suspense> },

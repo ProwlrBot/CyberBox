@@ -13,25 +13,63 @@ import urllib.request
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from .. import db
 from ..auth import current_user, require_internal_service
 from ..config import get_settings
-from ..services import analytics, artifacts, bundles, capabilities, events, executions, knowledge, memory, playbooks, policy, project_templates, research, triage, wordfence
+from ..services import advisories, analytics, artifacts, bundles, capabilities, events, executions, knowledge, lifecycle, memory, playbooks, policy, project_templates, research, scanner, source_revision, tool_registry, triage, wordfence
+from ..services import github as github_svc
+from ..services import scheduler as scheduler_svc
+from ..services import surface as surface_svc
+from ..services import sarif as sarif_svc
+from ..services import remediation as remediation_svc
+from ..services import notify as notify_svc
 from ..services import gori as gori_svc
 from ..services import cve as cve_svc
 from ..services import model as model_svc
 from ..services import api_genome as genome_svc
 from ..services import campaign as campaign_svc
+from ..services import fingerprint as fingerprint_svc
+from ..services import engines as engines_svc
+from ..services import taxonomy as taxonomy_svc
+from ..services import wstg as wstg_svc
+from ..services import vulnx as vulnx_svc
+from ..services import js_diff as js_diff_svc
+from ..services import screenshots as screenshots_svc
+from ..services import toolspec as toolspec_svc
+from ..services import tool_runner
+from ..services import hacktivity as hacktivity_svc
+from ..services import technique as technique_svc
 
 router = APIRouter(prefix="/api/v1", tags=["api"])
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _bounty_tool(script_name: str) -> str | None:
+    """Resolve a helper script from the claude-bug-bounty toolkit.
+
+    Honors $CYBERBOX_BOUNTY_TOOLS_DIR, then ~/claude-bug-bounty/tools, then a repo-relative
+    sibling checkout — so the backend is not tied to one operator's home layout.
+    """
+    roots = [
+        os.environ.get("CYBERBOX_BOUNTY_TOOLS_DIR"),
+        os.path.expanduser("~/claude-bug-bounty/tools"),
+        os.path.join(os.path.dirname(__file__), "..", "..", "..", "..",
+                     "claude-bug-bounty", "tools"),
+    ]
+    for root in roots:
+        if not root:
+            continue
+        candidate = os.path.join(root, script_name)
+        if os.path.isfile(candidate):
+            return candidate
+    return None
 
 
 def _slugify(name: str) -> str:
@@ -98,6 +136,10 @@ class EngagementCreate(BaseModel):
         default="authorization-pending",
         pattern="^(local-laboratory|ctf|authorized|authorization-pending|scope-uncertain|expired|out-of-scope|blocked)$",
     )
+
+
+class EngagementAutonomyUpdate(BaseModel):
+    autonomy: str = Field(pattern="^(guided|balanced|autonomous)$")
 
 
 class TargetCreate(BaseModel):
@@ -241,6 +283,13 @@ class CveSweepCreate(BaseModel):
     cvss_min: float = Field(default=7.0, ge=0.0, le=10.0, description="Minimum CVSS score (7.0 = HIGH+)")
     days_back: int = Field(default=90, ge=1, le=365)
     nvd_api_key: str = Field(default="", description="Optional NVD API key for higher rate limits")
+
+
+class VulnxSweepCreate(BaseModel):
+    techs: list[str] = Field(min_length=1, max_length=20, description="Affected products, e.g. ['wordpress', 'confluence']")
+    kev_only: bool = Field(default=False, description="Only known-exploited (KEV) CVEs")
+    template_only: bool = Field(default=False, description="Only CVEs with a nuclei template")
+    limit: int = Field(default=10, ge=1, le=100, description="Max hits per product")
 
 
 class NucleiSweepCreate(BaseModel):
@@ -420,6 +469,30 @@ def create_engagement(project_id: str, body: EngagementCreate,
 def list_engagements(project_id: str, _user: dict = Depends(current_user)) -> list[dict]:
     return [db.decode_row(r) for r in db.query(
         "SELECT * FROM engagements WHERE project_id=? ORDER BY created_at DESC", [project_id])]
+
+
+@router.patch("/engagements/{engagement_id}/autonomy")
+def update_engagement_autonomy(engagement_id: str, body: EngagementAutonomyUpdate,
+                               user: dict = Depends(current_user)) -> dict:
+    """Switch an engagement between manual (guided) and AI (autonomous) operation.
+
+    guided   = default-deny, operator approves every live action (manual mode)
+    balanced = low-impact passive runs, state-changing needs approval
+    autonomous = campaign orchestrator may act up to its risk ceiling (AI mode)
+
+    This only moves the autonomy dial; the scope/authorization gate is unchanged —
+    even 'autonomous' still passes policy.evaluate() per action, so it can never
+    exceed the engagement's authorized scope.
+    """
+    engagement = db.query_one("SELECT * FROM engagements WHERE id=?", [engagement_id])
+    if not engagement:
+        raise HTTPException(status_code=404, detail="engagement not found")
+    db.execute("UPDATE engagements SET autonomy=? WHERE id=?", [body.autonomy, engagement_id])
+    events.append(engagement["project_id"], "engagement.autonomy_changed",
+                  {"engagement_id": engagement_id, "from": engagement["autonomy"],
+                   "to": body.autonomy}, actor_type="user", actor_id=user["id"])
+    row = db.query_one("SELECT * FROM engagements WHERE id=?", [engagement_id])
+    return db.decode_row(row)
 
 
 @router.post("/projects/{project_id}/targets", status_code=201)
@@ -628,21 +701,19 @@ def start_raptor_scan(project_id: str, body: RaptorScanCreate,
                       user: dict = Depends(current_user)) -> dict:
     if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
         raise HTTPException(status_code=404, detail="project not found")
+    # Raptor is a local static source/package scan — it never reaches a target over
+    # the network, so (like wordfence) it is not engagement/scope-gated. Any most-recent
+    # engagement is recorded for provenance, but none is required.
     engagement = db.query_one(
-        "SELECT id FROM engagements WHERE project_id=? AND status IN "
-        "('active','authorized','local-laboratory','ctf') ORDER BY created_at DESC LIMIT 1",
+        "SELECT id FROM engagements WHERE project_id=? ORDER BY created_at DESC LIMIT 1",
         [project_id],
     )
-    if not engagement:
-        raise HTTPException(status_code=409, detail="active engagement required for raptor scan")
     try:
         result = scanner.run_raptor_scan(
-            project_id, engagement["id"], body.protocol, body.target_path,
-            user["id"], body.output_format,
+            project_id, engagement["id"] if engagement else None, body.protocol,
+            body.target_path, user["id"], body.output_format,
         )
         return result
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -682,6 +753,33 @@ def create_artifact(project_id: str, body: ArtifactCreate,
         raise HTTPException(status_code=413, detail="artifact exceeds 10 MiB API limit")
     return artifacts.store(project_id, body.kind, content, body.media_type,
                            body.execution_id, body.metadata)
+
+
+@router.get("/projects/{project_id}/artifacts")
+def list_artifacts(project_id: str, limit: int = 200,
+                   _user: dict = Depends(current_user)) -> list[dict]:
+    if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
+        raise HTTPException(status_code=404, detail="project not found")
+    return artifacts.list_for_project(project_id, limit)
+
+
+@router.get("/projects/{project_id}/artifacts/{artifact_id}/download")
+def download_artifact(project_id: str, artifact_id: str,
+                      _user: dict = Depends(current_user)) -> Response:
+    row = db.query_one("SELECT id FROM artifacts WHERE id=? AND project_id=?",
+                       [artifact_id, project_id])
+    if not row:
+        raise HTTPException(status_code=404, detail="artifact not found in project")
+    result = artifacts.read(artifact_id)
+    if result is None:
+        raise HTTPException(status_code=410, detail="artifact content missing or corrupt")
+    meta, content = result
+    filename = f"{meta['kind']}-{meta['sha256'][:12]}"
+    return Response(
+        content=content,
+        media_type=meta.get("media_type") or "application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/provider/projects/{project_id}/artifacts", status_code=201)
@@ -910,6 +1008,336 @@ def complete_playbook_step(run_id: str, step_id: str, body: StepComplete,
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+# ── Advisories ────────────────────────────────────────────────────────────────
+
+class AffectedVersionIn(BaseModel):
+    product_slug: str
+    version_introduced: str | None = None
+    version_fixed: str | None = None
+    version_constraint: str | None = None
+
+
+class AdvisoryIn(BaseModel):
+    source: str
+    title: str
+    external_id: str | None = None
+    description: str | None = None
+    severity: str | None = None
+    cvss: float | None = None
+    cwe: str | None = None
+    product_type: str | None = None
+    product_slug: str | None = None
+    published_at: str | None = None
+    references: list[str] = Field(default_factory=list)
+    raw: dict = Field(default_factory=dict)
+    affected: list[AffectedVersionIn] = Field(default_factory=list)
+
+
+@router.get("/advisories")
+def list_advisories(product_slug: str | None = None, source: str | None = None,
+                    limit: int = 100, _user: dict = Depends(current_user)) -> list[dict]:
+    return advisories.list_advisories(product_slug=product_slug, source=source, limit=limit)
+
+
+@router.get("/advisories/match")
+def match_advisories(product_slug: str, version: str,
+                     _user: dict = Depends(current_user)) -> list[dict]:
+    return advisories.match_product(product_slug, version)
+
+
+@router.get("/advisories/{advisory_id}")
+def get_advisory(advisory_id: str, _user: dict = Depends(current_user)) -> dict:
+    advisory = advisories.get_advisory(advisory_id)
+    if not advisory:
+        raise HTTPException(status_code=404, detail="advisory not found")
+    return advisory
+
+
+@router.post("/advisories", status_code=201)
+def create_advisory(body: AdvisoryIn, _user: dict = Depends(current_user)) -> dict:
+    advisory_id = advisories.upsert_advisory(body.model_dump(exclude={"affected"}))
+    for av in body.affected:
+        advisories.add_affected_version(
+            advisory_id, av.product_slug, av.version_introduced,
+            av.version_fixed, av.version_constraint)
+    return {"id": advisory_id}
+
+
+# ── Tool registry ─────────────────────────────────────────────────────────────
+
+@router.get("/tools/registry")
+def list_tool_registry(category: str | None = None, enabled_only: bool = False,
+                       _user: dict = Depends(current_user)) -> list[dict]:
+    return tool_registry.list_tools(category=category, enabled_only=enabled_only)
+
+
+@router.post("/tools/registry/import")
+def import_tool_registry(path: str | None = None,
+                         _user: dict = Depends(current_user)) -> dict:
+    # Default to the inventory file produced by the local cataloguer.
+    inventory = path or str(get_settings().home / "tool_inventory.txt")
+    return tool_registry.import_inventory(inventory)
+
+
+# ── Disclosed-report intel (hacktivity) ──────────────────────────────────────
+
+class HacktivitySyncIn(BaseModel):
+    owner: str = Field(default="kdairatchi")
+    repo: str = Field(default="hacktivity-bot")
+    path: str = Field(default="data/disclosures.jsonl")
+    ref: str = Field(default="HEAD")
+
+
+class HacktivityIngestIn(BaseModel):
+    jsonl: str = Field(min_length=1, description="JSONL feed, one hacktivity node per line")
+
+
+@router.post("/intel/hacktivity/sync")
+def hacktivity_sync(body: HacktivitySyncIn, _user: dict = Depends(current_user)) -> dict:
+    """Primary path — pull the bot-committed disclosures JSONL from a public repo and ingest it,
+    mapping each disclosure onto the taxonomy spine by CWE. Passive, public intel."""
+    try:
+        return hacktivity_svc.sync_from_github(body.owner, body.repo, body.path, body.ref)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"hacktivity sync failed: {exc}") from exc
+
+
+@router.post("/intel/hacktivity/ingest")
+def hacktivity_ingest(body: HacktivityIngestIn, _user: dict = Depends(current_user)) -> dict:
+    """Ingest a JSONL feed directly (paste / fallback producer)."""
+    return hacktivity_svc.ingest_jsonl(body.jsonl)
+
+
+@router.post("/intel/hacktivity/pull-live")
+def hacktivity_pull_live(limit: int = 25, _user: dict = Depends(current_user)) -> dict:
+    """Fallback — query H1 directly (sandbox/cf-bypass). Returns {fetched, inserted}; empty when
+    Cloudflare blocks the host."""
+    return hacktivity_svc.ingest_live(limit)
+
+
+@router.get("/intel/disclosures")
+def list_disclosures(class_id: str | None = None, program: str | None = None,
+                     severity: str | None = None, enriched: bool | None = None,
+                     _user: dict = Depends(current_user)) -> list[dict]:
+    return hacktivity_svc.list_disclosures(class_id=class_id, program=program,
+                                           severity=severity, enriched=enriched)
+
+
+@router.get("/intel/disclosures/{disclosure_id}")
+def get_disclosure(disclosure_id: str, _user: dict = Depends(current_user)) -> dict:
+    row = hacktivity_svc.get_disclosure(disclosure_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="disclosure not found")
+    return row
+
+
+@router.post("/intel/disclosures/{disclosure_id}/enrich")
+def enrich_disclosure(disclosure_id: str, provider_id: str | None = None,
+                      _user: dict = Depends(current_user)) -> dict:
+    """The 'extra pull' — derive reusable methodology (root cause → recurrence → patch →
+    how-to-hunt → first-finder edge → improvement) from a disclosure via an optional LLM pass.
+    Returns status=no-model when no provider is configured (enrichment is optional)."""
+    return hacktivity_svc.enrich_disclosure(disclosure_id, provider_id=provider_id)
+
+
+@router.get("/intel/market-by-class")
+def market_by_class(_user: dict = Depends(current_user)) -> list[dict]:
+    """Market-validated priority overlay — real bounty $ per taxonomy class from the wild."""
+    return hacktivity_svc.market_by_class()
+
+
+# ── Technique extraction — the reusable INVARIANT a disclosed report teaches ──────────
+
+@router.post("/intel/techniques/extract")
+def techniques_extract(reextract: bool = False, limit: int = 1000,
+                       _user: dict = Depends(current_user)) -> dict:
+    """Deterministically classify disclosed reports into the reusable technique(s) they teach and
+    persist them. Runs automatically on ingest; call with reextract=true to refresh after the
+    signal map changes. No model required."""
+    return technique_svc.extract_all(limit=limit, reextract=reextract)
+
+
+@router.get("/intel/techniques")
+def techniques_library(boundary_only: bool = False, min_confidence: str | None = None,
+                       limit: int = 100, _user: dict = Depends(current_user)) -> list[dict]:
+    """The deduped technique library — one row per taxonomy class taught in the wild, ranked by a
+    novelty x payout x volume lead score, each carrying the invariant, the authored hunt steps, and
+    the example reports. A library of leads, not a feed of payloads."""
+    try:
+        return technique_svc.library(boundary_only=boundary_only, min_confidence=min_confidence, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/intel/techniques/{class_id}/test-plan")
+def techniques_test_plan(class_id: str, _user: dict = Depends(current_user)) -> dict:
+    """A copy-ready test plan for one taught technique: invariant, steps, example reports, the
+    reportability gate, and the loud 'observed != verified on your target' reminder."""
+    try:
+        return technique_svc.test_plan(class_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/intel/disclosures/{disclosure_id}/techniques")
+def disclosure_techniques(disclosure_id: str, _user: dict = Depends(current_user)) -> dict:
+    """The technique card for one disclosure: the ranked invariant(s) it teaches, with confidence,
+    the exact signals that fired, novelty, and the authored hunt steps. Read-only — classifies once
+    on first request, then serves the stored classification (a GET never rewrites the DB)."""
+    result = technique_svc.card(disclosure_id)
+    if result.get("status") == "not-found":
+        raise HTTPException(status_code=404, detail="disclosure not found")
+    return result
+
+
+@router.get("/projects/{project_id}/intel/techniques")
+def project_techniques(project_id: str, limit: int = 40,
+                       _user: dict = Depends(current_user)) -> list[dict]:
+    """Overlay the technique library onto this target's coverage — the taught techniques whose class
+    is still uncovered here, ranked as 'hunt this next' with the market reason. Covered classes drop."""
+    return technique_svc.match_project(project_id, limit=limit)
+
+
+@router.get("/tools/specs")
+def list_tool_specs(mode: str | None = None, _user: dict = Depends(current_user)) -> list[dict]:
+    """The ToolSpec registry — the single declaration per tool that both modes route through.
+    Optional ?mode=manual|ai filters to tools that operating mode may reach."""
+    specs = toolspec_svc.specs_for_mode(mode) if mode in ("manual", "ai") else toolspec_svc.all_specs()
+    return [{"name": s.name, "category": s.category, "danger_tier": s.danger_tier,
+             "scope_required": s.scope_required, "description": s.description,
+             "modes": list(s.modes), "covers": list(s.covers),
+             "executable": s.runner is not None, "available": s.is_available()}
+            for s in specs]
+
+
+class ToolRunIn(BaseModel):
+    args: dict = Field(default_factory=dict, description="Tool arguments (target_url, domain, hosts, …)")
+
+
+@router.post("/projects/{project_id}/tools/{name}/run")
+async def run_registered_tool(project_id: str, name: str, body: ToolRunIn,
+                              _user: dict = Depends(current_user)) -> dict:
+    """Manual-mode runner — drive any registered, executable tool through the SAME
+    execution + policy-gate path the autonomous orchestrator uses. Scope/authorization is
+    enforced identically; this route just lets an operator pull the trigger instead of the AI."""
+    _require_project(project_id)
+    spec = toolspec_svc.get(name)
+    if spec is None:
+        raise HTTPException(status_code=404, detail=f"no tool registered as '{name}'")
+    if not spec.allows_mode("manual"):
+        raise HTTPException(status_code=403, detail=f"tool '{name}' is not available in manual mode")
+    if spec.runner is None:
+        raise HTTPException(status_code=400,
+                            detail=f"'{name}' is catalog-only — run it through its dedicated route")
+    if not spec.is_available():
+        raise HTTPException(status_code=503, detail=f"tool '{name}' is not installed on this host")
+    engagement = policy.authorized_engagement(project_id)
+    if not engagement:
+        raise HTTPException(status_code=403,
+                            detail="no authorized engagement — scope the target before running tools")
+    execution = executions.create(
+        project_id, f"tool:{name}", {"tool": name, "args": body.args},
+        engagement_id=engagement["id"], risk_class=tool_registry.risk_class_for(name))
+    # Operator pulled the trigger — their action is the approval for live (state-changing)
+    # tools; destructive/prohibited tiers and hard scope denials still block in the gate.
+    await tool_runner.run_job(execution["id"], operator_approved=True)
+    row = db.query_one("SELECT status, output, error FROM executions WHERE id=?", [execution["id"]])
+    return {"execution_id": execution["id"], "status": row["status"],
+            "output": json.loads(row["output"] or "{}"), "error": row["error"]}
+
+
+# ── Techniques ────────────────────────────────────────────────────────────────
+
+@router.get("/techniques")
+def list_techniques(category: str | None = None,
+                    _user: dict = Depends(current_user)) -> list[dict]:
+    if category:
+        rows = db.query("SELECT * FROM techniques WHERE category=? ORDER BY name", [category])
+    else:
+        rows = db.query("SELECT * FROM techniques ORDER BY category, name")
+    return [db.decode_row(r) for r in rows]
+
+
+@router.get("/techniques/{technique_id}")
+def get_technique(technique_id: str, _user: dict = Depends(current_user)) -> dict:
+    tech = db.query_one("SELECT * FROM techniques WHERE id=? OR slug=?",
+                        [technique_id, technique_id])
+    if not tech:
+        raise HTTPException(status_code=404, detail="technique not found")
+    tech = db.decode_row(tech)
+    stages = db.query(
+        "SELECT * FROM technique_stages WHERE technique_id=? ORDER BY stage_order",
+        [tech["id"]]
+    )
+    for stage in stages:
+        stage["tests"] = db.query(
+            "SELECT * FROM technique_tests WHERE stage_id=? ORDER BY test_order",
+            [stage["id"]]
+        )
+    tech["stages"] = stages
+    return tech
+
+
+class TechniqueRunCreate(BaseModel):
+    project_id: str
+    target_host: str = ""
+
+
+@router.post("/techniques/{technique_id}/runs", status_code=201)
+def create_technique_run(technique_id: str, body: TechniqueRunCreate,
+                         user: dict = Depends(current_user)) -> dict:
+    tech = db.query_one("SELECT id FROM techniques WHERE id=? OR slug=?",
+                        [technique_id, technique_id])
+    if not tech:
+        raise HTTPException(status_code=404, detail="technique not found")
+    proj = db.query_one("SELECT id FROM projects WHERE id=?", [body.project_id])
+    if not proj:
+        raise HTTPException(status_code=404, detail="project not found")
+    run_id = str(uuid.uuid4())
+    db.insert("technique_runs", {
+        "id": run_id, "technique_id": tech["id"],
+        "project_id": body.project_id, "target_host": body.target_host,
+        "status": "active", "created_at": _now(),
+    })
+    return {"id": run_id, "technique_id": tech["id"], "status": "active"}
+
+
+@router.get("/techniques/{technique_id}/runs/{run_id}")
+def get_technique_run(technique_id: str, run_id: str,
+                      _user: dict = Depends(current_user)) -> dict:
+    run = db.query_one("SELECT * FROM technique_runs WHERE id=?", [run_id])
+    if not run:
+        raise HTTPException(status_code=404, detail="run not found")
+    results = db.query(
+        "SELECT * FROM technique_test_results WHERE run_id=?", [run_id]
+    )
+    run["results"] = {r["test_id"]: r for r in results}
+    return run
+
+
+class TestResultUpdate(BaseModel):
+    status: str  # pending | done | skipped | finding
+    notes: str = ""
+    result: str = ""
+
+
+@router.put("/technique-runs/{run_id}/tests/{test_id}")
+def update_test_result(run_id: str, test_id: str, body: TestResultUpdate,
+                       _user: dict = Depends(current_user)) -> dict:
+    run = db.query_one("SELECT id FROM technique_runs WHERE id=?", [run_id])
+    if not run:
+        raise HTTPException(status_code=404, detail="run not found")
+    db.upsert(
+        "technique_test_results",
+        {"id": str(uuid.uuid4()), "run_id": run_id, "test_id": test_id,
+         "status": body.status, "notes": body.notes, "result": body.result,
+         "completed_at": _now() if body.status != "pending" else None},
+        conflict_cols=["run_id", "test_id"],
+        update_cols=["status", "notes", "result", "completed_at"],
+    )
+    return {"run_id": run_id, "test_id": test_id, "status": body.status}
+
+
 @router.post("/projects/{project_id}/hypotheses", status_code=201)
 def create_hypothesis(project_id: str, body: HypothesisCreate,
                       user: dict = Depends(current_user)) -> dict:
@@ -936,6 +1364,20 @@ def list_hypotheses(project_id: str, engagement_id: str | None = None,
         rows = db.query(
             "SELECT * FROM hypotheses WHERE project_id=? ORDER BY updated_at DESC", [project_id])
     return [db.decode_row(r) for r in rows]
+
+
+@router.patch("/projects/{project_id}/hypotheses/{hypothesis_id}")
+def update_hypothesis(project_id: str, hypothesis_id: str, body: dict,
+                      user: dict = Depends(current_user)) -> dict:
+    status = (body or {}).get("status")
+    if not status:
+        raise HTTPException(status_code=422, detail="status is required")
+    try:
+        return research.update_hypothesis_status(project_id, hypothesis_id, status, user["id"])
+    except ValueError as exc:
+        detail = str(exc)
+        code = 404 if "not found" in detail else 400
+        raise HTTPException(status_code=code, detail=detail) from exc
 
 
 @router.post("/hypotheses/{hypothesis_id}/experiments", status_code=201)
@@ -978,6 +1420,361 @@ def review_finding(finding_id: str, body: FindingReviewCreate,
                                        body.confidence, body.rationale, body.artifact_ids)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+class MissionCreate(BaseModel):
+    engagement_id: str
+    title: str
+    created_by: str | None = None
+
+
+class MissionAdvance(BaseModel):
+    to_stage: str
+    note: str | None = None
+    actor: str | None = None
+
+
+class CoverageCheck(BaseModel):
+    engagement_id: str
+    target_url: str
+    method: str = "GET"
+    procedure: str
+
+
+class FindingVerify(BaseModel):
+    reviewer_type: str
+    reviewer_id: str
+    verdict: str
+    confidence: str = "medium"
+    rationale: str
+    artifact_ids: list[str] = Field(default_factory=list)
+
+
+@router.post("/projects/{project_id}/missions", status_code=201)
+def create_mission(project_id: str, body: MissionCreate,
+                   _user: dict = Depends(current_user)) -> dict:
+    return lifecycle.create_mission(project_id, body.engagement_id, body.title, body.created_by)
+
+
+@router.get("/projects/{project_id}/missions")
+def list_missions(project_id: str, engagement_id: str | None = None,
+                  _user: dict = Depends(current_user)) -> list[dict]:
+    return lifecycle.list_missions(engagement_id=engagement_id, project_id=project_id)
+
+
+@router.get("/missions/{mission_id}")
+def get_mission(mission_id: str, _user: dict = Depends(current_user)) -> dict:
+    mission = lifecycle.get_mission(mission_id)
+    if not mission:
+        raise HTTPException(status_code=404, detail="mission not found")
+    return mission
+
+
+@router.post("/missions/{mission_id}/advance")
+def advance_mission(mission_id: str, body: MissionAdvance,
+                    _user: dict = Depends(current_user)) -> dict:
+    try:
+        return lifecycle.advance_stage(mission_id, body.to_stage, body.note, body.actor)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/lifecycle/coverage-check")
+def coverage_check(body: CoverageCheck, _user: dict = Depends(current_user)) -> dict:
+    hit = lifecycle.is_covered(body.engagement_id, body.target_url, body.method, body.procedure)
+    return {"covered": hit is not None, "prior_experiment": hit,
+            "fingerprint": lifecycle.coverage_fingerprint(body.target_url, body.method, body.procedure)}
+
+
+@router.post("/findings/{finding_id}/verify", status_code=201)
+def verify_finding(finding_id: str, body: FindingVerify,
+                   _user: dict = Depends(current_user)) -> dict:
+    try:
+        return lifecycle.verify_finding(finding_id, body.reviewer_type, body.reviewer_id,
+                                        body.verdict, body.confidence, body.rationale, body.artifact_ids)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+class SourceIn(BaseModel):
+    kind: str
+    identifier: str
+    project_id: str | None = None
+    engagement_id: str | None = None
+    label: str | None = None
+    observed_revision: str | None = None
+    metadata: dict = Field(default_factory=dict)
+
+
+class RevisionIn(BaseModel):
+    revision: str
+    parent_revision: str | None = None
+    ref: str | None = None
+    authored_at: str | None = None
+    metadata: dict = Field(default_factory=dict)
+
+
+class DiffIn(BaseModel):
+    from_revision: str
+    to_revision: str
+    files_changed: list[str] = Field(default_factory=list)
+    summary: str | None = None
+    security_relevant: bool = False
+    advisory_id: str | None = None
+
+
+class ObservedRevisionIn(BaseModel):
+    revision: str
+
+
+@router.get("/sources")
+def list_sources(project_id: str | None = None, engagement_id: str | None = None,
+                 kind: str | None = None, _user: dict = Depends(current_user)) -> list[dict]:
+    return source_revision.list_sources(project_id=project_id, engagement_id=engagement_id, kind=kind)
+
+
+@router.post("/sources", status_code=201)
+def register_source(body: SourceIn, _user: dict = Depends(current_user)) -> dict:
+    source_id = source_revision.register_source(
+        body.kind, body.identifier, project_id=body.project_id, engagement_id=body.engagement_id,
+        label=body.label, observed_revision=body.observed_revision, metadata=body.metadata)
+    return source_revision.get_source(source_id)
+
+
+@router.get("/sources/regression-candidates")
+def regression_candidates(source_id: str | None = None, project_id: str | None = None,
+                          _user: dict = Depends(current_user)) -> list[dict]:
+    return source_revision.regression_candidates(source_id=source_id, project_id=project_id)
+
+
+@router.get("/sources/{source_id}")
+def get_source(source_id: str, _user: dict = Depends(current_user)) -> dict:
+    source = source_revision.get_source(source_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="source not found")
+    return source
+
+
+@router.post("/sources/{source_id}/observed-revision")
+def set_observed_revision(source_id: str, body: ObservedRevisionIn,
+                          _user: dict = Depends(current_user)) -> dict:
+    source_revision.set_observed_revision(source_id, body.revision)
+    return source_revision.get_source(source_id)
+
+
+@router.post("/sources/{source_id}/revisions", status_code=201)
+def add_revision(source_id: str, body: RevisionIn, _user: dict = Depends(current_user)) -> dict:
+    rev_id = source_revision.add_revision(
+        source_id, body.revision, parent_revision=body.parent_revision, ref=body.ref,
+        authored_at=body.authored_at, metadata=body.metadata)
+    return {"id": rev_id, "source_id": source_id, "revision": body.revision}
+
+
+@router.post("/sources/{source_id}/diffs", status_code=201)
+def record_diff(source_id: str, body: DiffIn, _user: dict = Depends(current_user)) -> dict:
+    diff_id = source_revision.record_diff(
+        source_id, body.from_revision, body.to_revision, files_changed=body.files_changed,
+        summary=body.summary, security_relevant=body.security_relevant, advisory_id=body.advisory_id)
+    return {"id": diff_id, "source_id": source_id}
+
+
+# --- GitHub integration: diff-scoped code scanning -------------------------
+class GithubScanIn(BaseModel):
+    repo: str                       # local checkout path (or owner/name with a clone_path source)
+    base: str | None = None
+    scope: str = "diff"             # diff | full
+    fail_on: str = "high"
+    pr_number: int | None = None
+    source_id: str | None = None
+    revision: str | None = None
+
+
+@router.post("/github/scan", status_code=201)
+def github_scan(body: GithubScanIn, _user: dict = Depends(current_user)) -> dict:
+    try:
+        return github_svc.scan_repository(
+            body.repo, base=body.base, scope=body.scope, fail_on=body.fail_on,
+            pr_number=body.pr_number, source_id=body.source_id, revision=body.revision)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/github/scans")
+def github_list_scans(repo: str | None = None, _user: dict = Depends(current_user)) -> list[dict]:
+    return github_svc.list_scans(repo=repo)
+
+
+@router.get("/github/scans/{scan_id}")
+def github_get_scan(scan_id: str, _user: dict = Depends(current_user)) -> dict:
+    scan = github_svc.get_scan(scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="scan not found")
+    return scan
+
+
+@router.get("/github/scans/{scan_id}/sarif")
+def github_scan_sarif(scan_id: str, _user: dict = Depends(current_user)) -> dict:
+    scan = github_svc.get_scan(scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="scan not found")
+    return sarif_svc.to_sarif(scan["findings"])
+
+
+@router.get("/github/scans/{scan_id}/fix-plan")
+def github_scan_fix_plan(scan_id: str, _user: dict = Depends(current_user)) -> dict:
+    """Detect→remediate: per-finding guidance + deterministic suggested fixes (read-only)."""
+    try:
+        return remediation_svc.build_plan(scan_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/github/scans/{scan_id}/fix.patch")
+def github_scan_fix_patch(scan_id: str, _user: dict = Depends(current_user)) -> Response:
+    """Unified-diff patch of every deterministic single-line fix. Operator applies it;
+    CyberBox never writes to the repo or opens a PR on its own."""
+    try:
+        patch = remediation_svc.unified_diff(scan_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return Response(content=patch, media_type="text/x-patch",
+                    headers={"Content-Disposition": f'attachment; filename="{scan_id}.patch"'})
+
+
+class PostResultsIn(BaseModel):
+    token_env: str = "GITHUB_TOKEN"
+    confirm: bool = False
+
+
+@router.post("/github/scans/{scan_id}/post-results")
+def github_post_results(scan_id: str, body: PostResultsIn,
+                        _user: dict = Depends(current_user)) -> dict:
+    try:
+        return github_svc.post_results(scan_id, token_env=body.token_env, confirm=body.confirm)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/github/webhook")
+async def github_webhook(request: Request,
+                         x_hub_signature_256: str | None = Header(default=None),
+                         x_github_event: str | None = Header(default=None)) -> dict:
+    """GitHub webhook receiver. Authenticated by HMAC (not the API key) so GitHub can reach it.
+    Secret is read from $GITHUB_WEBHOOK_SECRET (env var name only — never stored)."""
+    body = await request.body()
+    secret = os.environ.get("GITHUB_WEBHOOK_SECRET")
+    if not github_svc.verify_signature(secret, body, x_hub_signature_256):
+        raise HTTPException(status_code=401, detail="invalid or missing webhook signature")
+    payload = json.loads(body or b"{}")
+    if x_github_event == "pull_request" and payload.get("action") in ("opened", "synchronize", "reopened"):
+        return {"handled": True, "scan": github_svc.handle_pull_request_event(payload)}
+    return {"handled": False, "event": x_github_event, "action": payload.get("action")}
+
+
+# --- Scheduler: recurring scans + attack-surface drift ---------------------
+class ScheduledJobIn(BaseModel):
+    kind: str                       # github_scan | surface_rescan | cve_intel_hunt
+    interval_seconds: int
+    spec: dict = Field(default_factory=dict)
+    project_id: str | None = None
+    engagement_id: str | None = None
+
+
+@router.post("/scheduler/jobs", status_code=201)
+def create_scheduled_job(body: ScheduledJobIn, _user: dict = Depends(current_user)) -> dict:
+    try:
+        return scheduler_svc.create_job(
+            body.kind, body.interval_seconds, spec=body.spec,
+            project_id=body.project_id, engagement_id=body.engagement_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/scheduler/jobs")
+def list_scheduled_jobs(enabled: bool | None = None,
+                        _user: dict = Depends(current_user)) -> list[dict]:
+    return scheduler_svc.list_jobs(enabled=enabled)
+
+
+@router.post("/scheduler/jobs/{job_id}/enabled")
+def set_job_enabled(job_id: str, enabled: bool, _user: dict = Depends(current_user)) -> dict:
+    job = scheduler_svc.set_enabled(job_id, enabled)
+    if not job:
+        raise HTTPException(status_code=404, detail="job not found")
+    return job
+
+
+@router.delete("/scheduler/jobs/{job_id}", status_code=204, response_model=None)
+def delete_scheduled_job(job_id: str, _user: dict = Depends(current_user)) -> None:
+    scheduler_svc.delete_job(job_id)
+
+
+@router.post("/scheduler/run-due")
+def run_due_jobs(_user: dict = Depends(current_user)) -> dict:
+    results = scheduler_svc.run_due()
+    return {"ran": len(results), "results": results}
+
+
+# --- Attack-surface monitoring --------------------------------------------
+@router.post("/projects/{project_id}/surface/snapshot", status_code=201)
+def surface_snapshot(project_id: str, _user: dict = Depends(current_user)) -> dict:
+    return surface_svc.snapshot(project_id)
+
+
+@router.get("/projects/{project_id}/surface/drift")
+def surface_drift(project_id: str, _user: dict = Depends(current_user)) -> dict:
+    return surface_svc.drift(project_id)
+
+
+class NotifyChannelIn(BaseModel):
+    kind: str                       # discord | ntfy | webhook | jsonl
+    name: str
+    url_env: str | None = None
+    secret_env: str | None = None
+    config: dict = Field(default_factory=dict)
+
+
+class NotifyTestIn(BaseModel):
+    title: str = "CyberBox test notification"
+    body: str = "If you can read this, the channel works."
+    severity: str = "info"
+
+
+@router.get("/notifications/channels")
+def list_notification_channels(_user: dict = Depends(current_user)) -> list[dict]:
+    return notify_svc.list_channels()
+
+
+@router.post("/notifications/channels", status_code=201)
+def create_notification_channel(body: NotifyChannelIn,
+                                _user: dict = Depends(current_user)) -> dict:
+    try:
+        return notify_svc.create_channel(body.kind, body.name, url_env=body.url_env,
+                                         secret_env=body.secret_env, config=body.config)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/notifications/channels/{channel_id}", status_code=204, response_model=None)
+def delete_notification_channel(channel_id: str, _user: dict = Depends(current_user)) -> None:
+    notify_svc.delete_channel(channel_id)
+
+
+@router.post("/notifications/channels/{channel_id}/enabled")
+def enable_notification_channel(channel_id: str, enabled: bool,
+                                _user: dict = Depends(current_user)) -> dict:
+    notify_svc.set_enabled(channel_id, enabled)
+    return {"id": channel_id, "enabled": enabled}
+
+
+@router.post("/notifications/test")
+def test_notifications(body: NotifyTestIn, _user: dict = Depends(current_user)) -> dict:
+    return {"results": notify_svc.send("test", body.title, body.body, body.severity)}
+
+
+@router.get("/notifications/log")
+def notification_log(_user: dict = Depends(current_user)) -> list[dict]:
+    return notify_svc.recent_log()
 
 
 @router.post("/projects/{project_id}/evidence-bundles", status_code=201)
@@ -1134,9 +1931,15 @@ def hunt_dashboard() -> FileResponse:
 def gori_status(_user: dict = Depends(current_user)) -> dict:
     """Return whether Caido is reachable and which project is active."""
     s = get_settings()
-    info = gori_svc.get_project_info(s)
+    caido_local = gori_svc.probe_caido_local()
+    # Only call GraphQL if PAT is configured — avoids 2s timeout on every page load
+    info: dict = {}
+    if s.gori_pat:
+        info = gori_svc.get_project_info(s)
     return {
-        "reachable": bool(info),
+        "reachable": bool(info) or caido_local,
+        "caido_local": caido_local,
+        "caido_local_port": gori_svc.CAIDO_DEFAULT_PORT,
         "gori_url": s.gori_url,
         "pat_configured": bool(s.gori_pat),
         "caido_project": info,
@@ -1152,26 +1955,19 @@ def gori_import(project_id: str, _user: dict = Depends(current_user)) -> dict:
     issues = gori_svc.get_issues(s)
     imported = 0
     for issue in issues:
-        hyp_id = "hyp_" + str(uuid.uuid4()).replace("-", "")[:16]
-        title = issue.get("title") or "Caido finding"
-        desc = issue.get("description") or ""
-        severity = issue.get("severity", "unknown").lower()
-        evidence = json.dumps({
-            "source": "caido",
-            "caido_id": issue.get("id"),
-            "request_url": issue.get("request_url"),
-            "method": issue.get("method"),
+        _insert_signal(project_id, {
+            "title": issue.get("title") or "Caido finding",
+            "description": issue.get("description") or "",
+            "severity": issue.get("severity", "info").lower(),
+            "status": "open",
+            "evidence": json.dumps({
+                "source": "caido",
+                "caido_id": issue.get("id"),
+                "request_url": issue.get("request_url"),
+                "method": issue.get("method"),
+            }),
         })
-        try:
-            db.execute(
-                "INSERT OR IGNORE INTO hypotheses "
-                "(id, project_id, title, description, severity, status, evidence, created_at) "
-                "VALUES (?,?,?,?,?,?,?,?)",
-                [hyp_id, project_id, title, desc, severity, "open", evidence, _now()],
-            )
-            imported += 1
-        except Exception:
-            pass
+        imported += 1
     return {"imported": imported, "total_caido_issues": len(issues)}
 
 
@@ -1194,20 +1990,31 @@ def gori_flows(
 # CVE intel sweep
 # ---------------------------------------------------------------------------
 
-def _insert_hypothesis(project_id: str, hyp: dict) -> str:
-    hyp_id = "hyp_" + str(uuid.uuid4()).replace("-", "")[:16]
+def _insert_signal(project_id: str, sig: dict) -> str:
+    """Persist a lightweight, findings-shaped lead into the `signals` table. Returns its id.
+
+    The `source` is taken from the evidence JSON's "source" key (what every caller already sets).
+    Replaces the old `_insert_hypothesis`, which wrote a stale column set into the research
+    `hypotheses` table and silently stored nothing."""
+    sig_id = "sig_" + str(uuid.uuid4()).replace("-", "")[:16]
+    evidence = sig.get("evidence", "{}")
+    source = ""
     try:
-        db.execute(
-            "INSERT OR IGNORE INTO hypotheses "
-            "(id, project_id, title, description, severity, status, evidence, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?)",
-            [hyp_id, project_id, hyp.get("title", ""), hyp.get("description", ""),
-             hyp.get("severity", "unknown"), hyp.get("status", "open"),
-             hyp.get("evidence", "{}"), _now()],
-        )
-    except Exception:
-        pass
-    return hyp_id
+        source = (json.loads(evidence) or {}).get("source", "") if isinstance(evidence, str) else ""
+    except (ValueError, TypeError):
+        source = ""
+    db.execute(
+        "INSERT OR IGNORE INTO signals "
+        "(id, project_id, source, title, description, severity, status, evidence, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        [sig_id, project_id, source, sig.get("title", ""), sig.get("description", ""),
+         sig.get("severity", "info"), sig.get("status", "open"), evidence, _now()],
+    )
+    return sig_id
+
+
+# Back-compat alias: several call sites still use the old name.
+_insert_hypothesis = _insert_signal
 
 
 @router.post("/projects/{project_id}/cve-sweep", status_code=202)
@@ -1225,14 +2032,24 @@ def cve_sweep(project_id: str, body: CveSweepCreate,
         days_back=body.days_back,
     )
     inserted = 0
+    marked_classes: set[str] = set()
     for hit in hits:
         hyp = hit.to_hypothesis_body(project_id)
         _insert_hypothesis(project_id, hyp)
         inserted += 1
+        # Engine layer: a real CVE match persists its own evidence row and marks the known-vuln
+        # class covered. Self-contained so it does not depend on the hypothesis store.
+        try:
+            marked_classes.update(engines_svc.apply_cve_hit(project_id, {
+                "cve_id": hit.cve_id, "tech": hit.tech, "severity": hit.severity,
+                "cvss_score": hit.cvss_score, "description": hit.description}))
+        except Exception:  # noqa: BLE001 - coverage is best-effort; never fail the sweep
+            pass
     return {
         "techs": body.techs,
         "cves_found": len(hits),
         "hypotheses_created": inserted,
+        "coverage_marked": sorted(marked_classes),
         "results": [
             {
                 "cve_id": h.cve_id,
@@ -1249,12 +2066,12 @@ def cve_sweep(project_id: str, body: CveSweepCreate,
 
 @router.get("/projects/{project_id}/cve-sweep")
 def cve_sweep_results(project_id: str, _user: dict = Depends(current_user)) -> list[dict]:
-    """Return hypotheses from past CVE sweeps for this project."""
+    """Return signals from past CVE sweeps for this project."""
     if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
         raise HTTPException(status_code=404, detail="project not found")
     rows = db.query(
         "SELECT id, title, description, severity, status, evidence, created_at "
-        "FROM hypotheses WHERE project_id=? AND evidence LIKE '%\"source\": \"cve_sweep\"%' "
+        "FROM signals WHERE project_id=? AND source='cve_sweep' "
         "ORDER BY created_at DESC LIMIT 100",
         [project_id],
     )
@@ -1266,6 +2083,59 @@ def cve_sweep_results(project_id: str, _user: dict = Depends(current_user)) -> l
             ev = {}
         result.append({**dict(r), "cve_meta": ev})
     return result
+
+
+@router.get("/projects/{project_id}/signals")
+def list_signals(project_id: str, source: str | None = None, limit: int = 200,
+                 _user: dict = Depends(current_user)) -> list[dict]:
+    """Lightweight leads recorded by the sweep/import/check paths (cve_sweep, nuclei_sweep, caido,
+    preflight_check, dedup_check, howtohunt_sync, loss_close). Filter by `source`."""
+    if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
+        raise HTTPException(status_code=404, detail="project not found")
+    sql = "SELECT id, source, title, description, severity, status, evidence, created_at FROM signals WHERE project_id=?"
+    params: list = [project_id]
+    if source:
+        sql += " AND source=?"
+        params.append(source)
+    sql += " ORDER BY created_at DESC LIMIT ?"
+    params.append(max(1, min(limit, 1000)))
+    rows = db.query(sql, params)
+    for r in rows:
+        try:
+            r["evidence_parsed"] = json.loads(r["evidence"])
+        except Exception:  # noqa: BLE001
+            r["evidence_parsed"] = {}
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# vulnx sweep (ProjectDiscovery vulnerability.sh) → coverage
+# ---------------------------------------------------------------------------
+
+@router.post("/projects/{project_id}/vulnx-sweep", status_code=202)
+def vulnx_sweep(project_id: str, body: VulnxSweepCreate,
+                _user: dict = Depends(current_user)) -> dict:
+    """Query vulnerability.sh for CVEs affecting the given products; each hit marks the taxonomy
+    classes its tags/CWE speak to (plus the known-vuln class), with the hit stored as evidence."""
+    _require_project(project_id)
+    if not vulnx_svc.available():
+        raise HTTPException(status_code=503, detail="vulnx CLI is not installed on this host")
+    # Shared with the vulnx ToolSpec runner so coverage is marked identically either way.
+    swept = engines_svc.sweep_and_cover(
+        project_id, body.techs, kev_only=body.kev_only,
+        template_only=body.template_only, limit=body.limit)
+    hits = swept["hits"]
+    return {
+        "techs": body.techs,
+        "cves_found": swept["cves_found"],
+        "coverage_marked": swept["coverage_marked"],
+        "results": [
+            {"cve_id": h["cve_id"], "tech": h["tech"], "severity": h["severity"],
+             "cvss_score": h["cvss_score"], "epss_score": h["epss_score"],
+             "is_kev": h["is_kev"], "is_template": h["is_template"], "tags": h["tags"][:8]}
+            for h in hits
+        ],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1281,12 +2151,23 @@ def nuclei_sweep(project_id: str, body: NucleiSweepCreate,
     import tempfile
     if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
         raise HTTPException(status_code=404, detail="project not found")
+
+    # Scope gate — nuclei is an active scanner; default-deny before any live request.
+    # Every target must be covered by the project's authorized engagement scope.
+    gate = policy.filter_scope(project_id, body.targets, risk_class="state-changing")
+    if not gate["allowed"]:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "all targets out of scope or unauthorized",
+                    "blocked": gate["blocked"]})
+    scoped_targets = gate["allowed"]
+
     nuclei_bin = shutil.which("nuclei") or get_settings().tools.get("nuclei", "nuclei")
     if not shutil.which(nuclei_bin):
         raise HTTPException(status_code=503, detail="nuclei not found in PATH")
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tf:
-        tf.write("\n".join(body.targets))
+        tf.write("\n".join(scoped_targets))
         targets_file = tf.name
 
     cmd = [nuclei_bin, "-l", targets_file, "-json", "-silent",
@@ -1335,8 +2216,8 @@ def nuclei_sweep(project_id: str, body: NucleiSweepCreate,
         inserted += 1
         findings.append({"template_id": finding.get("template-id"), "url": url, "severity": sev})
 
-    return {"targets": body.targets, "findings": len(findings),
-            "hypotheses_created": inserted, "results": findings}
+    return {"targets": scoped_targets, "blocked": gate["blocked"],
+            "findings": len(findings), "hypotheses_created": inserted, "results": findings}
 
 
 # ---------------------------------------------------------------------------
@@ -1351,13 +2232,7 @@ def preflight_check(project_id: str, body: PreflightCheckCreate,
     import shutil
     if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
         raise HTTPException(status_code=404, detail="project not found")
-    # hunt_preflight.py lives in claude-bug-bounty/tools/ — locate it
-    preflight_candidates = [
-        os.path.expanduser("~/claude-bug-bounty/tools/hunt_preflight.py"),
-        os.path.join(os.path.dirname(__file__), "..", "..", "..", "..",
-                     "claude-bug-bounty", "tools", "hunt_preflight.py"),
-    ]
-    preflight_script = next((p for p in preflight_candidates if os.path.isfile(p)), None)
+    preflight_script = _bounty_tool("hunt_preflight.py")
     if not preflight_script:
         raise HTTPException(status_code=503, detail="hunt_preflight.py not found")
 
@@ -1402,10 +2277,7 @@ def dedup_check(project_id: str, body: DedupCheckCreate,
     import subprocess
     if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
         raise HTTPException(status_code=404, detail="project not found")
-    reports_db_candidates = [
-        os.path.expanduser("~/claude-bug-bounty/tools/reports_db.py"),
-    ]
-    reports_db_script = next((p for p in reports_db_candidates if os.path.isfile(p)), None)
+    reports_db_script = _bounty_tool("reports_db.py")
     if not reports_db_script:
         raise HTTPException(status_code=503, detail="reports_db.py not found")
     try:
@@ -1445,10 +2317,7 @@ def howtohunt_sync(project_id: str, body: HowtohuntSyncCreate,
     import subprocess
     if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
         raise HTTPException(status_code=404, detail="project not found")
-    gen_candidates = [
-        os.path.expanduser("~/claude-bug-bounty/tools/howtohunt_gen.py"),
-    ]
-    gen_script = next((p for p in gen_candidates if os.path.isfile(p)), None)
+    gen_script = _bounty_tool("howtohunt_gen.py")
     if not gen_script:
         raise HTTPException(status_code=503, detail="howtohunt_gen.py not found")
 
@@ -1588,9 +2457,257 @@ def create_provider(body: ProviderCreate, _user: dict = Depends(current_user)) -
         raise HTTPException(422, str(exc)) from exc
 
 
-@router.delete("/providers/{provider_id}", status_code=204)
+@router.delete("/providers/{provider_id}", status_code=204, response_model=None)
 def delete_provider(provider_id: str, _user: dict = Depends(current_user)) -> None:
     model_svc.delete_provider(provider_id)
+
+
+# ---------------------------------------------------------------------------
+# Methodology spine — taxonomy, per-target coverage, chain escalation
+# ---------------------------------------------------------------------------
+
+class CoverageIn(BaseModel):
+    status: str = Field(pattern="^(none|partial|covered)$")
+    evidence_ids: list[str] = Field(default_factory=list)
+    note: str | None = None
+
+
+@router.get("/taxonomy/families")
+def taxonomy_families(_user: dict = Depends(current_user)) -> list[dict]:
+    return taxonomy_svc.list_families()
+
+
+@router.get("/taxonomy/classes")
+def taxonomy_classes(family: int | None = None, _user: dict = Depends(current_user)) -> list[dict]:
+    return taxonomy_svc.list_classes(family)
+
+
+@router.get("/taxonomy/checklist")
+def taxonomy_checklist(_user: dict = Depends(current_user)) -> dict:
+    return {"reporting_checklist": taxonomy_svc.reporting_checklist(),
+            "informational_standalone": taxonomy_svc.informational_list()}
+
+
+@router.get("/taxonomy/classes/{class_id}/methodology")
+def taxonomy_methodology(class_id: str, _user: dict = Depends(current_user)) -> dict:
+    try:
+        return taxonomy_svc.methodology(class_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/taxonomy/classes/{class_id}/reportability")
+def taxonomy_reportability(class_id: str, _user: dict = Depends(current_user)) -> dict:
+    try:
+        return taxonomy_svc.reportability(class_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/projects/{project_id}/coverage")
+def project_coverage(project_id: str, _user: dict = Depends(current_user)) -> dict:
+    _require_project(project_id)
+    return {"summary": taxonomy_svc.coverage_summary(project_id),
+            "classes": taxonomy_svc.coverage(project_id)}
+
+
+@router.post("/projects/{project_id}/coverage/{class_id}")
+def set_project_coverage(project_id: str, class_id: str, body: CoverageIn,
+                         _user: dict = Depends(current_user)) -> dict:
+    _require_project(project_id)
+    try:
+        return taxonomy_svc.set_coverage(project_id, class_id, body.status, body.evidence_ids, body.note)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/projects/{project_id}/chains")
+def project_chains(project_id: str, _user: dict = Depends(current_user)) -> list[dict]:
+    _require_project(project_id)
+    return taxonomy_svc.reachable_chains(project_id)
+
+
+@router.get("/engines")
+def list_engines(_user: dict = Depends(current_user)) -> list[dict]:
+    """Registered engines and the taxonomy classes each can flip to covered (provenance layer)."""
+    return engines_svc.list_engines()
+
+
+@router.get("/wstg/catalog")
+def wstg_catalog(_user: dict = Depends(current_user)) -> dict:
+    """OWASP WSTG v4.2 catalog (96 tests, 11 chapters) with each test's mapped taxonomy classes."""
+    return wstg_svc.catalog()
+
+
+@router.get("/projects/{project_id}/wstg/coverage")
+def project_wstg_coverage(project_id: str, _user: dict = Depends(current_user)) -> dict:
+    """WSTG v4.2 coverage for the target, derived from taxonomy coverage via the test->class map."""
+    _require_project(project_id)
+    return wstg_svc.coverage(project_id)
+
+
+# ---------------------------------------------------------------------------
+# Passive target fingerprinting — WordPress / GitLab live preview
+# ---------------------------------------------------------------------------
+
+class FingerprintIn(BaseModel):
+    target_url: str
+
+
+def _gate_passive_probe(project_id: str, target_url: str) -> None:
+    """Scope-gate a passive fingerprint. Requires an authorized engagement whose scope covers
+    the target. The cloud-metadata hard-block lives in the fingerprint service itself."""
+    if not db.query_one("SELECT id FROM projects WHERE id=?", [project_id]):
+        raise HTTPException(status_code=404, detail="project not found")
+    engagement = policy.authorized_engagement(project_id)
+    if not engagement:
+        raise HTTPException(status_code=403,
+                            detail="no authorized engagement — scope the target before probing")
+    url = target_url if "://" in target_url else f"https://{target_url}"
+    decision = policy.evaluate(engagement["id"], url, method="GET", risk_class="low-impact")
+    if not decision.get("allowed"):
+        raise HTTPException(status_code=403, detail=f"out of scope: {decision.get('reason')}")
+
+
+def _enrich_plugins_with_advisories(plugins: list[dict]) -> list[dict]:
+    """Flag fingerprinted plugins that match known advisories at the detected version."""
+    for p in plugins:
+        slug, version = p.get("slug"), p.get("version")
+        if slug and version:
+            try:
+                hits = advisories.match_product(slug, version)
+                p["known_advisories"] = len(hits)
+                p["advisory_ids"] = [h["advisory_id"] for h in hits[:5]]
+            except Exception:  # noqa: BLE001
+                p["known_advisories"] = 0
+        else:
+            p["known_advisories"] = 0
+    return plugins
+
+
+def _mark_fingerprint_coverage(project_id: str, kind: str, result: dict, target: str) -> list[str]:
+    """Flip taxonomy classes covered from a passive fingerprint's confirmed observations.
+
+    Guarded so a coverage hiccup never fails the probe response; the engine layer is the single
+    honesty gate (it only marks directly-observed conditions)."""
+    try:
+        return engines_svc.apply_fingerprint_finding(project_id, kind, result, target)
+    except Exception:  # noqa: BLE001 - coverage is best-effort; the probe result still returns
+        return []
+
+
+@router.post("/projects/{project_id}/fingerprint/wordpress")
+def fingerprint_wp(project_id: str, body: FingerprintIn,
+                   _user: dict = Depends(current_user)) -> dict:
+    _gate_passive_probe(project_id, body.target_url)
+    try:
+        result = fingerprint_svc.fingerprint_wordpress(body.target_url)
+    except fingerprint_svc.ProbeBlocked as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    result["plugins"] = _enrich_plugins_with_advisories(result.get("plugins", []))
+    result["vulnerable_plugin_count"] = sum(1 for p in result["plugins"] if p.get("known_advisories"))
+    result["coverage_marked"] = _mark_fingerprint_coverage(project_id, "wordpress", result, body.target_url)
+    return result
+
+
+@router.post("/projects/{project_id}/fingerprint/gitlab")
+def fingerprint_gl(project_id: str, body: FingerprintIn,
+                   _user: dict = Depends(current_user)) -> dict:
+    _gate_passive_probe(project_id, body.target_url)
+    try:
+        result = fingerprint_svc.fingerprint_gitlab(body.target_url)
+    except fingerprint_svc.ProbeBlocked as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    result["coverage_marked"] = _mark_fingerprint_coverage(project_id, "gitlab", result, body.target_url)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# JS full-diff — snapshot JS bundles over time, diff for new endpoints/secrets
+# ---------------------------------------------------------------------------
+
+class JsSnapshotIn(BaseModel):
+    urls: list[str] = Field(min_length=1, max_length=50, description="JS bundle URLs to snapshot")
+
+
+@router.post("/projects/{project_id}/js/snapshot", status_code=202)
+def js_snapshot(project_id: str, body: JsSnapshotIn, _user: dict = Depends(current_user)) -> dict:
+    """Fetch each JS URL (scope-gated, SSRF-guarded) and store it as a revision if it changed."""
+    results = []
+    for url in body.urls:
+        _gate_passive_probe(project_id, url)
+        try:
+            results.append(js_diff_svc.snapshot(project_id, url))
+        except js_diff_svc.ProbeBlocked as exc:
+            results.append({"url": url, "changed": False, "error": str(exc)})
+    return {"snapshots": results, "changed": sum(1 for r in results if r.get("changed"))}
+
+
+@router.get("/projects/{project_id}/js/tracked")
+def js_tracked(project_id: str, _user: dict = Depends(current_user)) -> list[dict]:
+    """Every tracked JS url with its revision count and latest endpoint/secret counts."""
+    _require_project(project_id)
+    return js_diff_svc.list_tracked(project_id)
+
+
+@router.get("/projects/{project_id}/js/diff")
+def js_diff_route(project_id: str, url: str, from_hash: str | None = None, to_hash: str | None = None,
+                  _user: dict = Depends(current_user)) -> dict:
+    """Full diff between two revisions of a JS url (default: previous vs latest) + added endpoints/secrets."""
+    _require_project(project_id)
+    try:
+        return js_diff_svc.diff(project_id, url, from_hash=from_hash, to_hash=to_hash)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# Visual recon — headless-browser screenshots of in-scope hosts
+# ---------------------------------------------------------------------------
+
+class ScreenshotIn(BaseModel):
+    urls: list[str] = Field(min_length=1, max_length=30, description="In-scope URLs to screenshot")
+    backend: str = Field(default="auto", pattern="^(auto|chromium|gowitness)$",
+                         description="Capture backend: auto (chromium, else gowitness), chromium, or gowitness")
+
+
+@router.post("/projects/{project_id}/screenshots", status_code=202)
+def capture_screenshots(project_id: str, body: ScreenshotIn, _user: dict = Depends(current_user)) -> dict:
+    """Screenshot each in-scope URL with a headless browser (scope-gated, SSRF-guarded).
+
+    backend=chromium uses the cached headless Chromium; backend=gowitness drives gowitness v3;
+    backend=auto prefers chromium and falls back to gowitness."""
+    if not screenshots_svc.available(body.backend):
+        raise HTTPException(status_code=503,
+                            detail=f"screenshot backend '{body.backend}' unavailable on this host")
+    results = []
+    for url in body.urls:
+        _gate_passive_probe(project_id, url)
+        try:
+            r = screenshots_svc.capture(project_id, url, backend=body.backend)
+        except screenshots_svc.ProbeBlocked as exc:
+            r = {"url": url, "status": "error", "error": str(exc)}
+        results.append({k: r.get(k) for k in ("id", "url", "status", "error", "title")})
+    return {"captured": sum(1 for r in results if r.get("status") == "ok"), "results": results}
+
+
+@router.get("/projects/{project_id}/screenshots")
+def list_screenshots(project_id: str, _user: dict = Depends(current_user)) -> list[dict]:
+    """Screenshot metadata for the project (newest first). Fetch the PNG at .../image."""
+    _require_project(project_id)
+    return screenshots_svc.list_shots(project_id)
+
+
+@router.get("/projects/{project_id}/screenshots/{shot_id}/image")
+def screenshot_image(project_id: str, shot_id: str, _user: dict = Depends(current_user)) -> FileResponse:
+    """Return the PNG bytes for a stored screenshot."""
+    shot = screenshots_svc.get_shot(shot_id)
+    if not shot or shot.get("project_id") != project_id or not shot.get("path"):
+        raise HTTPException(status_code=404, detail="screenshot not found")
+    path = os.path.abspath(shot["path"])
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="screenshot file missing")
+    return FileResponse(path, media_type="image/png")
 
 
 # ---------------------------------------------------------------------------

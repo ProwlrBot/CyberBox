@@ -71,7 +71,8 @@ export default function PatchIntel() {
         const projectId = projects[0]?.id ?? "";
         if (!projectId) { if (!cancelled) setLoading(false); return; }
 
-        const hResp = await fetch(`/api/v1/projects/${projectId}/hypotheses`, { headers });
+        // CVE-sweep leads live in the signals bucket, surfaced by the cve-sweep read endpoint.
+        const hResp = await fetch(`/api/v1/projects/${projectId}/cve-sweep`, { headers });
         const hypotheses: Hypothesis[] = hResp.ok ? await hResp.json() : [];
 
         if (!cancelled) {
