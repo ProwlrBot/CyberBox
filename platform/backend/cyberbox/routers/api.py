@@ -1163,7 +1163,10 @@ def techniques_library(boundary_only: bool = False, min_confidence: str | None =
     """The deduped technique library — one row per taxonomy class taught in the wild, ranked by a
     novelty x payout x volume lead score, each carrying the invariant, the authored hunt steps, and
     the example reports. A library of leads, not a feed of payloads."""
-    return technique_svc.library(boundary_only=boundary_only, min_confidence=min_confidence, limit=limit)
+    try:
+        return technique_svc.library(boundary_only=boundary_only, min_confidence=min_confidence, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/intel/techniques/{class_id}/test-plan")
@@ -1179,12 +1182,12 @@ def techniques_test_plan(class_id: str, _user: dict = Depends(current_user)) -> 
 @router.get("/intel/disclosures/{disclosure_id}/techniques")
 def disclosure_techniques(disclosure_id: str, _user: dict = Depends(current_user)) -> dict:
     """The technique card for one disclosure: the ranked invariant(s) it teaches, with confidence,
-    the exact signals that fired, novelty, and the authored hunt steps. Extracts on demand if the
-    disclosure has not been classified yet."""
-    card = technique_svc.extract_and_store(disclosure_id)
-    if card.get("status") == "not-found":
+    the exact signals that fired, novelty, and the authored hunt steps. Read-only — classifies once
+    on first request, then serves the stored classification (a GET never rewrites the DB)."""
+    result = technique_svc.card(disclosure_id)
+    if result.get("status") == "not-found":
         raise HTTPException(status_code=404, detail="disclosure not found")
-    return card
+    return result
 
 
 @router.get("/projects/{project_id}/intel/techniques")

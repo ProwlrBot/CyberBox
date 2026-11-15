@@ -96,6 +96,33 @@ class TechniqueTest(unittest.TestCase):
         self.assertIsNone(card["primary"])
         self.assertEqual(card["techniques"], [])
 
+    def test_zero_technique_disclosure_is_marked_and_not_reprocessed(self) -> None:
+        did = _disc("Some unusual issue", "CWE-99999", "low", None, "nothing recognisable here")
+        technique.extract_and_store(did)
+        # a sentinel row (class_id NULL) marks it processed so the LEFT JOIN skip-path ignores it
+        sentinel = db.query_one(
+            "SELECT id FROM disclosure_techniques WHERE disclosure_id=? AND class_id IS NULL", [did])
+        self.assertIsNotNone(sentinel)
+        # a subsequent extract_all (skip-path) must NOT reprocess it
+        self.assertEqual(technique.extract_all()["processed"], 0)
+
+    def test_card_is_read_only_after_first_classification(self) -> None:
+        did = _disc("web cache deception", "CWE-525", "high", 500, "cache deception vary cookie")
+        first = technique.card(did)                         # classifies + persists
+        self.assertIsNotNone(first["primary"])
+        ids_before = {r["id"] for r in db.query(
+            "SELECT id FROM disclosure_techniques WHERE disclosure_id=?", [did])}
+        second = technique.card(did)                        # must read, not rewrite
+        ids_after = {r["id"] for r in db.query(
+            "SELECT id FROM disclosure_techniques WHERE disclosure_id=?", [did])}
+        self.assertEqual(ids_before, ids_after)             # same rows — no DELETE+re-INSERT
+        self.assertEqual(second["primary"]["class_id"], "f2-web-cache-deception")
+        self.assertEqual(second["status"], "observed")
+
+    def test_library_rejects_invalid_min_confidence(self) -> None:
+        with self.assertRaises(ValueError):
+            technique.library(min_confidence="critical")
+
     # ── Novelty rewards the non-generic ─────────────────────────────────────────
     def test_boundary_scores_higher_novelty_than_commodity_at_equal_pay(self) -> None:
         bnd = technique.extract_and_store(

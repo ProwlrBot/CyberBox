@@ -164,7 +164,9 @@ _SIGNALS = [
          strong=(r"dependency confusion",), med=(r"package .{0,10}confusion", r"internal .{0,10}package")),
 ]
 
-# Resolve each signal's class id once; drop any that aren't in the spine (FK-safe, future-proof).
+# Resolve each signal's class id once (pure slug — no DB at import time). Existence in the spine is
+# enforced at classification time in extract(), so a class renamed out of the taxonomy drops its
+# signal instead of persisting a dangling FK.
 _RESOLVED: list[dict] = []
 for _s in _SIGNALS:
     _cid = taxonomy.class_id(_s["family"], _s["name"])
@@ -243,6 +245,14 @@ def extract(disclosure: dict) -> dict:
     # this guards the hand-maintained list against future drift.)
     seen: set[str] = set()
     scored = [t for t in scored if not (t["class_id"] in seen or seen.add(t["class_id"]))]
+    # FK-safe: drop any signal whose class was renamed out of the spine, so we never persist a
+    # dangling class_id (which would raise IntegrityError under foreign_keys=ON). Cheap single query.
+    if scored:
+        ids = [t["class_id"] for t in scored]
+        placeholders = ",".join("?" * len(ids))
+        live = {r["id"] for r in db.query(
+            f"SELECT id FROM taxonomy_classes WHERE id IN ({placeholders})", ids)}
+        scored = [t for t in scored if t["class_id"] in live]
 
     fallback = False
     if not scored:
@@ -289,11 +299,16 @@ def extract(disclosure: dict) -> dict:
 
 def extract_and_store(disclosure_id: str) -> dict:
     """Extract one disclosure and persist its ranked techniques (dedup on disclosure+class).
-    Idempotent — re-running refreshes scores. Returns the card."""
+    Idempotent — re-running refreshes scores. Returns the card.
+
+    A disclosure that classifies to zero techniques still gets a sentinel row (class_id NULL) so it
+    is marked processed and never reprocessed on the next ingest. library()/match_project ignore the
+    sentinel (they filter class_id IS NOT NULL)."""
     d = db.query_one("SELECT * FROM disclosures WHERE id=?", [disclosure_id])
     if not d:
         return {"status": "not-found"}
     card = extract(db.decode_row(d))
+    now = _now()
     with db.batch():
         db.execute("DELETE FROM disclosure_techniques WHERE disclosure_id=?", [disclosure_id])
         for t in card["techniques"]:
@@ -301,8 +316,44 @@ def extract_and_store(disclosure_id: str) -> dict:
                 "id": str(uuid.uuid4()), "disclosure_id": disclosure_id, "class_id": t["class_id"],
                 "rank": t["rank"], "is_boundary": 1 if t["is_boundary"] else 0,
                 "confidence": t["confidence"], "novelty": card["novelty"],
-                "signals": json.dumps(t["signals"]), "status": "observed", "extracted_at": _now()})
+                "signals": json.dumps(t["signals"]), "status": "observed", "extracted_at": now})
+        if not card["techniques"]:
+            db.insert("disclosure_techniques", {
+                "id": str(uuid.uuid4()), "disclosure_id": disclosure_id, "class_id": None,
+                "rank": 0, "is_boundary": 0, "confidence": "low", "novelty": card["novelty"],
+                "signals": "[]", "status": "observed", "extracted_at": now})
     return card
+
+
+def card(disclosure_id: str) -> dict:
+    """Read-only technique card for one disclosure. Classifies on first request (no stored rows), then
+    serves the persisted classification on every subsequent call — a GET must not rewrite the DB."""
+    d = db.query_one("SELECT * FROM disclosures WHERE id=?", [disclosure_id])
+    if not d:
+        return {"status": "not-found"}
+    rows = db.query(
+        "SELECT * FROM disclosure_techniques WHERE disclosure_id=? ORDER BY rank", [disclosure_id])
+    if not rows:                       # never classified → extract once and persist
+        return extract_and_store(disclosure_id)
+    d = db.decode_row(d)
+    techniques = []
+    for r in rows:
+        if not r["class_id"]:          # sentinel marker → no technique, skip
+            continue
+        meth = taxonomy.methodology(r["class_id"])
+        techniques.append({
+            "rank": r["rank"], "class_id": r["class_id"], "class_name": meth.get("class_name"),
+            "family_num": meth.get("family_num"), "is_boundary": bool(r["is_boundary"]),
+            "confidence": r["confidence"], "signals": json.loads(r["signals"] or "[]"),
+            "invariant": meth.get("boundary"), "hunt_steps": meth.get("steps") or [],
+            "ai_hook": meth.get("ai_hook"), "has_methodology": bool(meth.get("has_methodology"))})
+    return {
+        "disclosure_id": disclosure_id, "title": d.get("title"), "url": d.get("url"),
+        "program": d.get("program_name") or d.get("program_handle"),
+        "bounty_amount": d.get("bounty_amount"), "severity": d.get("severity"),
+        "status": "observed", "novelty": rows[0]["novelty"],
+        "is_boundary": bool(techniques and techniques[0]["is_boundary"]),
+        "primary": techniques[0] if techniques else None, "techniques": techniques}
 
 
 def extract_all(limit: int = 1000, reextract: bool = False) -> dict:
@@ -330,7 +381,10 @@ def library(boundary_only: bool = False, min_confidence: str | None = None,
     not a feed of payloads — each row carries the invariant, the authored hunt steps, and the example
     reports that teach it."""
     conf_floor = {"low": 0, "medium": 1, "high": 2}
-    floor = conf_floor.get((min_confidence or "low").lower(), 0)
+    raw = (min_confidence or "low").lower()
+    if raw not in conf_floor:
+        raise ValueError("min_confidence must be one of: low, medium, high")
+    floor = conf_floor[raw]
     rows = db.query(
         "SELECT t.class_id, t.is_boundary, t.confidence, t.novelty, t.rank, "
         "       d.id AS did, d.title, d.url, d.program_name, d.program_handle, d.bounty_amount, "
