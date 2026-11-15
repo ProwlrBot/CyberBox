@@ -7,7 +7,7 @@ import {
   Plug, Wrench, Bot, Cpu, Brain,
   Monitor, Terminal, BookOpen, FolderOpen, FileCode2, ScrollText, Compass,
   Radio, Heart, ShieldAlert, KeyRound, Settings, ShieldCheck, ListTodo,
-  Crosshair, Radar, ClipboardCheck, FileDiff, Camera, Table2,
+  Crosshair, Radar, ClipboardCheck, FileDiff, Camera, Table2, Fingerprint,
 } from "lucide-react";
 import { StubPage } from "./pages/_stubs/StubPage";
 
@@ -32,6 +32,7 @@ const Reports      = lazy(() => import("./pages/hunt/Reports"));
 const Campaigns    = lazy(() => import("./pages/hunt/Campaigns"));
 const CampaignDetail = lazy(() => import("./pages/hunt/CampaignDetail"));
 const Techniques   = lazy(() => import("./pages/hunt/Techniques"));
+const Disclosures  = lazy(() => import("./pages/hunt/Disclosures"));
 const SettingsPage = lazy(() => import("./pages/settings/Settings"));
 const BrowserHunt  = lazy(() => import("./pages/workspace/BrowserHunt"));
 const HQ           = lazy(() => import("./pages/workspace/HQ"));
@@ -77,6 +78,7 @@ export const NAV_SECTIONS: NavSection[] = [
     { label: "Surface",    path: "/hunt/surface",  Icon: Radar },
     { label: "Findings",  path: "/hunt/findings",  Icon: Flag },
     { label: "CVE Intel", path: "/hunt/cve-intel", Icon: ShieldAlert },
+    { label: "Disclosures", path: "/hunt/disclosures", Icon: Fingerprint },
     { label: "Evidence",  path: "/hunt/evidence",  Icon: Archive },
     { label: "Workflows", path: "/hunt/workflows", Icon: Workflow },
     { label: "Reports",   path: "/hunt/reports",   Icon: BarChart2 },
@@ -150,6 +152,7 @@ export const appRoutes: RouteObject[] = [
   { path: "hunt/campaigns",   element: <Suspense fallback={null}><Campaigns /></Suspense> },
   { path: "hunt/campaigns/:id", element: <Suspense fallback={null}><CampaignDetail /></Suspense> },
   { path: "hunt/techniques",   element: <Suspense fallback={null}><Techniques /></Suspense> },
+  { path: "hunt/disclosures",  element: <Suspense fallback={null}><Disclosures /></Suspense> },
   { path: "hunt/memory",       element: <Suspense fallback={null}><Memory /></Suspense> },
   // Source
   { path: "source",           element: <Suspense fallback={null}><Source /></Suspense> },

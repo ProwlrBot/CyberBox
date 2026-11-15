@@ -103,8 +103,8 @@ def ensure_seeded() -> dict:
             valid_method_ids.append(mid)
             db.upsert("class_methodology",
                       {"class_id": mid, "steps": json.dumps(m["steps"]),
-                       "ai_hook": m.get("ai_hook"), "updated_at": _now()},
-                      conflict_cols=["class_id"], update_cols=["steps", "ai_hook", "updated_at"])
+                       "ai_hook": m.get("ai_hook"), "boundary": m.get("boundary"), "updated_at": _now()},
+                      conflict_cols=["class_id"], update_cols=["steps", "ai_hook", "boundary", "updated_at"])
 
         # OWASP WSTG v4.2 catalog + its mapping onto the spine. Each test's maps[] names classes;
         # only maps to classes that exist are kept (FK-safe), so a renamed class drops its mapping
@@ -275,13 +275,14 @@ def methodology(class_id_: str) -> dict:
     cls = db.query_one("SELECT id, name, family_num FROM taxonomy_classes WHERE id=?", [class_id_])
     if not cls:
         raise ValueError("unknown taxonomy class")
-    row = db.query_one("SELECT steps, ai_hook FROM class_methodology WHERE class_id=?", [class_id_])
+    row = db.query_one("SELECT steps, ai_hook, boundary FROM class_methodology WHERE class_id=?", [class_id_])
     steps = json.loads(row["steps"]) if row and row.get("steps") else []
     return {
         "class_id": cls["id"], "class_name": cls["name"], "family_num": cls["family_num"],
         "has_methodology": bool(steps),
         "steps": steps,
         "ai_hook": row["ai_hook"] if row else None,
+        "boundary": row["boundary"] if row else None,
     }
 
 

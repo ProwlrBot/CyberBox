@@ -106,7 +106,19 @@ def ingest_jsonl(text: str) -> dict:
             inserted += 1
         else:
             skipped += 1
+    if inserted:
+        _extract_new()
     return {"parsed": parsed, "inserted": inserted, "skipped": skipped, "unmapped": unmapped}
+
+
+def _extract_new() -> None:
+    """Best-effort: run deterministic technique extraction over newly-ingested disclosures so the
+    technique library is live immediately. Never breaks ingestion — extraction is additive intel."""
+    try:
+        from . import technique
+        technique.extract_all()
+    except Exception:  # noqa: BLE001 — extraction is optional enrichment, never fatal to ingest
+        pass
 
 
 def sync_from_github(owner: str, repo: str, path: str, ref: str = "HEAD",
@@ -213,6 +225,8 @@ def ingest_live(limit: int = 25) -> dict:
     """Pull live nodes (fallback path) and ingest them. Empty result if CF-blocked."""
     nodes = fetch_live(limit)
     inserted = sum(1 for n in nodes if _upsert(normalize_node(n)))
+    if inserted:
+        _extract_new()
     return {"fetched": len(nodes), "inserted": inserted}
 
 

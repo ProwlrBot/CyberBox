@@ -996,6 +996,7 @@ CREATE TABLE IF NOT EXISTS class_methodology (
     class_id   TEXT PRIMARY KEY REFERENCES taxonomy_classes(id),
     steps      TEXT NOT NULL DEFAULT '[]',  -- JSON array of deterministic step strings
     ai_hook    TEXT,                         -- optional light AI-enhancement note (never required)
+    boundary   TEXT,                         -- optional: the one-line invariant two components disagree on
     updated_at TEXT NOT NULL
 );
 
@@ -1084,6 +1085,25 @@ CREATE TABLE IF NOT EXISTS disclosures (
     UNIQUE (source, report_id)
 );
 CREATE INDEX IF NOT EXISTS idx_disclosures_class ON disclosures(class_id);
+
+-- Technique extraction: the reusable INVARIANT a disclosed report teaches, mapped to an authored
+-- methodology class. status is always 'observed' — a technique seen in a report is a hypothesis to
+-- test on your own target, never a confirmed finding. Rebuilt per disclosure (dedup on class).
+CREATE TABLE IF NOT EXISTS disclosure_techniques (
+    id            TEXT PRIMARY KEY,
+    disclosure_id TEXT NOT NULL REFERENCES disclosures(id) ON DELETE CASCADE,
+    class_id      TEXT REFERENCES taxonomy_classes(id),
+    rank          INTEGER NOT NULL DEFAULT 1,   -- 1 = primary technique for this report
+    is_boundary   INTEGER NOT NULL DEFAULT 0,   -- one of the 2026 boundary-differential pack
+    confidence    TEXT NOT NULL DEFAULT 'low',  -- high|medium|low
+    novelty       INTEGER NOT NULL DEFAULT 0,   -- 0-100, rewards non-generic / high-tail payout
+    signals       TEXT NOT NULL DEFAULT '[]',   -- JSON: the regex signals that fired
+    status        TEXT NOT NULL DEFAULT 'observed',
+    extracted_at  TEXT NOT NULL,
+    UNIQUE (disclosure_id, class_id)
+);
+CREATE INDEX IF NOT EXISTS idx_disc_tech_class ON disclosure_techniques(class_id);
+CREATE INDEX IF NOT EXISTS idx_disc_tech_disc ON disclosure_techniques(disclosure_id);
 CREATE INDEX IF NOT EXISTS idx_disclosures_program ON disclosures(program_handle);
 CREATE INDEX IF NOT EXISTS idx_disclosures_disclosed ON disclosures(disclosed_at);
 

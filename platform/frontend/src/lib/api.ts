@@ -641,11 +641,70 @@ export async function setCoverage(
 
 export type Methodology = {
   class_id: string; class_name: string; family_num: number;
-  has_methodology: boolean; steps: string[]; ai_hook: string | null;
+  has_methodology: boolean; steps: string[]; ai_hook: string | null; boundary?: string | null;
 };
 
 export async function fetchMethodology(classId: string): Promise<Methodology | null> {
   const r = await fetch(`/api/v1/taxonomy/classes/${encodeURIComponent(classId)}/methodology`, { headers: headers() });
+  return r.ok ? r.json() : null;
+}
+
+// ── Technique extraction — the invariant a disclosed report teaches ───────────────
+
+export type TechniqueExample = {
+  id: string; title: string; url: string; program: string | null;
+  bounty: number | null; rank: number; severity: string | null;
+};
+
+export type TechniqueLead = {
+  class_id: string; class_name: string; family_num: number | null;
+  is_boundary: boolean; report_count: number; program_count: number;
+  max_bounty: number | null; median_bounty: number | null; avg_novelty: number;
+  confidence: "low" | "medium" | "high";
+  latest: string | null; lead_score: number; invariant: string | null;
+  hunt_steps: string[]; ai_hook: string | null; has_methodology: boolean;
+  examples: TechniqueExample[];
+  coverage?: "none" | "partial"; reason?: string;
+};
+
+export type TechniquePlan = {
+  class_id: string; class_name: string; family_num: number;
+  invariant: string | null; status: string; disclaimer: string;
+  steps: string[]; ai_hook: string | null; has_methodology: boolean;
+  reportability: { standalone_reportable: boolean; informational_only: boolean;
+    feeds_chains: Array<{ id: string; name: string; result_priority: string }>; checklist: string[] };
+  example_reports: Array<{ id: string; title: string; url: string;
+    program_name: string | null; bounty_amount: number | null; severity: string | null }>;
+};
+
+export async function fetchTechniqueLibrary(opts?: { boundaryOnly?: boolean; minConfidence?: string }):
+  Promise<TechniqueLead[]> {
+  const q = new URLSearchParams();
+  if (opts?.boundaryOnly) q.set("boundary_only", "true");
+  if (opts?.minConfidence) q.set("min_confidence", opts.minConfidence);
+  const r = await fetch(`/api/v1/intel/techniques?${q.toString()}`, { headers: headers() });
+  return r.ok ? r.json() : [];
+}
+
+export async function fetchTechniquePlan(classId: string): Promise<TechniquePlan | null> {
+  const r = await fetch(`/api/v1/intel/techniques/${encodeURIComponent(classId)}/test-plan`, { headers: headers() });
+  return r.ok ? r.json() : null;
+}
+
+export async function fetchProjectTechniques(projectId: string): Promise<TechniqueLead[]> {
+  const r = await fetch(`/api/v1/projects/${encodeURIComponent(projectId)}/intel/techniques`, { headers: headers() });
+  return r.ok ? r.json() : [];
+}
+
+export async function extractTechniques(reextract = false): Promise<{ processed: number; techniques_written: number } | null> {
+  const r = await fetch(`/api/v1/intel/techniques/extract?reextract=${reextract}`, { method: "POST", headers: headers() });
+  return r.ok ? r.json() : null;
+}
+
+export async function syncDisclosures(): Promise<{ inserted: number; parsed: number } | null> {
+  const r = await fetch(`/api/v1/intel/hacktivity/sync`, {
+    method: "POST", headers: { ...headers(), "Content-Type": "application/json" }, body: JSON.stringify({}),
+  });
   return r.ok ? r.json() : null;
 }
 

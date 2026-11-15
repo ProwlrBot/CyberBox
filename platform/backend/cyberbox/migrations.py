@@ -18,6 +18,23 @@ MIGRATIONS: list[tuple[int, str, list[str]]] = [
      ["ALTER TABLE campaigns ADD COLUMN engagement_id TEXT REFERENCES engagements(id)"]),
     (2, "finding_reviews.reviewer_id — identify the reviewer to enforce finder != validator",
      ["ALTER TABLE finding_reviews ADD COLUMN reviewer_id TEXT"]),
+    (3, "class_methodology.boundary — the one-line invariant two components disagree on (2026 boundary-differential pack)",
+     ["ALTER TABLE class_methodology ADD COLUMN boundary TEXT"]),
+    (4, "disclosure_techniques — the reusable technique/invariant a disclosed report teaches",
+     ["CREATE TABLE IF NOT EXISTS disclosure_techniques ("
+      " id TEXT PRIMARY KEY,"
+      " disclosure_id TEXT NOT NULL REFERENCES disclosures(id) ON DELETE CASCADE,"
+      " class_id TEXT REFERENCES taxonomy_classes(id),"
+      " rank INTEGER NOT NULL DEFAULT 1,"
+      " is_boundary INTEGER NOT NULL DEFAULT 0,"
+      " confidence TEXT NOT NULL DEFAULT 'low',"
+      " novelty INTEGER NOT NULL DEFAULT 0,"
+      " signals TEXT NOT NULL DEFAULT '[]',"
+      " status TEXT NOT NULL DEFAULT 'observed',"
+      " extracted_at TEXT NOT NULL,"
+      " UNIQUE (disclosure_id, class_id))",
+      "CREATE INDEX IF NOT EXISTS idx_disc_tech_class ON disclosure_techniques(class_id)",
+      "CREATE INDEX IF NOT EXISTS idx_disc_tech_disc ON disclosure_techniques(disclosure_id)"]),
 ]
 
 

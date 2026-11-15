@@ -1,6 +1,6 @@
 {
-  "version": "1.0.0",
-  "note": "Per-class codified methodology: deterministic steps a hunter runs by hand or wires to a tool, plus an OPTIONAL ai_hook (light AI enhancement, never required). Keyed by {family,name} resolved to the taxonomy class id at seed time. Starter set covers the top-payout classes; extend incrementally.",
+  "version": "1.1.0",
+  "note": "Per-class codified methodology: deterministic steps a hunter runs by hand or wires to a tool, plus an OPTIONAL ai_hook (light AI enhancement, never required) and an OPTIONAL one-line `boundary` naming the invariant two components disagree on. Keyed by {family,name} resolved to the taxonomy class id at seed time. v1.1 adds the 2026 boundary-differential pack (parser/auth/validation/cache/lifecycle/serialization/export disagreements) — the meta where two components disagree about how a request, identity, object, or response is handled. Extend incrementally.",
   "methodologies": [
     {
       "family": 14, "name": "IDOR / BOLA, iterable object identifiers, sensitive data",
@@ -221,6 +221,175 @@
         "Publish nothing malicious; report immediately and request takedown."
       ],
       "ai_hook": "Optional: ask the model to extract candidate internal package names from the recovered manifests and logs."
+    },
+
+    {
+      "family": 11, "name": "Parser differentials",
+      "boundary": "Two components parse the same input differently.",
+      "steps": [
+        "Find a value handled by two parsers in sequence: a validator vs an executor, a gateway vs a controller, a preview vs an import, a version-N vs version-N+1 schema reader.",
+        "Craft input that is ambiguous across them: nested vs top-level objects, duplicate JSON keys, conflicting Content-Type, trailing data, $id/$ref URI-base games, mismatched length/encoding.",
+        "Prove the disagreement: component A accepts/permits it, component B resolves a different value — observe it in a response, a side effect, or a timing/length delta.",
+        "Drive the disagreement to impact: a restriction enforced only in A is skipped in B (local-file read, auth skip, SQL built from the B-value).",
+        "Stop at one proven differential with the exact divergent bytes. Do not fuzz the whole grammar; name the two components and the value each saw."
+      ],
+      "ai_hook": "Optional: ask the model to diff the two parsers' accepted grammar from their code/specs and propose the smallest input each reads differently."
+    },
+    {
+      "family": 10, "name": "HTTP parameter pollution (HPP)",
+      "boundary": "Authorization and business logic read the same parameter from different sources.",
+      "steps": [
+        "Identify a parameter that appears in more than one place: query + body, duplicate names, path + query, JSON + form.",
+        "Submit conflicting values (id=victim in one source, id=self in another; role in query vs body).",
+        "Determine which source the permission check canonicalizes and which the downstream query/operation consumes — they are often not the same.",
+        "If authz reads the allowed value but execution reads the attacker value, you have crossed a boundary: prove one unauthorized read/write or one injected query.",
+        "Report the exact duplicate parameter, which component read which copy, and the single resulting impact. Stop at proof."
+      ],
+      "ai_hook": "Optional: have the model list, per framework, the precedence rule for duplicate params (first/last/array) so you predict the split before testing."
+    },
+    {
+      "family": 14, "name": "Broken Object Property Level Authorization",
+      "boundary": "The object is yours to touch; a specific property is not.",
+      "steps": [
+        "GET an object you own and inventory every property (role, owner, tenant, balance, status, verified, internal flags).",
+        "Separate read-exposure (a property returned that should be filtered) from write-exposure (a property accepted that should be server-controlled).",
+        "On write, include the sensitive property with a changed value; on read, request representations/fields the UI never asks for (GraphQL field, ?fields=, export).",
+        "Re-read to confirm the property's stored value actually changed, or that the extra property actually came back — a 200 is not proof.",
+        "Prove one property crossing (privilege or cross-tenant) and stop; do not sweep every field destructively."
+      ],
+      "ai_hook": "Optional: ask the model to diff the GET schema against the write-accepted body and the admin schema to flag server-controlled properties that leak or are writable."
+    },
+    {
+      "family": 14, "name": "Header-based authorization bypass",
+      "boundary": "A trusted header means one thing at the edge and another at the origin.",
+      "steps": [
+        "Enumerate headers the stack trusts for identity/routing: X-Forwarded-For, X-Original-URL, X-Rewrite-URL, X-Forwarded-Host, X-HTTP-Method-Override, X-User-Id, X-Internal, custom gateway headers found in JS/config.",
+        "Request a protected path and inject each header alone, changing nothing else.",
+        "Watch for the edge enforcing a rule the origin re-derives from the header: path shown as X-Original-URL, IP allowlist satisfied by X-Forwarded-For, method swapped by override.",
+        "Confirm the privileged action executed server-side (state changed / data returned), not a cached or no-op 200.",
+        "Report the single header, the component that trusted it, and the one action it unlocked. Stop at proof."
+      ],
+      "ai_hook": "Optional: let the model infer from response/timing which header the origin honored vs the edge stripped."
+    },
+    {
+      "family": 12, "name": "Inconsistent state across services",
+      "boundary": "What one service validated is not what another service stored or executed.",
+      "steps": [
+        "Map a flow that spans services/steps: validate here, persist there, or sync A→B asynchronously.",
+        "Submit a value that passes validation but differs from what gets committed (validated slot vs persisted time, eligibility vs applied discount, quoted price vs charged amount).",
+        "Read the persisted/downstream state directly and compare it to what validation approved.",
+        "Prove the gap has value: a booking/charge/quota that validation would have rejected now exists.",
+        "Record validated-value vs persisted-value side by side. One proven divergence is the finding; do not loop it."
+      ],
+      "ai_hook": "Optional: ask the model to trace, from code or traffic, where validation output and the persistence write diverge in the request lifecycle."
+    },
+    {
+      "family": 12, "name": "Workflow step skipping",
+      "boundary": "A later step assumes an earlier one validated, but each step trusts the client's claim of progress.",
+      "steps": [
+        "Record the full multi-step flow (cart→address→payment→confirm; invite→verify→activate) and the token/flag each step sets.",
+        "Replay a late step directly, forging or reusing the state the earlier step would have set (status=paid, verified=true, step=3).",
+        "Check the server re-derives progress server-side rather than trusting the submitted marker.",
+        "Prove a terminal state reached without its precondition: provisioned without payment, activated without verification.",
+        "Stop at the one skipped gate that yields value; document the exact step bypassed."
+      ],
+      "ai_hook": "Optional: have the model enumerate the intended state machine and flag which transitions are only enforced client-side."
+    },
+    {
+      "family": 2, "name": "Web cache deception",
+      "boundary": "The cache and the origin disagree on whether a response is personal or public.",
+      "steps": [
+        "Find an authenticated, personalized endpoint (profile, dashboard, API returning your data).",
+        "Append a path/extension the CDN caches by rule but the origin ignores (/account/x.css, ;.js, /..%2f, cache-busting suffix) and request it while authenticated.",
+        "Check the response for Cache-Control: public (or cacheable) with your personal data and no Vary: Cookie.",
+        "From a clean, unauthenticated client, request the same crafted URL and confirm the victim's cached response is served.",
+        "Prove exactly one leaked personal field to a second identity. Do not harvest; the single cross-identity read is the finding."
+      ],
+      "ai_hook": "Optional: ask the model to diff cache directives between the normal and the suffixed URL and rank which suffixes the observed CDN caches."
+    },
+    {
+      "family": 14, "name": "Suspended, deleted or unverified account still authorized",
+      "boundary": "A security decision made once is not re-enforced as state changes over time.",
+      "steps": [
+        "Establish an authorized context (valid session, token, collaborator invite, active role).",
+        "Revoke it through the legitimate path: log out, change password, remove the collaborator, downgrade the role, delete the resource, expire the invite.",
+        "Replay the previously authorized request/token after revocation — including background jobs, cached permissions, and long-lived API tokens.",
+        "Confirm access still works post-revocation: read or act where the new state should forbid it.",
+        "Prove one access that should be denied; note the revocation event and the surface that ignored it. Stop there."
+      ],
+      "ai_hook": "Optional: ask the model to list every place the app caches an authorization decision (JWT claims, session store, edge, job queue) that a revocation must invalidate."
+    },
+    {
+      "family": 12, "name": "Time-of-check to time-of-use",
+      "boundary": "The state checked is not the state used, because something changed in between.",
+      "steps": [
+        "Find an operation that checks a condition then acts on it non-atomically (balance check then debit, ownership check then move, quota check then create).",
+        "Identify the window: a second request, a slow validation, an async job, a retry/cancel path that mutates state between check and use.",
+        "Drive the state to change inside the window (parallel request, flip ownership, exhaust/refill the resource) so the check passes against stale state.",
+        "Confirm the action used the stale decision: a debit that overdrew, a move that bypassed ownership, a create past quota.",
+        "Prove one TOCTOU with the interleaving written out. Keep it minimal — single overrun, not a stress loop. (See also race-on-a-limit.)"
+      ],
+      "ai_hook": "Optional: ask the model to point at the check→use gap in the handler and name the concurrent mutation that invalidates the check."
+    },
+    {
+      "family": 6, "name": "Cross-tenant PII leakage",
+      "boundary": "Data hidden in one representation leaks through another surface.",
+      "steps": [
+        "List every surface that can expose the same records: REST, GraphQL, search/autocomplete, RSS/export/archive, profile pages, mobile API, admin preview.",
+        "Take a field restricted or filtered in the primary UI and request it through each alternate representation.",
+        "Look specifically for a surface that forgets the tenant/ownership filter the main path applies (search index returns other tenants, export ignores scope, autocomplete reveals hidden names).",
+        "Confirm the leaked data belongs to a different tenant/user, not your own echoed back.",
+        "Prove one cross-tenant record via the weakest surface; name the surface and the filter it dropped. Do not enumerate the dataset."
+      ],
+      "ai_hook": "Optional: ask the model to enumerate, from the API surface, every representation of a given resource so you test the one the devs forgot."
+    },
+    {
+      "family": 16, "name": "Mutation XSS (mXSS) and sanitizer bypass",
+      "boundary": "Markup that is safe when sanitized becomes active when the browser re-parses it.",
+      "steps": [
+        "Locate a rich-text/HTML field that is sanitized server- or client-side then re-inserted (innerHTML, template rehydration, editor reconstruction).",
+        "Submit payloads that survive the sanitizer as inert but mutate on re-parse: namespace confusion (SVG/MathML/foreignObject), broken comments, attribute/entity reinterpretation, template normalization.",
+        "Trigger the re-parse path the sanitizer does not model (editor reopen, preview render, copy-paste normalization) and watch for execution.",
+        "Confirm script actually runs in the victim's origin, and whose session executes it (self vs another user vs admin).",
+        "Prove one firing payload in the context that has impact; capture the pre- and post-mutation markup. Stop at execution."
+      ],
+      "ai_hook": "Optional: ask the model to generate mXSS vectors tuned to the specific sanitizer and DOM-insertion sink you observed."
+    },
+    {
+      "family": 16, "name": "Stored XSS, privileged user with privilege elevation",
+      "boundary": "Content stored by a low-trust actor is rendered, and trusted, in a high-privilege session.",
+      "steps": [
+        "Find content a low-privilege or outside actor can store that an admin/privileged user later views (attachment attrs, names, notes, collaborator fields).",
+        "Trace the full path: input → storage → serialization → the privileged UI's rendering sink. Watch for a representation change during editing that re-exposes a legacy HTML-insertion path.",
+        "Land script that executes in the privileged session (mind CSP/nonce propagation across frames — a propagated nonce can re-enable execution).",
+        "From the privileged context, perform one authenticated action that elevates: grant your account a role, change a permission — the chain to takeover is the impact.",
+        "Prove the elevation once with a benign marker action; do not exercise destructive admin operations. Write the full low→admin chain."
+      ],
+      "ai_hook": "Optional: ask the model to map which stored fields reach an admin-only view and which rendering sink there is unsanitized."
+    },
+    {
+      "family": 2, "name": "HTTP/2 downgrade smuggling",
+      "boundary": "The front end and back end disagree on where one request ends and the next begins.",
+      "steps": [
+        "Confirm an H2 front end that downgrades to HTTP/1.1 at the back end (the rewrite is where length/framing disagreements are introduced).",
+        "Probe H2-specific desync: pseudo-header and header-name injection (CRLF in an H2 header value), content-length vs implied length mismatches, TE handling after downgrade.",
+        "Send a crafted request and prove a second, smuggled request was prefixed onto the next connection's victim request (observe the poisoned response or a controlled reflection).",
+        "Escalate within scope: cache poisoning, request hijack, or an internal path reached through the smuggled prefix.",
+        "Prove one reliable desync with the exact framing; never pivot into other tenants' live traffic beyond the minimum proof."
+      ],
+      "ai_hook": "Optional: ask the model to enumerate H2→H1 rewrite quirks for the identified front-end proxy and suggest the smallest desync primitive."
+    },
+    {
+      "family": 10, "name": "CSV / formula injection",
+      "boundary": "Data that is inert in the app is executable in the export's destination.",
+      "steps": [
+        "Find a field you control that flows into an export (CSV/XLSX report, invoice, conversion log, emailed template).",
+        "Store a formula-leading value (=, +, -, @, or tab/CR prefixes) that the app treats as plain text.",
+        "Export and open in the target consumer (spreadsheet app) to confirm the cell is interpreted as a formula, not a string.",
+        "Show real impact for the destination: DDE/command launch on open, or exfiltration via a formula that fetches a URL (WEBSERVICE/HYPERLINK) to a collaborator.",
+        "Prove one interpreted cell with a benign marker; name the field, the export, and the consumer. Do not ship a working command payload."
+      ],
+      "ai_hook": "Optional: ask the model which export formats the target emits and the exact formula prefix each target spreadsheet engine auto-evaluates."
     }
   ]
 }

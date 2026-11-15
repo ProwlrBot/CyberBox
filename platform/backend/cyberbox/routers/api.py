@@ -42,6 +42,7 @@ from ..services import screenshots as screenshots_svc
 from ..services import toolspec as toolspec_svc
 from ..services import tool_runner
 from ..services import hacktivity as hacktivity_svc
+from ..services import technique as technique_svc
 
 router = APIRouter(prefix="/api/v1", tags=["api"])
 
@@ -1143,6 +1144,55 @@ def enrich_disclosure(disclosure_id: str, provider_id: str | None = None,
 def market_by_class(_user: dict = Depends(current_user)) -> list[dict]:
     """Market-validated priority overlay — real bounty $ per taxonomy class from the wild."""
     return hacktivity_svc.market_by_class()
+
+
+# ── Technique extraction — the reusable INVARIANT a disclosed report teaches ──────────
+
+@router.post("/intel/techniques/extract")
+def techniques_extract(reextract: bool = False, limit: int = 1000,
+                       _user: dict = Depends(current_user)) -> dict:
+    """Deterministically classify disclosed reports into the reusable technique(s) they teach and
+    persist them. Runs automatically on ingest; call with reextract=true to refresh after the
+    signal map changes. No model required."""
+    return technique_svc.extract_all(limit=limit, reextract=reextract)
+
+
+@router.get("/intel/techniques")
+def techniques_library(boundary_only: bool = False, min_confidence: str | None = None,
+                       limit: int = 100, _user: dict = Depends(current_user)) -> list[dict]:
+    """The deduped technique library — one row per taxonomy class taught in the wild, ranked by a
+    novelty x payout x volume lead score, each carrying the invariant, the authored hunt steps, and
+    the example reports. A library of leads, not a feed of payloads."""
+    return technique_svc.library(boundary_only=boundary_only, min_confidence=min_confidence, limit=limit)
+
+
+@router.get("/intel/techniques/{class_id}/test-plan")
+def techniques_test_plan(class_id: str, _user: dict = Depends(current_user)) -> dict:
+    """A copy-ready test plan for one taught technique: invariant, steps, example reports, the
+    reportability gate, and the loud 'observed != verified on your target' reminder."""
+    try:
+        return technique_svc.test_plan(class_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/intel/disclosures/{disclosure_id}/techniques")
+def disclosure_techniques(disclosure_id: str, _user: dict = Depends(current_user)) -> dict:
+    """The technique card for one disclosure: the ranked invariant(s) it teaches, with confidence,
+    the exact signals that fired, novelty, and the authored hunt steps. Extracts on demand if the
+    disclosure has not been classified yet."""
+    card = technique_svc.extract_and_store(disclosure_id)
+    if card.get("status") == "not-found":
+        raise HTTPException(status_code=404, detail="disclosure not found")
+    return card
+
+
+@router.get("/projects/{project_id}/intel/techniques")
+def project_techniques(project_id: str, limit: int = 40,
+                       _user: dict = Depends(current_user)) -> list[dict]:
+    """Overlay the technique library onto this target's coverage — the taught techniques whose class
+    is still uncovered here, ranked as 'hunt this next' with the market reason. Covered classes drop."""
+    return technique_svc.match_project(project_id, limit=limit)
 
 
 @router.get("/tools/specs")

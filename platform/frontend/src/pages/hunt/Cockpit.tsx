@@ -385,6 +385,12 @@ function ClassDrawer({ cls, feeds, onClose, onMark }: {
               <div style={{ fontSize: 11, color: "var(--muted)" }}>loading playbook…</div>
             ) : meth && meth.has_methodology ? (
               <>
+                {meth.boundary && (
+                  <div style={{ margin: "4px 0 8px 0", padding: "7px 10px", borderRadius: 5, background: "var(--panel)", borderLeft: "2px solid var(--accent)", fontSize: 11, color: "var(--text)", lineHeight: 1.5 }}>
+                    <span style={{ color: "var(--accent)", fontFamily: "'JetBrains Mono', monospace", fontSize: 10, letterSpacing: 0.4 }}>BOUNDARY</span>{" "}
+                    <span style={{ color: "var(--muted)" }}>{meth.boundary}</span>
+                  </div>
+                )}
                 <ol style={{ margin: "4px 0 0 0", paddingLeft: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 6 }}>
                   {meth.steps.map((s, i) => (
                     <li key={i} style={{ display: "flex", gap: 8, fontSize: 12, color: "var(--text)", lineHeight: 1.45 }}>
