@@ -6,8 +6,9 @@ import {
 import {
   fetchProjects, fetchTaxonomyFamilies, fetchProjectCoverage, fetchProjectChains,
   fetchEngines, setCoverage, fetchMethodology, fetchEngagements, setEngagementAutonomy,
+  fetchMarketByClass,
   type TaxFamily, type CoverageClass, type CoverageResponse, type Chain, type Engine,
-  type Methodology,
+  type Methodology, type MarketClass,
 } from "../../lib/api";
 import type { EngagementSummary } from "../../types";
 
@@ -34,6 +35,11 @@ const STATUS_BORDER: Record<string, string> = {
 };
 
 function dollars(rank: number): string { return "$".repeat(Math.max(1, Math.min(5, rank))); }
+// Real disclosed bounty $ (market-validated), compact.
+function money(n: number | null | undefined): string {
+  if (!n) return "—";
+  return n >= 1000 ? `$${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}k` : `$${n}`;
+}
 
 export default function Cockpit() {
   const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
@@ -42,6 +48,7 @@ export default function Cockpit() {
   const [cov, setCov] = useState<CoverageResponse | null>(null);
   const [chains, setChains] = useState<Chain[]>([]);
   const [engines, setEngines] = useState<Engine[]>([]);
+  const [market, setMarket] = useState<Map<string, MarketClass>>(new Map());
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<CoverageClass | null>(null);
   const [engagement, setEngagement] = useState<EngagementSummary | null>(null);
@@ -82,13 +89,14 @@ export default function Cockpit() {
     let dead = false;
     (async () => {
       setLoading(true);
-      const [projs, fams, engs] = await Promise.all([
-        fetchProjects(), fetchTaxonomyFamilies(), fetchEngines(),
+      const [projs, fams, engs, mkt] = await Promise.all([
+        fetchProjects(), fetchTaxonomyFamilies(), fetchEngines(), fetchMarketByClass(),
       ]);
       if (dead) return;
       setProjects(projs);
       setFamilies(fams);
       setEngines(engs);
+      setMarket(new Map(mkt.map((m) => [m.class_id, m])));
       const pid = projs[0]?.id ?? "";
       setProjectId(pid);
       if (pid) await loadProject(pid);
@@ -255,6 +263,12 @@ export default function Cockpit() {
                         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
                           <span style={{ fontSize: 9, fontWeight: 700, color: PRIORITY_COLOR[c.priority.split("-")[0]] ?? "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{c.priority}</span>
                           <span style={{ fontSize: 9, color: PAYOUT_COLOR[c.payout_rank], fontFamily: "'JetBrains Mono', monospace" }}>{dollars(c.payout_rank)}</span>
+                          {market.get(c.id)?.max_bounty ? (
+                            <span title={`market: ${market.get(c.id)!.count} disclosed, up to ${money(market.get(c.id)!.max_bounty)} paid`}
+                              style={{ fontSize: 9, fontWeight: 700, color: "var(--accent)", fontFamily: "'JetBrains Mono', monospace" }}>
+                              {money(market.get(c.id)!.max_bounty)}
+                            </span>
+                          ) : null}
                           {c.informational_only === 1 && <span style={{ fontSize: 9, color: "var(--muted)" }}>info</span>}
                           {c.evidence_ids.length > 0 && <span style={{ fontSize: 9, color: "var(--good)" }}>●{c.evidence_ids.length}</span>}
                         </div>
@@ -316,6 +330,7 @@ export default function Cockpit() {
         <ClassDrawer
           cls={selected}
           feeds={selectedFeeds}
+          market={market.get(selected.id) ?? null}
           onClose={() => setSelected(null)}
           onMark={mark}
         />
@@ -332,8 +347,8 @@ export default function Cockpit() {
   );
 }
 
-function ClassDrawer({ cls, feeds, onClose, onMark }: {
-  cls: CoverageClass; feeds: Chain[];
+function ClassDrawer({ cls, feeds, market, onClose, onMark }: {
+  cls: CoverageClass; feeds: Chain[]; market: MarketClass | null;
   onClose: () => void; onMark: (c: CoverageClass, s: "none" | "partial" | "covered") => void;
 }) {
   const reportable = cls.informational_only !== 1;
@@ -358,7 +373,13 @@ function ClassDrawer({ cls, feeds, onClose, onMark }: {
         <div style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <span className="sev-badge" style={{ color: PRIORITY_COLOR[cls.priority.split("-")[0]] ?? "var(--muted)" }}>{cls.priority}</span>
-            <span style={{ fontSize: 12, color: PAYOUT_COLOR[cls.payout_rank], fontFamily: "'JetBrains Mono', monospace" }}>{dollars(cls.payout_rank)} payout</span>
+            <span title="taxonomy payout heat (priced for dupe/triage drift)" style={{ fontSize: 12, color: PAYOUT_COLOR[cls.payout_rank], fontFamily: "'JetBrains Mono', monospace" }}>{dollars(cls.payout_rank)} payout</span>
+            {market?.max_bounty ? (
+              <span title={`disclosed market: ${market.count} report(s), ${market.paid_count} paid, median ${money(market.median_bounty)}`}
+                style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", fontFamily: "'JetBrains Mono', monospace", border: "1px solid var(--accent)", borderRadius: 4, padding: "1px 7px" }}>
+                {money(market.max_bounty)} market · {market.count} rep
+              </span>
+            ) : null}
             {cls.cwe && <span className="type-badge">{cls.cwe}</span>}
             {cls.chain_component === 1 && <span className="type-badge" style={{ color: "var(--warn)", borderColor: "var(--warn)" }}>chain fuel</span>}
           </div>

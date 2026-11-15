@@ -708,6 +708,17 @@ export async function syncDisclosures(): Promise<{ inserted: number; parsed: num
   return r.ok ? r.json() : null;
 }
 
+// ── Market-by-class — real disclosed bounty $ per taxonomy class ───────────────────
+export type MarketClass = {
+  class_id: string; family_num: number | null; count: number; paid_count: number;
+  median_bounty: number | null; max_bounty: number | null; latest: string | null;
+};
+
+export async function fetchMarketByClass(): Promise<MarketClass[]> {
+  const r = await fetch(`/api/v1/intel/market-by-class`, { headers: headers() });
+  return r.ok ? r.json() : [];
+}
+
 // ── WSTG v4.2 coverage axis ──────────────────────────────────────────────────────
 
 export type WstgTestCov = {
