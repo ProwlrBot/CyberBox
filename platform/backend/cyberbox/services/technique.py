@@ -357,20 +357,31 @@ def card(disclosure_id: str) -> dict:
 
 
 def extract_all(limit: int = 1000, reextract: bool = False) -> dict:
-    """Batch-extract disclosures into the technique store. By default skips disclosures already
-    extracted; reextract=True refreshes them all (use after the signal map changes)."""
+    """Batch-extract disclosures into the technique store.
+
+    reextract=True refreshes the newest `limit` disclosures (use after the signal map changes).
+    Otherwise it DRAINS the whole unclassified backlog in batches of `limit`, newest-first — because
+    every disclosure gets a marker row (sentinel or real) the unextracted set strictly shrinks, so the
+    loop terminates and no old report is ever starved behind a `limit` cap."""
+    processed = written = 0
     if reextract:
         rows = db.query("SELECT id FROM disclosures ORDER BY ingested_at DESC LIMIT ?", [limit])
-    else:
+        for r in rows:
+            card = extract_and_store(r["id"])
+            written += len(card.get("techniques") or [])
+            processed += 1
+        return {"processed": processed, "techniques_written": written}
+
+    while True:
         rows = db.query(
             "SELECT d.id FROM disclosures d LEFT JOIN disclosure_techniques t ON t.disclosure_id=d.id "
             "WHERE t.id IS NULL ORDER BY d.ingested_at DESC LIMIT ?", [limit])
-    processed = written = 0
-    for r in rows:
-        card = extract_and_store(r["id"])
-        if card.get("techniques"):
-            written += len(card["techniques"])
-        processed += 1
+        if not rows:
+            break
+        for r in rows:
+            card = extract_and_store(r["id"])
+            written += len(card.get("techniques") or [])
+            processed += 1
     return {"processed": processed, "techniques_written": written}
 
 
@@ -385,64 +396,74 @@ def library(boundary_only: bool = False, min_confidence: str | None = None,
     if raw not in conf_floor:
         raise ValueError("min_confidence must be one of: low, medium, high")
     floor = conf_floor[raw]
-    rows = db.query(
-        "SELECT t.class_id, t.is_boundary, t.confidence, t.novelty, t.rank, "
-        "       d.id AS did, d.title, d.url, d.program_name, d.program_handle, d.bounty_amount, "
-        "       d.severity, d.disclosed_at "
-        "FROM disclosure_techniques t JOIN disclosures d ON d.id=t.disclosure_id "
-        "WHERE t.class_id IS NOT NULL")
-    groups: dict[str, dict] = {}
-    for r in rows:
-        if floor and conf_floor.get(r["confidence"], 0) < floor:
-            continue
-        if boundary_only and not r["is_boundary"]:
-            continue
-        g = groups.setdefault(r["class_id"], {
-            "class_id": r["class_id"], "is_boundary": bool(r["is_boundary"]),
-            "report_count": 0, "programs": set(), "bounties": [], "novelties": [],
-            "latest": None, "examples": [], "_conf": 0})
-        g["report_count"] += 1
-        g["_conf"] = max(g["_conf"], conf_floor.get(r["confidence"], 0))  # best-match confidence seen
-        g["is_boundary"] = g["is_boundary"] or bool(r["is_boundary"])
-        prog = r["program_name"] or r["program_handle"]
-        if prog:
-            g["programs"].add(prog)
-        if r["bounty_amount"]:
-            g["bounties"].append(r["bounty_amount"])
-        g["novelties"].append(r["novelty"] or 0)
-        if r["disclosed_at"] and (g["latest"] is None or r["disclosed_at"] > g["latest"]):
-            g["latest"] = r["disclosed_at"]
-        # keep up to 4 strongest example reports (prefer rank 1 + paid)
-        g["examples"].append({"id": r["did"], "title": r["title"], "url": r["url"],
-                              "program": prog, "bounty": r["bounty_amount"], "rank": r["rank"],
-                              "severity": r["severity"]})
+    _CONF_SQL = "CASE t.confidence WHEN 'high' THEN 2 WHEN 'medium' THEN 1 ELSE 0 END"
 
-    out = []
-    for g in groups.values():
-        cls = db.query_one("SELECT name, family_num, priority, payout_rank FROM taxonomy_classes WHERE id=?",
-                           [g["class_id"]])
-        meth = taxonomy.methodology(g["class_id"])
-        bounties = sorted(g.pop("bounties"))
-        novelties = g.pop("novelties")
-        g["class_name"] = cls["name"] if cls else g["class_id"]
+    # Aggregate per class IN SQL (count, programs, max bounty, avg novelty, latest, best confidence)
+    # so the whole join is never pulled into Python. Row-level filters live in the WHERE clause.
+    where = ["t.class_id IS NOT NULL", f"{_CONF_SQL} >= ?"]
+    params: list = [floor]
+    if boundary_only:
+        where.append("t.is_boundary = 1")
+    clause = " AND ".join(where)
+    aggs = db.query(
+        f"SELECT t.class_id AS class_id, MAX(t.is_boundary) AS is_boundary, COUNT(*) AS report_count, "
+        f"       COUNT(DISTINCT COALESCE(d.program_name, d.program_handle)) AS program_count, "
+        f"       MAX(d.bounty_amount) AS max_bounty, AVG(t.novelty) AS avg_novelty, "
+        f"       MAX(d.disclosed_at) AS latest, MAX({_CONF_SQL}) AS conf_rank "
+        f"FROM disclosure_techniques t JOIN disclosures d ON d.id=t.disclosure_id "
+        f"WHERE {clause} GROUP BY t.class_id", params)
+
+    # Rank first, then enrich only the top-N classes with methodology + examples + median — bounded
+    # work regardless of how large the corpus grows.
+    conf_name = {0: "low", 1: "medium", 2: "high"}
+    ranked = []
+    for a in aggs:
+        avg_novelty = round(a["avg_novelty"] or 0)
+        pay = a["max_bounty"] or 0
+        ranked.append({
+            "class_id": a["class_id"], "is_boundary": bool(a["is_boundary"]),
+            "report_count": a["report_count"], "program_count": a["program_count"],
+            "max_bounty": a["max_bounty"], "avg_novelty": avg_novelty,
+            "confidence": conf_name[a["conf_rank"]], "latest": a["latest"],
+            "lead_score": round(avg_novelty * 1.0 + (pay ** 0.5) * 0.5 + a["report_count"] * 2)})
+    ranked.sort(key=lambda g: (g["lead_score"], g["is_boundary"]), reverse=True)
+    ranked = ranked[:limit]
+    if not ranked:
+        return []
+
+    top_ids = [g["class_id"] for g in ranked]
+    ph = ",".join("?" * len(top_ids))
+    ex_rows = db.query(
+        f"SELECT t.class_id, t.rank, d.id AS did, d.title, d.url, d.program_name, d.program_handle, "
+        f"       d.bounty_amount, d.severity "
+        f"FROM disclosure_techniques t JOIN disclosures d ON d.id=t.disclosure_id "
+        f"WHERE t.class_id IN ({ph}) AND {_CONF_SQL} >= ?" + (" AND t.is_boundary = 1" if boundary_only else ""),
+        [*top_ids, floor])
+    by_class: dict[str, list] = {}
+    bounties_by_class: dict[str, list] = {}
+    for r in ex_rows:
+        by_class.setdefault(r["class_id"], []).append({
+            "id": r["did"], "title": r["title"], "url": r["url"],
+            "program": r["program_name"] or r["program_handle"], "bounty": r["bounty_amount"],
+            "rank": r["rank"], "severity": r["severity"]})
+        if r["bounty_amount"]:
+            bounties_by_class.setdefault(r["class_id"], []).append(r["bounty_amount"])
+
+    for g in ranked:
+        cid = g["class_id"]
+        cls = db.query_one("SELECT name, family_num, priority FROM taxonomy_classes WHERE id=?", [cid])
+        meth = taxonomy.methodology(cid)
+        bounties = sorted(bounties_by_class.get(cid, []))
+        g["class_name"] = cls["name"] if cls else cid
         g["family_num"] = cls["family_num"] if cls else None
         g["priority"] = cls["priority"] if cls else None
-        g["program_count"] = len(g.pop("programs"))
-        g["max_bounty"] = bounties[-1] if bounties else None
         g["median_bounty"] = bounties[len(bounties) // 2] if bounties else None
-        g["avg_novelty"] = round(sum(novelties) / len(novelties)) if novelties else 0
-        g["confidence"] = {0: "low", 1: "medium", 2: "high"}[g.pop("_conf")]
         g["invariant"] = meth.get("boundary")
         g["hunt_steps"] = meth.get("steps") or []
         g["ai_hook"] = meth.get("ai_hook")
         g["has_methodology"] = bool(meth.get("has_methodology"))
-        g["examples"] = sorted(g["examples"], key=lambda e: (e["rank"], -(e["bounty"] or 0)))[:4]
-        # composite rank: novelty-weighted, payout tail, recency-light, volume-light
-        pay = (g["max_bounty"] or 0)
-        g["lead_score"] = round(g["avg_novelty"] * 1.0 + (pay ** 0.5) * 0.5 + g["report_count"] * 2)
-        out.append(g)
-    out.sort(key=lambda g: (g["lead_score"], g["is_boundary"]), reverse=True)
-    return out[:limit]
+        g["examples"] = sorted(by_class.get(cid, []), key=lambda e: (e["rank"], -(e["bounty"] or 0)))[:4]
+    return ranked
 
 
 def test_plan(class_id: str) -> dict:

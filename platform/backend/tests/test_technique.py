@@ -123,6 +123,23 @@ class TechniqueTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             technique.library(min_confidence="critical")
 
+    def test_extract_all_drains_whole_backlog_past_batch_limit(self) -> None:
+        for i in range(5):
+            _disc(f"web cache deception {i}", "CWE-525", "high", 100, "cache deception vary cookie")
+        # a batch limit smaller than the backlog must still classify every disclosure (no starvation)
+        res = technique.extract_all(limit=2)
+        self.assertEqual(res["processed"], 5)
+        self.assertEqual(technique.extract_all(limit=2)["processed"], 0)  # nothing left unclassified
+
+    def test_library_median_bounty_over_multiple_reports(self) -> None:
+        for amt in (100, 300, 900):
+            technique.extract_and_store(
+                _disc("web cache deception", "CWE-525", "high", amt, "cache deception vary cookie"))
+        wcd = [L for L in technique.library() if L["class_id"] == "f2-web-cache-deception"][0]
+        self.assertEqual(wcd["max_bounty"], 900)
+        self.assertEqual(wcd["median_bounty"], 300)
+        self.assertEqual(wcd["report_count"], 3)
+
     # ── Novelty rewards the non-generic ─────────────────────────────────────────
     def test_boundary_scores_higher_novelty_than_commodity_at_equal_pay(self) -> None:
         bnd = technique.extract_and_store(
