@@ -206,9 +206,6 @@ RUN set -eux; \
 # ── Workspace setup ─────────────────────────────────────────
 ENV WORKSPACE="/home/hunter"
 
-# ── Drop to non-root (use UID to avoid passwd lookup issues) ─
-USER 1000
-
 EXPOSE 8080
 
 # ── Healthcheck: verify core CLIs resolve ───────────────────
